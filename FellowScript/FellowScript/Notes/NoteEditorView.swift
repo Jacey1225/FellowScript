@@ -81,8 +81,13 @@ struct NoteEditorView: View {
     var initialVerse:    VerseRef? = nil
     var initialBodyHTML: String = ""
     var onSave:     ((FSNote) async -> String?)? = nil
+    /// iPad workspace: when set, the editor is hosted inline inside the Notes
+    /// panel (no sheet). Cancel/close/save-success call this instead of dismiss().
+    var onClose:    (() -> Void)? = nil
 
-    @Environment(\.dismiss) private var dismiss
+    @Environment(\.dismiss) private var envDismiss
+    private var isInline: Bool { onClose != nil }
+    private func dismiss() { if let onClose { onClose() } else { envDismiss() } }
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @EnvironmentObject var appState: AppState
 
@@ -124,8 +129,58 @@ struct NoteEditorView: View {
     @FocusState private var titleFocused: Bool
 
     var body: some View {
-        NavigationStack {
+        Group {
+            if isInline {
+                // Inline in the iPad Notes panel: no NavigationStack. Its opaque
+                // system background painted the panel solid black and its size
+                // negotiation collapsed the editor to a sliver for notes with
+                // real content (task 20261014 bounce 1). Fill the panel and let
+                // the dock glass show through.
+                editorStack.frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                NavigationStack { editorStack }
+            }
+        }
+        .preferredColorScheme(.dark)
+        // Reconciled onto the app-wide shared keyboard-dismiss convention
+        // (task 20260831-interaction-polish-conventions) — this was
+        // previously a one-off `.scrollDismissesKeyboard(.interactively)` on
+        // just the writing ScrollView; that same interactive-drag behavior
+        // now comes from the shared modifier (applied here, at the screen
+        // root, so it also covers the title TextField) and gains
+        // tap-outside-to-dismiss for free, with no change to the existing
+        // scroll-to-dismiss feel.
+        .dismissesKeyboardOnScrollAndTap()
+        .onAppear { populate() }
+        .task { await loadNoteCharLimit() }
+        // Free-plan note cap: shared upgrade prompt above the editor; Subscribe closes the editor.
+        .upgradePrompt(onSubscribe: { dismiss() })
+        .alert("Couldn't Save Note", isPresented: Binding(
+            get: { saveErrorMessage != nil },
+            set: { if !$0 { saveErrorMessage = nil } }
+        )) {
+            Button("OK") { saveErrorMessage = nil }
+        } message: {
+            Text(saveErrorMessage ?? "")
+        }
+    }
+
+    private var editorStack: some View {
             ZStack {
+                if isInline {
+                    // Inline in the dock panel: no opaque ground, so the panel glass shows.
+                    Color.clear
+                    .overlay(
+                        GeometryReader { geo in
+                            Color.clear
+                                .onAppear { measuredScreenSize = geo.size }
+                                .onChange(of: geo.size) { _, newSize in
+                                    measuredScreenSize = newSize
+                                }
+                        }
+                    )
+
+                } else {
                 Theme.bgPage.ignoresSafeArea()
                     // Measures the TRUE full-screen size — see
                     // measuredScreenSize's declaration for why this, and not
@@ -148,13 +203,15 @@ struct NoteEditorView: View {
                         }
                     )
 
+                }
+
                 // Warm bloom ground (shared visual language with Dashboard/Chat/Notes).
-                RadialGradient(colors: [Color(hex: "#D4922A").opacity(0.20), .clear],
+                if !isInline { RadialGradient(colors: [Color(hex: "#D4922A").opacity(0.20), .clear],
                                center: UnitPoint(x: 0.12, y: 0.16), startRadius: 10, endRadius: 380)
                     .ignoresSafeArea()
                 RadialGradient(colors: [Color(hex: "#B8761D").opacity(0.12), .clear],
                                center: UnitPoint(x: 0.92, y: 0.60), startRadius: 10, endRadius: 340)
-                    .ignoresSafeArea()
+                    .ignoresSafeArea() }
 
                 VStack(spacing: 0) {
                     // ── Header bar (Option C: ghost-chip Cancel, icon-badge Public;
@@ -375,29 +432,6 @@ struct NoteEditorView: View {
                         .zIndex(1)
                 }
             }
-        }
-        .preferredColorScheme(.dark)
-        // Reconciled onto the app-wide shared keyboard-dismiss convention
-        // (task 20260831-interaction-polish-conventions) — this was
-        // previously a one-off `.scrollDismissesKeyboard(.interactively)` on
-        // just the writing ScrollView; that same interactive-drag behavior
-        // now comes from the shared modifier (applied here, at the screen
-        // root, so it also covers the title TextField) and gains
-        // tap-outside-to-dismiss for free, with no change to the existing
-        // scroll-to-dismiss feel.
-        .dismissesKeyboardOnScrollAndTap()
-        .onAppear { populate() }
-        .task { await loadNoteCharLimit() }
-        // Free-plan note cap: shared upgrade prompt above the editor; Subscribe closes the editor.
-        .upgradePrompt(onSubscribe: { dismiss() })
-        .alert("Couldn't Save Note", isPresented: Binding(
-            get: { saveErrorMessage != nil },
-            set: { if !$0 { saveErrorMessage = nil } }
-        )) {
-            Button("OK") { saveErrorMessage = nil }
-        } message: {
-            Text(saveErrorMessage ?? "")
-        }
     }
 
     // ── Verse picker submenu (task 20260921-verse-picker-submenu-style) ───────

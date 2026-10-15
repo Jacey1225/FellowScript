@@ -9,6 +9,7 @@ import AuthenticationServices
 struct AuthView: View {
     @EnvironmentObject var appState: AppState
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     var initialSignIn: Bool = true
     var onComplete: (() -> Void)? = nil
@@ -34,6 +35,42 @@ struct AuthView: View {
     private enum Field { case username, email, password }
 
     var body: some View {
+        if horizontalSizeClass == .regular { padCard } else { phoneBody }
+    }
+
+    /// iPad (regular width) sign-in card. All state and auth logic stay in this
+    /// view; AuthCardView is presentation only.
+    private var padCard: some View {
+        AuthCardView(
+            isSignIn: $isSignIn, username: $username, email: $email, password: $password,
+            termsAccepted: $termsAccepted, inviteCode: $inviteCode, showInviteCode: $showInviteCode,
+            errorMsg: errorMsg, isLoading: isLoading, googleLoading: googleLoading, appleLoading: appleLoading,
+            formValid: formValid,
+            onSwitchTab: { signIn in
+                withMotionAwareAnimation(.easeInOut(duration: 0.2), reduceMotion: reduceMotion) { isSignIn = signIn; clearForm() }
+            },
+            onSubmit: { Task { await submit() } },
+            onGoogle: { Task { await signInWithGoogle() } },
+            onApple: { Task { await performAppleSignIn() } },
+            onForgotPassword: { showForgotPassword = true }
+        )
+        .onAppear { isSignIn = initialSignIn }
+        .fullScreenCover(isPresented: Binding(
+            get: { pendingMfaUserId != nil },
+            set: { if !$0 { pendingMfaUserId = nil } }
+        )) {
+            if let uid = pendingMfaUserId {
+                MfaVerifyView(userId: uid, onComplete: {
+                    pendingMfaUserId = nil
+                    onComplete?()
+                })
+                .environmentObject(appState)
+            }
+        }
+        .sheet(isPresented: $showForgotPassword) { ForgotPasswordView() }
+    }
+
+    private var phoneBody: some View {
         ZStack {
             Theme.bgPage.ignoresSafeArea()
 
@@ -470,6 +507,9 @@ struct FSTextField: View {
     let icon: String
     @Binding var text: String
     let isSecure: Bool
+    /// Adds a show/hide eye toggle to a secure field. Off by default (phone layout).
+    var showsRevealToggle = false
+    @State private var revealed = false
 
     var body: some View {
         HStack(spacing: Theme.spacingSM) {
@@ -478,7 +518,7 @@ struct FSTextField: View {
                 .frame(width: 18)
                 .accessibilityHidden(true)
 
-            if isSecure {
+            if isSecure && !revealed {
                 SecureField(placeholder, text: $text)
                     .font(.inter(Theme.fontBody))
                     .foregroundColor(Theme.textPrimary)
@@ -490,8 +530,20 @@ struct FSTextField: View {
                     .autocapitalization(.none)
                     .disableAutocorrection(true)
             }
+
+            if isSecure && showsRevealToggle {
+                Button { revealed.toggle() } label: {
+                    Image(systemName: revealed ? "eye.slash" : "eye")
+                        .foregroundColor(Theme.parchment.opacity(0.6))
+                        .frame(width: 44, height: 44)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(revealed ? "Hide password" : "Show password")
+            }
         }
-        .padding(Theme.spacingMD)
+        .padding(.vertical, showsRevealToggle ? 0 : Theme.spacingMD)
+        .padding(.leading, Theme.spacingMD)
+        .padding(.trailing, showsRevealToggle && isSecure ? 0 : Theme.spacingMD)
         .background(Theme.inputBg)
         .clipShape(RoundedRectangle(cornerRadius: Theme.radius))
         .overlay(

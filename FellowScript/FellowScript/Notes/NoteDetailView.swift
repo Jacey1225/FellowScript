@@ -46,6 +46,11 @@ struct NoteDetailView: View {
     var readOnly:     Bool          = false
     var sharedBanner: String?       = nil
     var onSendInChat: (() -> Void)? = nil
+    /// iPad workspace: when set, Edit closes this sheet and hands the note to the
+    /// Notes panel's inline editor instead of stacking a second sheet.
+    var onEditInline: (() -> Void)? = nil
+    /// iPad workspace: editing a reply closes this sheet and edits it inline in the Notes panel.
+    var onEditReplyInline: ((FSNote) -> Void)? = nil
 
     // Returns nil on success, or an error message on failure (mirrors
     // NoteEditorView.onSave so a content-filter rejection keeps both sheets open).
@@ -87,7 +92,9 @@ struct NoteDetailView: View {
     // without simulating a tap through that now-unreachable wrapper. No
     // runtime behavior difference from the previous inline closures.
     internal func closeAction() { dismiss() }
-    internal func editAction()  { showEditor = true }
+    internal func editAction()  {
+        if let onEditInline { onEditInline(); dismiss() } else { showEditor = true }
+    }
 
     // Task 20260914-dictation-tts: reads the whole note body (HTML-stripped,
     // via FSNote.textForSpeech — mirrors FSNote.preview's stripping but
@@ -723,7 +730,7 @@ struct NoteDetailView: View {
         .overlay(alignment: .topTrailing) {
             if canEdit(reply) {
                 Button {
-                    editingReply = reply
+                    if let onEditReplyInline { onEditReplyInline(reply); dismiss() } else { editingReply = reply }
                 } label: {
                     gradientPill("Edit", compact: true)
                 }

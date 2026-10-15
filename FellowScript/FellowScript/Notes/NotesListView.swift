@@ -67,9 +67,24 @@ struct NotesListView: View {
     @State var editingId:       String?  = nil
     @State var editingGroupId:  String   = ""
     @State var detailNote:      FSNote?  = nil
+    /// Inline (iPad) editor context: a verse draft from the Bible reader, or a reply being edited.
+    @State var inlineDraft:     VerseNoteDraft? = nil
+    @State var inlineIsReply    = false
     @State var sharePayload:    SharePayload? = nil
     @State var chatShare:       ChatShareDraft? = nil   // task 20261012-share-verses-notes-in-chat
     @State var shareNotice:     String?  = nil
+
+    /// iPad: open the inline editor for a verse handed over by the Bible reader.
+    private func consumePendingNoteDraft() {
+        guard embedded, fixedTab != .highlights, let draft = appState.pendingNoteDraft else { return }
+        appState.pendingNoteDraft = nil
+        editingNote    = nil
+        editingId      = nil
+        editingGroupId = ""
+        inlineIsReply  = false
+        inlineDraft    = draft
+        showEditor     = true
+    }
 
     var body: some View {
         ZStack(alignment: .top) {
@@ -85,6 +100,37 @@ struct NotesListView: View {
                 .ignoresSafeArea()
             }
 
+            if embedded && showEditor {
+                // iPad workspace: editor replaces the list inside the Notes panel;
+                // close/cancel/save returns to the list (task 20261014 addendum 5).
+                NoteEditorView(
+                    note:      editingNote,
+                    noteId:    editingId,
+                    groupId:   editingGroupId,
+                    isReadOnly: false,
+                    initialVerse: inlineDraft.map { VerseRef(book: $0.book, chapter: $0.chapter, verse: $0.verse) },
+                    initialBodyHTML: inlineDraft.map { VerseNotePrefill.html(book: $0.book, chapter: $0.chapter, verse: $0.verse, text: $0.text) } ?? "",
+                    onSave: { saved in
+                        let uid = appState.currentUser?.user_id ?? ""
+                        if inlineIsReply {
+                            // A reply edit never goes through the notes list (it would show up
+                            // as a top-level note); same direct PUT NoteDetailView's sheet uses.
+                            do {
+                                _ = try await vm.service.saveNote(saved, editingId: saved.id, userId: uid)
+                                return nil
+                            } catch {
+                                return error.localizedDescription
+                            }
+                        }
+                        let ok = await vm.saveNote(saved, editingId: editingId, userId: uid, authorUsername: appState.currentUser?.username ?? "")
+                        if ok { return nil }
+                        return vm.failedSaveMessage()
+                    },
+                    onClose: { showEditor = false; inlineDraft = nil; inlineIsReply = false }
+                )
+                .id((editingId ?? "new") + (inlineDraft?.id.uuidString ?? ""))
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
             VStack(spacing: 0) {
                 header
 
@@ -174,7 +220,11 @@ struct NotesListView: View {
                     }
                 }
             }
+            }
         }
+        .preference(key: InlineNoteEditorShowingKey.self, value: embedded && showEditor)
+        .onAppear { consumePendingNoteDraft() }
+        .onChange(of: appState.pendingNoteDraft?.id) { _, _ in consumePendingNoteDraft() }
         .task {
             if let uid = appState.currentUser?.user_id {
                 vm.configureSearch(userId: uid)
@@ -185,7 +235,7 @@ struct NotesListView: View {
         // Editor sheet — used by the context-menu "Edit" shortcut only.
         // The NoteDetailView → Edit path has its own sheet to avoid two
         // competing sheets on the same parent (which races on editingNote).
-        .sheet(isPresented: $showEditor) {
+        .sheet(isPresented: Binding(get: { showEditor && !embedded }, set: { showEditor = $0 })) {
             NoteEditorView(
                 note:      editingNote,
                 noteId:    editingId,
@@ -225,7 +275,23 @@ struct NotesListView: View {
                 userId:   appState.currentUser?.user_id ?? "",
                 username: appState.currentUser?.username ?? "",
                 service:  vm.service,
-                onSendInChat: canSendInChat(note) ? { sendInChatFromDetail(note) } : nil
+                onSendInChat: canSendInChat(note) ? { sendInChatFromDetail(note) } : nil,
+                onEditInline: embedded ? {
+                    editingNote    = note
+                    editingId      = note.id
+                    editingGroupId = note.group_id
+                    inlineDraft    = nil
+                    inlineIsReply  = false
+                    showEditor     = true
+                } : nil,
+                onEditReplyInline: embedded ? { reply in
+                    editingNote    = reply
+                    editingId      = reply.id
+                    editingGroupId = note.group_id
+                    inlineDraft    = nil
+                    inlineIsReply  = true
+                    showEditor     = true
+                } : nil
             ) { saved in
                 let uid = appState.currentUser?.user_id ?? ""
                 let ok = await vm.saveNote(saved, editingId: saved.id, userId: uid, authorUsername: appState.currentUser?.username ?? "")

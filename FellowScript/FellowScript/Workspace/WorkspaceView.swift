@@ -18,6 +18,13 @@ private let workspaceSpace = "workspace"
 
 // MARK: - Geometry reporting
 
+/// True while an embedded NotesListView shows its inline editor (New, Edit,
+/// Add-to-Note, reply edit); the dock hides its move hint meanwhile.
+struct InlineNoteEditorShowingKey: PreferenceKey {
+    static var defaultValue = false
+    static func reduce(value: inout Bool, nextValue: () -> Bool) { value = value || nextValue() }
+}
+
 private struct DockFramesKey: PreferenceKey {
     static var defaultValue: [WorkspaceDock: CGRect] = [:]
     static func reduce(value: inout [WorkspaceDock: CGRect], nextValue: () -> [WorkspaceDock: CGRect]) {
@@ -109,8 +116,8 @@ struct WorkspaceView: View {
 
     @StateObject private var drag = WorkspaceDragState()
     @AppStorage(WorkspaceLayout.moveHintKey) private var moveHintDismissed = false
-    @State private var showHome = false
     @State private var showAccount = false
+    @State private var inlineEditorShowing = false
     @State private var agentId: String?
     @State private var showNewAgent = false
     @State private var newAgentRole = ""
@@ -162,9 +169,6 @@ struct WorkspaceView: View {
                 state.notice = nil
             }
         }
-        .sheet(isPresented: $showHome) {
-            DashboardView(vm: startup.dashboardVM).environmentObject(startup.chatVM).environmentObject(appState)
-        }
         .sheet(isPresented: $showAccount) { AccountView().environmentObject(appState) }
         .sheet(isPresented: $showNewAgent) {
             NewAgentSheet(role: $newAgentRole) {
@@ -178,6 +182,11 @@ struct WorkspaceView: View {
         .onChange(of: appState.pendingBibleNav) { _, t in if t != nil { state.select(.bible) } }
         .onChange(of: appState.pendingChatContact) { _, t in if t != nil { state.select(.messages) } }
         .onReceive(NotificationCenter.default.publisher(for: .fsOpenSubscriptionPlans)) { _ in showAccount = true }
+        // Bible "Add to Note": make sure the Notes panel is showing (reopen it, open the
+        // drawer in portrait); NotesListView then opens its inline editor with the verse.
+        .onChange(of: appState.pendingNoteDraft?.id) { _, id in
+            if id != nil { animate { state.select(.notes) } }
+        }
         .onAppear { state.setUser(appState.currentUser?.user_id) }
         .onChange(of: appState.currentUser?.user_id) { _, id in state.setUser(id) }
         .preferredColorScheme(.dark)
@@ -203,7 +212,6 @@ struct WorkspaceView: View {
                 .accessibilityAddTraits(.isHeader)
             Spacer()
             Menu {
-                Button("Home", systemImage: "house") { showHome = true }
                 Button("Account", systemImage: "person.crop.circle") { showAccount = true }
                 Button("Reset layout", systemImage: "rectangle.3.group") { animate { state.resetLayout() } }
             } label: {
@@ -347,13 +355,16 @@ struct WorkspaceView: View {
         let isActiveDock = state.layout.dock(of: state.activeRail) == dock
         return VStack(spacing: 0) {
             tabStrip(dock, tabs: tabs, active: active, landscape: landscape, showCollapse: dock == .right && landscape && !drawer)
-            if dock == .right && !moveHintDismissed {
+            if dock == .right && !moveHintDismissed && !inlineEditorShowing {
                 Text("Touch and hold a tab to move it.")
                     .font(.inter(Theme.fontXS)).foregroundColor(Theme.textSecondary)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.horizontal, 14).padding(.bottom, 6)
             }
             dockBody(active)
+        }
+        .onPreferenceChange(InlineNoteEditorShowingKey.self) { showing in
+            if dock == .right { inlineEditorShowing = showing }
         }
         .modifier(WorkspaceDockStyle(radius: WorkspaceLayout.dockRadius, isActive: isActiveDock, drawer: drawer))
         .overlay { dropZone(dock, label: nil) }
@@ -560,7 +571,7 @@ struct WorkspaceView: View {
     @ViewBuilder
     private var agentBody: some View {
         if let agent = startup.chatVM.agents.first(where: { $0.id == agentId }) {
-            AgentChatView(agent: agent, onBack: { agentId = nil }).id(agent.id)
+            AgentChatView(agent: agent, onBack: { agentId = nil }, embedded: true).id(agent.id)
         } else {
             AgentPickerList(vm: startup.chatVM, onSelect: { agentId = $0 }, onNew: { showNewAgent = true })
         }

@@ -319,6 +319,9 @@ struct AgentChatView: View {
     /// iPad workspace hosts this view inline (not presented), so the back arrow
     /// calls this instead of the environment `dismiss`. nil = presented as a sheet.
     var onBack: (() -> Void)? = nil
+    /// iPad dock hosts this pane over the dock panel's own glass, like the
+    /// embedded Bible/Messages panes, so it paints no ambient background.
+    var embedded: Bool = false
     @Environment(\.dismiss) private var dismiss
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @EnvironmentObject var appState: AppState
@@ -378,17 +381,19 @@ struct AgentChatView: View {
 
     var body: some View {
         ZStack {
-            Theme.bgPage.ignoresSafeArea()
+            if !embedded {
+                Theme.bgPage.ignoresSafeArea()
 
-            // Warm bloom ground — identical values to ChatThreadView.swift/
-            // ChatRootView.swift/NotesListView.swift/NoteEditorView.swift, so
-            // this screen shares the same ambient background treatment.
-            RadialGradient(colors: [Color(hex: "#D4922A").opacity(0.20), .clear],
-                           center: UnitPoint(x: 0.12, y: 0.16), startRadius: 10, endRadius: 380)
-                .ignoresSafeArea()
-            RadialGradient(colors: [Color(hex: "#B8761D").opacity(0.12), .clear],
-                           center: UnitPoint(x: 0.92, y: 0.60), startRadius: 10, endRadius: 340)
-                .ignoresSafeArea()
+                // Warm bloom ground — identical values to ChatThreadView.swift/
+                // ChatRootView.swift/NotesListView.swift/NoteEditorView.swift, so
+                // this screen shares the same ambient background treatment.
+                RadialGradient(colors: [Color(hex: "#D4922A").opacity(0.20), .clear],
+                               center: UnitPoint(x: 0.12, y: 0.16), startRadius: 10, endRadius: 380)
+                    .ignoresSafeArea()
+                RadialGradient(colors: [Color(hex: "#B8761D").opacity(0.12), .clear],
+                               center: UnitPoint(x: 0.92, y: 0.60), startRadius: 10, endRadius: 340)
+                    .ignoresSafeArea()
+            }
 
             VStack(spacing: 0) {
                 header
@@ -692,7 +697,7 @@ struct AgentChatView: View {
         .padding(.horizontal, Theme.spacingMD)
         .padding(.top, Theme.spacingSM)
         .padding(.bottom, Theme.spacingMD)
-        .background(Theme.bgPage.opacity(0.55))
+        .background(embedded ? Color.clear : Theme.bgPage.opacity(0.55))
     }
 
     private func sendMessage() {

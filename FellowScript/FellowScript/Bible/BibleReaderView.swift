@@ -1060,7 +1060,9 @@ struct BibleReaderView: View {
         .accessibilityLabel("Copy verse \(verse)")
 
         Button(action: {
-            addToNoteTarget = VerseNoteDraft(book: vm.curBook, chapter: vm.curChapter, verse: verse, text: text)
+            let draft = VerseNoteDraft(book: vm.curBook, chapter: vm.curChapter, verse: verse, text: text)
+            // iPad workspace: edit inline in the Notes panel; iPhone keeps the sheet.
+            if embedded { appState.pendingNoteDraft = draft } else { addToNoteTarget = draft }
         }) {
             Label("Add to Note", systemImage: "note.text.badge.plus")
         }

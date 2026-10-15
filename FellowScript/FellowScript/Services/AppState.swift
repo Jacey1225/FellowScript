@@ -31,6 +31,10 @@ final class AppState: ObservableObject {
     @Published var currentUser: FSUser?
     @Published var isAuthenticated = false
     @Published var pendingBibleNav: BibleNavTarget? = nil
+    /// iPad workspace: Bible reader "Add to Note" hands the long-pressed verse here;
+    /// WorkspaceView focuses the Notes panel and NotesListView opens its inline
+    /// editor with the verse attached, then clears it. iPhone keeps its sheet.
+    @Published var pendingNoteDraft: VerseNoteDraft? = nil
     @Published var pendingChatContact: FSContact? = nil   // set to open a chat from another tab
     /// Task 20261012-share-verses-notes-in-chat: a verse/note picked for "Send in
     /// chat". The chat thread for `contact` sends it over the one chat socket
@@ -357,6 +361,7 @@ final class AppState: ObservableObject {
     }
 
     func signOut() {
+        pendingNoteDraft = nil   // in-memory verse draft must not outlive the session
         clearPendingInvite()
         clearShareLinks()
         storedUserId    = ""

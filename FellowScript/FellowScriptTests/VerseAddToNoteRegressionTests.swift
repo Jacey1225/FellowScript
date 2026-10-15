@@ -73,7 +73,10 @@ final class VerseAddToNoteRegressionTests: XCTestCase {
     func test_source_addToNoteButton_setsTarget_andDeadStateRemoved() throws {
         let s = try readSource("FellowScript/Bible/BibleReaderView.swift")
         XCTAssertFalse(s.contains("showAddToNote"), "dead placeholder state must stay removed")
-        XCTAssertTrue(s.contains("addToNoteTarget = VerseNoteDraft("))
+        // iPad (embedded) hands the draft to AppState.pendingNoteDraft for the inline
+        // editor (task 20261015-ipad-signin-card-inline-add-note); iPhone keeps the sheet.
+        XCTAssertTrue(s.contains("let draft = VerseNoteDraft(book:"))
+        XCTAssertTrue(s.contains("if embedded { appState.pendingNoteDraft = draft } else { addToNoteTarget = draft }"))
         XCTAssertTrue(s.contains(".sheet(item: $addToNoteTarget)"))
         XCTAssertTrue(s.contains(#".accessibilityLabel("Add verse \(verse) to note")"#))
     }

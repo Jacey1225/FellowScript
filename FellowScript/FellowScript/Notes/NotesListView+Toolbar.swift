@@ -75,10 +75,11 @@ extension NotesListView {
                 }
                 .accessibilityLabel("Notes scope: \(vm.currentGroupName)")
                 Button(action: startNewNote) {
-                    Text("+ New")
-                        .font(.inter(Theme.fontSM, weight: .bold)).foregroundColor(Theme.ink)
-                        .padding(.horizontal, 16).frame(minHeight: 36)
-                        .background(Capsule().fill(Theme.goldGradient))
+                    Image(systemName: "plus")
+                        .font(.system(size: 16, weight: .bold)).foregroundColor(Theme.ink)
+                        .frame(width: 44, height: 44)
+                        .background(Circle().fill(Theme.goldGradient))
+                        .contentShape(Circle())
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Create new note")

@@ -287,6 +287,25 @@ extension View {
     }
 }
 
+// ── Warm brown canvas (iPad sign-in) ──────────────────────────────────────────
+// Mirrors the web `body.page-warm` recipe in frontend global.css: a vertical
+// brown gradient plus two amber blooms. Used only by the iPad auth card.
+extension View {
+    func warmCanvasBackground() -> some View {
+        background(
+            ZStack {
+                LinearGradient(colors: [Color(hex: "#43301A"), Color(hex: "#2F2213"), Color(hex: "#1D150D")],
+                               startPoint: .top, endPoint: .bottom)
+                RadialGradient(colors: [Color(hex: "#D6A046").opacity(0.42), .clear],
+                               center: UnitPoint(x: 0.0, y: 0.0), startRadius: 10, endRadius: 560)
+                RadialGradient(colors: [Color(hex: "#D6A046").opacity(0.28), .clear],
+                               center: UnitPoint(x: 1.0, y: 1.0), startRadius: 10, endRadius: 520)
+            }
+            .ignoresSafeArea()
+        )
+    }
+}
+
 // ── Scroll top-edge feather (List content fades under a custom header) ───────
 // Adapts the ScrollView content-edge `.mask` technique from NoteDetailView
 // (task 20260830-note-detail-scroll-fade-toolbar-bg) for `List`: masking the
