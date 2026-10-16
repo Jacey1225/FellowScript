@@ -51,7 +51,9 @@ describe('Home — "Not just once a week" family section', () => {
   test('renders the new eyebrow and purpose-built headline carrying the family-under-Christ framing', () => {
     renderHome();
 
-    expect(screen.getByText('// NOT JUST ONCE A WEEK')).toBeTruthy();
+    // Eyebrow appears in the (aria-hidden) Adam stage and in the light block.
+    expect(screen.getAllByText('// NOT JUST ONCE A WEEK').length).toBeGreaterThanOrEqual(1);
+    expect(document.querySelector('.hm-fam-eyebrow').textContent).toBe('// NOT JUST ONCE A WEEK');
     expect(
       screen.getByText((_, node) =>
         node?.tagName === 'H2' && /gathered under Christ is called to live as/i.test(node.textContent || '')
@@ -83,7 +85,7 @@ describe('Home — "Not just once a week" family section', () => {
   test('every decorative element the section adds is aria-hidden', () => {
     const { container } = renderHome();
 
-    const section = screen.getByText('// NOT JUST ONCE A WEEK').closest('section');
+    const section = document.querySelector('section.hm-fam');
     expect(section).toBeTruthy();
 
     // The two offset color-block collage panels.
@@ -111,7 +113,7 @@ describe('Home — "Not just once a week" family section', () => {
     }));
 
     expect(() => renderHome()).not.toThrow();
-    expect(screen.getByText('// NOT JUST ONCE A WEEK')).toBeTruthy();
+    expect(document.querySelector('.hm-fam-eyebrow').textContent).toBe('// NOT JUST ONCE A WEEK');
     expect(screen.getByText(/Every day — not just Sunday/i)).toBeTruthy();
 
     window.matchMedia = original;
@@ -120,6 +122,21 @@ describe('Home — "Not just once a week" family section', () => {
   test('renders without crashing when IntersectionObserver is unavailable (jsdom default) and content is present regardless', () => {
     expect('IntersectionObserver' in window).toBe(false);
     renderHome();
-    expect(screen.getByText('// NOT JUST ONCE A WEEK')).toBeTruthy();
+    expect(document.querySelector('.hm-fam-eyebrow').textContent).toBe('// NOT JUST ONCE A WEEK');
+  });
+
+  test('family block is a section continuing the pin FIELD_END gradient into #FBF7F1, with #1A1512 text and sits right after the Adam pin', () => {
+    const { container } = renderHome();
+    const fam = container.querySelector('section.hm-fam');
+    const pin = container.querySelector('[data-testid="adam-hands"]');
+    expect(pin.nextElementSibling).toBe(fam);
+    const css = [...container.querySelectorAll('style')].map((s) => s.textContent).join('\n');
+    expect(css).toMatch(/\.hm-fam \{[^}]*background-color: #FBF7F1;[^}]*linear-gradient\(180deg, #EBC480 0, #FBF7F1 var\(--fam-settle\)\)[^}]*color: #1A1512/);
+    // Fade the divider: no hard border under the eyebrow, a gradient-masked ::after rule instead.
+    const eb = css.match(/\.hm-fam-eyebrow \{[^}]*\}/)[0];
+    expect(eb).not.toMatch(/border-bottom/);
+    expect(eb).toMatch(/color: #5C3509/);
+    expect(css).toMatch(/\.hm-fam-eyebrow::after \{[^}]*linear-gradient\(90deg, rgba\(26,21,18,0\) 0%[^}]*rgba\(26,21,18,0\) 100%\)/);
+    expect(css).toMatch(/\.hm-fam-body \{[^}]*rgba\(26,21,18,0\.86\)/);
   });
 });

@@ -1,0 +1,205 @@
+// Pure scroll-driver maths for the pinned "Creation of Adam" hero section
+// (task 20261015-adam-hands-scroll-hero). No DOM, no React: everything here maps
+// a scrub progress p in [0, 1] to numbers, so it is unit-testable and the
+// component only has to paint them.
+//
+// Source of truth: rev2 assets README section 5 (drivers), section 6 (hand
+// transform per beat, easing B) and data/transform-table.json. Do not tune the
+// constants here without re-checking them against those files.
+import { DESKTOP_ROWS, MOBILE_ROWS } from './table.js';
+
+export const TOUCH_P = 0.80;
+export const FLOOD_END_P = 0.97;
+export const TABLE_STEP = 0.02;
+
+export const CANVAS = {
+  desktop: { w: 1600, h: 900, tx: 800, ty: 432 },
+  mobile: { w: 900, h: 1600, tx: 450, ty: 736 },
+};
+
+export const RUNWAY_VH = { desktop: 320, mobile: 260 };
+// Scrub smoothing: time constant of the exponential chase. 0.2 s reaches 95% of
+// a jump in about 0.6 s ("scrub ~0.6").
+export const SMOOTH_TAU_S = 0.2;
+
+export const clamp = (x, lo = 0, hi = 1) => (x < lo ? lo : x > hi ? hi : x);
+export const lerp = (a, b, t) => a + (b - a) * t;
+export const smooth = (x) => { const t = clamp(x); return t * t * (3 - 2 * t); };
+
+// CSS-style cubic-bezier(x1, y1, x2, y2) solved with Newton + bisection.
+export function cubicBezier(x1, y1, x2, y2) {
+  const cx = 3 * x1; const bx = 3 * (x2 - x1) - cx; const ax = 1 - cx - bx;
+  const cy = 3 * y1; const by = 3 * (y2 - y1) - cy; const ay = 1 - cy - by;
+  const sx = (t) => ((ax * t + bx) * t + cx) * t;
+  const sy = (t) => ((ay * t + by) * t + cy) * t;
+  const dx = (t) => (3 * ax * t + 2 * bx) * t + cx;
+  return (x) => {
+    if (x <= 0) return 0;
+    if (x >= 1) return 1;
+    let t = x;
+    for (let i = 0; i < 8; i++) {
+      const err = sx(t) - x;
+      if (Math.abs(err) < 1e-7) return sy(t);
+      const d = dx(t);
+      if (Math.abs(d) < 1e-6) break;
+      t -= err / d;
+    }
+    let lo = 0; let hi = 1; t = x;
+    for (let i = 0; i < 40; i++) {
+      const v = sx(t);
+      if (Math.abs(v - x) < 1e-7) break;
+      if (v < x) lo = t; else hi = t;
+      t = (lo + hi) / 2;
+    }
+    return sy(t);
+  };
+}
+
+export const floodCurve = cubicBezier(0.65, 0, 0.35, 1);
+
+// Easing B (chosen): p_eff = 0.8 * (1 - (1 - p / 0.8)^2) on [0, 0.8], held at
+// 0.8 after. The shipped option-B table rows are ALREADY evaluated at this warp
+// (beat 2 is the p = 0.20 row, beat 3 the p = 0.517 row), so lookupRow() takes
+// the raw scrub p. easingB is exported to document and test that equivalence.
+export function easingB(p) {
+  if (p <= 0) return 0;
+  if (p >= TOUCH_P) return TOUCH_P;
+  const u = 1 - p / TOUCH_P;
+  return TOUCH_P * (1 - u * u);
+}
+
+export function getRows(mobile) { return mobile ? MOBILE_ROWS : DESKTOP_ROWS; }
+
+// Linear interpolation between the 0.02-spaced rows. p is clamped to [0, 0.8].
+// Returns the row as an array in TABLE_COLUMNS order (p replaced by the query p).
+export function lookupRow(rows, p) {
+  const q = clamp(p, 0, TOUCH_P);
+  const i = Math.min(rows.length - 2, Math.floor(q / TABLE_STEP + 1e-9));
+  const a = rows[i]; const b = rows[i + 1];
+  const t = clamp((q - a[0]) / (b[0] - a[0]));
+  const out = new Array(a.length);
+  for (let k = 0; k < a.length; k++) out[k] = lerp(a[k], b[k], t);
+  out[0] = q;
+  return out;
+}
+
+export function handsPose(p, mobile) {
+  const r = lookupRow(getRows(mobile), p);
+  return {
+    adam: { tx: r[1], ty: r[2] },
+    god: { tx: r[3], ty: r[4] },
+    scale: r[5],
+    slope: [r[6], r[7], r[8]],
+    intercept: r[9],
+    rim: r[10],
+    bounce: r[11],
+  };
+}
+
+// README section 5 drivers.
+export function floodDrivers(p) {
+  const t = clamp((p - 0.80) / 0.17);
+  const f = floodCurve(t);
+  const g = smooth((p - 0.80) / 0.06);
+  const w = smooth((p - 0.91) / 0.06);
+  const A = (0.6 + 0.4 * g) * (1 - smooth((f - 0.15) / 0.45));
+  const e = 1 - smooth((p - 0.89) / 0.04);
+  const c = smooth((p - 0.85) / 0.04);
+  const fanG = smooth(f / 0.30);
+  const tipS = 0.35 * (1 - smooth(f / 0.35));
+  return { t, f, g, w, A, e, c, fanG, tipS };
+}
+
+// Sizes derived from f and g (README section 5, "Sizes").
+export function lightParams(f, g) {
+  return {
+    sigma: 4 + 60 * f,
+    r0: 18 + 917 * f,
+    k: 0.30 + 0.80 * f,
+    fanLength: 60 + 1040 * f,
+    fanBlur: 2 + 12 * clamp((f - 0.10) / 0.90),
+    fanRotateDeg: 3 * f,
+    hairScale: (1 + 0.6 * g) / 1.6,
+    streakScaleX: (300 + 200 * g) / 500,
+    rimReach: 120 + 780 * f,
+    bounceLive: 0.10 + 0.25 * f,
+  };
+}
+
+// Pre-rendered fan sprites: a (L 270), b (L 670), c (L 1100). Cross-fade by f.
+export const FAN_REF = { a: 270, b: 670, c: 1100 };
+export function fanWeights(f) {
+  const wa = 1 - smooth(f / 0.4);
+  const wc = smooth((f - 0.5) / 0.5);
+  const wb = clamp(1 - wa - wc);
+  return { a: wa, b: wb, c: wc };
+}
+
+// Radial intensity of the live bloom at distance r (px): Wn(r) * k / (1 + (r/r0)^2).
+export function bloomIntensity(r, r0, k) {
+  const wn = 1 - smooth((r - r0) / (0.9 * r0));
+  return wn * k / (1 + (r / r0) * (r / r0));
+}
+
+// Touch light only ignites as the fingertips close; before that the beat 1-3
+// glows own the gap. Beats 1 to 3 and the touch frame are exact at p <= 0.66
+// and p >= 0.80, the ramp only joins them without a pop.
+export function ignite(p) { return smooth((p - 0.66) / 0.14); }
+
+// Beat 1-3 glow (live radial, centred midway between the two fingertips).
+// Beat 1: #E09A30 r128 a0.12; beat 2: #E09A30 r128 a0.30; beat 3: #F3C48B r40 a0.60.
+const GLOW_BEATS = [
+  { p: 0, color: [224, 154, 48], r: 128, a: 0.12 },
+  { p: 0.2, color: [224, 154, 48], r: 128, a: 0.30 },
+  { p: 0.5172, color: [243, 196, 139], r: 40, a: 0.60 },
+];
+export function beatGlow(p, pose, mobile) {
+  const q = clamp(p, 0, TOUCH_P);
+  let i = 0;
+  while (i < GLOW_BEATS.length - 2 && q > GLOW_BEATS[i + 1].p) i++;
+  const a = GLOW_BEATS[i]; const b = GLOW_BEATS[i + 1];
+  const t = clamp((q - a.p) / (b.p - a.p));
+  const s = mobile ? 0.658 : 1;
+  const cv = mobile ? CANVAS.mobile : CANVAS.desktop;
+  return {
+    x: cv.tx + (pose.adam.tx + pose.god.tx) / 2,
+    y: cv.ty + (pose.adam.ty + pose.god.ty) / 2,
+    r: lerp(a.r, b.r, t) * s,
+    alpha: lerp(a.a, b.a, t) * (1 - ignite(p)),
+    color: [0, 1, 2].map((k) => Math.round(lerp(a.color[k], b.color[k], t))),
+  };
+}
+
+// Final-frame type reveal (design spec): opacity = smooth((p - 0.955) / 0.035).
+export function typeReveal(p) { return smooth((p - 0.955) / 0.035); }
+
+// Warm upper-right glow, beats 1-3 only (README section 2, "Not shipped").
+export function warmGlowAlpha(p, e) { return e * (1 - smooth((p - 0.66) / 0.14)); }
+
+// Eyebrow colour: #F0C08A -> #1A1512 by c.
+export function eyebrowColor(c) {
+  const a = [0xF0, 0xC0, 0x8A]; const b = [0x1A, 0x15, 0x12];
+  return a.map((v, i) => Math.round(lerp(v, b[i], c)));
+}
+
+// Scrub progress for a pinned section: distance scrolled into the runway over
+// the scrollable length (section height minus the pinned stage height).
+export function scrubProgress(rectTop, sectionHeight, stageHeight) {
+  const span = sectionHeight - stageHeight;
+  if (span <= 0) return 0;
+  return clamp(-rectTop / span);
+}
+
+// Frame-rate independent exponential chase toward the target p.
+export function smoothStep(current, target, dtSeconds, tau = SMOOTH_TAU_S) {
+  if (dtSeconds <= 0) return current;
+  const k = 1 - Math.exp(-dtSeconds / tau);
+  const next = current + (target - current) * k;
+  return Math.abs(target - next) < 0.0004 ? target : next;
+}
+
+// Scale that makes a W x H canvas cover a stage (object-fit: cover).
+export function coverScale(stageW, stageH, mobile) {
+  const cv = mobile ? CANVAS.mobile : CANVAS.desktop;
+  return Math.max(stageW / cv.w, stageH / cv.h);
+}

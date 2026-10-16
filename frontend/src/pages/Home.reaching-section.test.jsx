@@ -1,13 +1,15 @@
-// Task 20261008-homepage-reaching-section: "Reaching" composition of the
-// "NOT JUST ONCE A WEEK" section. Proves: copy verbatim, decorative hands are
-// alt-empty + aria-hidden + non-focusable, image failure leaves text intact,
-// the gold circle around "family" is the enlarged one, and the scroll drift is
-// skipped under prefers-reduced-motion (and runs otherwise).
+// Task 20261015-adam-hands-scroll-hero: the pinned "Creation of Adam" section
+// replaced the old `.hm-reach` "Reaching" band. This proves the replacement at
+// the page level: old markup gone, one pinned section after the hero, family
+// copy preserved verbatim in the light block that follows it, ordering before
+// the dark explore strip, fallback (first/SSR) render is non-pinned with the
+// still + 24svh gradient, hands/light are decorative-only, and reduced motion
+// never registers a scroll listener or goes live.
 //
 // Run with: cd frontend && npx vitest run src/pages/Home.reaching-section.test.jsx
 import React from 'react';
 import { describe, test, expect, vi, afterEach } from 'vitest';
-import { render, screen, cleanup, fireEvent } from '@testing-library/react';
+import { render, screen, cleanup, act } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import Home from './Home.jsx';
 
@@ -19,26 +21,45 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-function renderHome() {
-  return render(<MemoryRouter initialEntries={['/']}><Home /></MemoryRouter>);
-}
-const section = () => screen.getByText('// NOT JUST ONCE A WEEK').closest('section');
-
-function mockMotion(reduce) {
+function mockMotion(reduce, mobile = false) {
   window.matchMedia = vi.fn().mockImplementation((query) => ({
-    matches: reduce && query.includes('prefers-reduced-motion'),
+    matches: (reduce && query.includes('prefers-reduced-motion')) || (mobile && query.includes('max-width')),
     media: query, onchange: null,
     addListener: () => {}, removeListener: () => {},
     addEventListener: () => {}, removeEventListener: () => {}, dispatchEvent: () => false,
   }));
+  window.requestAnimationFrame = window.requestAnimationFrame || ((fn) => setTimeout(() => fn(performance.now()), 16));
+  window.cancelAnimationFrame = window.cancelAnimationFrame || ((id) => clearTimeout(id));
 }
 
-describe('Home reaching section', () => {
-  test('all copy is present verbatim', () => {
-    renderHome();
-    const s = section();
-    const h2 = s.querySelector('h2');
-    expect(h2.textContent).toBe('Everyone gathered under Christ is called to live as family.');
+function renderHome() {
+  return render(<MemoryRouter initialEntries={['/']}><Home /></MemoryRouter>);
+}
+const pin = (c) => c.querySelector('[data-testid="adam-hands"]');
+const fam = (c) => c.querySelector('section.hm-fam');
+
+describe('Home: Adam pinned section replaces .hm-reach', () => {
+  test('no .hm-reach markup, class or CSS remains; no halftone hand images', () => {
+    mockMotion(true);
+    const { container } = renderHome();
+    expect(container.querySelector('[class*="hm-reach"]')).toBeNull();
+    const css = [...container.querySelectorAll('style')].map((s) => s.textContent).join('\n');
+    expect(css).not.toMatch(/hm-reach/);
+    expect(container.innerHTML).not.toMatch(/hand-left-cream|hand-right-amber|halftone/i);
+  });
+
+  test('exactly one Adam section, and it sits before the light family block', () => {
+    mockMotion(true);
+    const { container } = renderHome();
+    expect(container.querySelectorAll('[data-testid="adam-hands"]').length).toBe(1);
+    expect(pin(container).nextElementSibling).toBe(fam(container));
+  });
+
+  test('family copy is preserved verbatim in the light block', () => {
+    mockMotion(true);
+    const { container } = renderHome();
+    const s = fam(container);
+    expect(s.querySelector('h2').textContent).toBe('Everyone gathered under Christ is called to live as family.');
     expect(s.textContent).toContain("Brothers and sisters don't show up for each other once a week — they show up every day in between. That daily rhythm, not the Sunday appointment, is the actual point. FellowScript exists to make room for it.");
     expect(s.textContent).toContain('Every day — not just Sunday');
     expect(s.textContent).toContain('// WHAT FELLOWSCRIPT PROVIDES');
@@ -46,67 +67,126 @@ describe('Home reaching section', () => {
     ['Organize their small groups', "Get the resources to stay in each other's lives", 'Keep up with everything going on', 'Nurture the kind of family that empowers its environment around them'].forEach((l) => expect(s.textContent).toContain(l));
   });
 
-  test('both hands are alt-empty, aria-hidden, and unfocusable; section has no interactive content', () => {
+  test('no dark section directly follows the flood: the next sibling is the light block', () => {
+    mockMotion(false);
+    const { container } = renderHome();
+    expect(pin(container).nextElementSibling.className).toBe('hm-fam');
+  });
+});
+
+describe('Adam section: fallback (first render, reduced motion, no-JS equivalent)', () => {
+  test('reduced motion: stays non-live, no pin runway, still + gradient, no live stack', () => {
+    mockMotion(true);
+    const { container } = renderHome();
+    const p = pin(container);
+    expect(p.getAttribute('data-live')).toBe('false');
+    expect(p.querySelector('.adam-canvas')).toBeNull();
+    expect(p.querySelector('[data-adam="wash"]')).toBeNull();
+    expect(p.querySelector('[data-adam="field"]')).toBeNull();
+    const still = p.querySelector('img.adam-fb-img');
+    expect(still).toBeTruthy();
+    expect(still.getAttribute('src')).toBe('/adam/fallback-touch-desktop-1600x900.webp');
+    expect(p.querySelector('picture source').getAttribute('srcset')).toBe('/adam/fallback-touch-mobile-900x1600.webp');
+    expect(p.querySelector('.adam-grad')).toBeTruthy();
+    const css = p.querySelector('style').textContent;
+    // The runway height is only ever applied under data-live="true".
+    expect(css).toMatch(/\.adam-pin\[data-live="true"\] \{ height: 320vh; \}/);
+    expect(css).toMatch(/\.adam-grad \{ position: relative; height: 24svh;/);
+    expect(css).toMatch(/#17120F 0%, #2B1B0B 22%, #3F2610 50%, #5C3509 100%/);
+    expect(css).toMatch(/#EBC480 97%, #EBC480 100%/);
+    expect(p.querySelector('[data-testid="adam-fallback-field"]').textContent).toBe('FamilyWelcoming scripture into a deeper comunity.');
+  });
+
+  test('reduced motion: no scroll listener is registered by the Adam section', () => {
+    mockMotion(true);
+    const add = vi.spyOn(document, 'addEventListener');
     renderHome();
-    const imgs = section().querySelectorAll('img');
-    expect(imgs.length).toBe(2);
+    expect(add.mock.calls.filter(([t, , o]) => t === 'scroll' && o && o.capture).length).toBe(0);
+  });
+
+  test('motion allowed: goes live after mount, with a scroll listener (capture) and a 320vh runway attr', () => {
+    mockMotion(false);
+    const add = vi.spyOn(document, 'addEventListener');
+    const { container } = renderHome();
+    expect(pin(container).getAttribute('data-live')).toBe('true');
+    expect(pin(container).querySelector('.adam-canvas')).toBeTruthy();
+    expect(add.mock.calls.filter(([t, , o]) => t === 'scroll' && o && o.capture).length).toBe(1);
+  });
+
+  test('unmount removes the scroll listener', () => {
+    mockMotion(false);
+    const remove = vi.spyOn(document, 'removeEventListener');
+    const { unmount } = renderHome();
+    unmount();
+    expect(remove.mock.calls.some(([t, , o]) => t === 'scroll' && o && o.capture)).toBe(true);
+  });
+});
+
+describe('Adam section: live stack is decorative and a11y-safe', () => {
+  test('every image and layer is alt-empty / aria-hidden, nothing focusable, canvas is aria-hidden', () => {
+    mockMotion(false);
+    const { container } = renderHome();
+    const p = pin(container);
+    const imgs = p.querySelectorAll('img');
+    expect(imgs.length).toBeGreaterThan(8);
     imgs.forEach((img) => {
       expect(img.getAttribute('alt')).toBe('');
-      expect(img.getAttribute('aria-hidden')).toBe('true');
-      expect(img.hasAttribute('tabindex')).toBe(false);
       expect(img.closest('[aria-hidden="true"]')).toBeTruthy();
+      expect(img.hasAttribute('tabindex')).toBe(false);
     });
-    expect(section().querySelectorAll('a, button, input, [tabindex]').length).toBe(0);
+    expect(p.querySelector('.adam-canvas').getAttribute('aria-hidden')).toBe('true');
+    expect(p.querySelectorAll('a, button, input, [tabindex]').length).toBe(0);
   });
 
-  test('image load failure hides the hand and leaves text intact', () => {
-    renderHome();
-    const imgs = section().querySelectorAll('img');
-    imgs.forEach((img) => fireEvent.error(img));
-    imgs.forEach((img) => expect(img.style.display).toBe('none'));
-    expect(screen.getByText('// NOT JUST ONCE A WEEK')).toBeTruthy();
-    expect(section().querySelector('h2').textContent).toMatch(/live as family\./);
-  });
-
-  test('gold circle around "family" is a fixed 400px wide, centered on the word', () => {
-    renderHome();
-    const circle = section().querySelector('svg.hm-reach-circle');
-    expect(circle).toBeTruthy();
-    expect(circle.getAttribute('aria-hidden')).toBe('true');
-    expect(circle.style.width).toBe('400px');
-    expect(circle.style.left).toBe('50%');
-    expect(circle.style.top).toBe('50%');
-    expect(circle.closest('span').textContent).toBe('family');
-  });
-
-  test('drift: reduced motion never touches --fs-drift or registers a scroll listener', () => {
-    mockMotion(true);
-    const add = vi.spyOn(window, 'addEventListener');
-    renderHome();
-    const reducedScrollCount = add.mock.calls.filter(([t, , o]) => t === 'scroll' && o && o.passive).length;
-    cleanup();
-    add.mockClear();
+  test('every key filter carries color-interpolation-filters=sRGB and the warm frame-1 curve', () => {
     mockMotion(false);
-    renderHome();
-    const normalScrollCount = add.mock.calls.filter(([t, , o]) => t === 'scroll' && o && o.passive).length;
-    expect(normalScrollCount).toBeGreaterThan(reducedScrollCount);
-    mockMotion(true);
-    cleanup();
-    renderHome();
-    expect(section().style.getPropertyValue('--fs-drift')).toBe('');
-  });
-
-  test('drift: without reduced motion, --fs-drift is written (eased, within 0..1)', () => {
-    mockMotion(false);
-    renderHome();
-    const v = parseFloat(section().style.getPropertyValue('--fs-drift'));
-    expect(v).toBeGreaterThanOrEqual(0);
-    expect(v).toBeLessThanOrEqual(1);
-  });
-
-  test('CSS: static backstop pins hands under prefers-reduced-motion', () => {
     const { container } = renderHome();
-    const css = [...container.querySelectorAll('style')].map((s) => s.textContent).join('\n');
-    expect(css).toMatch(/prefers-reduced-motion: reduce\)[^{]*\{[^}]*[\s\S]*?\.hm-reach-hand[^}]*transform:\s*none\s*!important/);
+    const filters = pin(container).querySelectorAll('filter');
+    expect(filters.length).toBeGreaterThanOrEqual(1);
+    filters.forEach((f) => expect(f.getAttribute('color-interpolation-filters')).toBe('sRGB'));
+    const f = filters[0];
+    const n = (sel, a) => parseFloat(f.querySelector(sel).getAttribute(a));
+    expect(n('feFuncR', 'slope')).toBeCloseTo(0.682, 4);
+    expect(n('feFuncG', 'slope')).toBeCloseTo(0.670, 4);
+    expect(n('feFuncB', 'slope')).toBeCloseTo(0.646, 4);
+    expect(n('feFuncR', 'intercept')).toBeCloseTo(-0.1, 4);
+  });
+
+  test('final-frame type: Schibsted headline "Family" + Schibsted subtitle, grainy field layer and #EBC480 darken cap', () => {
+    mockMotion(false);
+    const { container } = renderHome();
+    const p = pin(container);
+    expect(p.querySelector('.adam-final-h').textContent).toBe('Family');
+    expect(p.querySelector('[data-adam="wash"]')).toBeNull();
+    expect(p.querySelector('[data-adam="field"]').getAttribute('aria-hidden')).toBe('true');
+    expect(p.querySelector('.adam-final-b').textContent).toBe('Welcoming scripture into a deeper comunity.');
+    const cap = p.querySelector('[data-adam="cap"]');
+    expect(cap.style.background).toMatch(/rgb\(235, 196, 128\)|#EBC480/i);
+    expect(cap.style.mixBlendMode).toBe('darken');
+    const css = p.querySelector('style').textContent;
+    expect(css).toMatch(/\.adam-final-h \{[^}]*Schibsted Grotesk[^}]*font-weight: 600/);
+    expect(css).toMatch(/\.adam-final-b \{[^}]*Schibsted Grotesk/);
+    expect(css).not.toMatch(/Playfair|Inter\b/);
+  });
+
+  test('mobile: 9:16 canvas, 1800px layers on 2x srcset, 260vh runway rule', () => {
+    mockMotion(false, true);
+    const { container } = renderHome();
+    const p = pin(container);
+    expect(p.getAttribute('data-live')).toBe('true');
+    const cv = p.querySelector('.adam-canvas');
+    expect(cv.style.width).toBe('900px');
+    expect(cv.style.height).toBe('1600px');
+    const hand = p.querySelector('[data-adam="hand-img"]');
+    expect(hand.getAttribute('srcset')).toMatch(/-900x1600\.webp 1x, .*-1800x3200\.webp 2x/);
+    expect(p.querySelector('style').textContent).toMatch(/height: 260vh/);
+  });
+
+  test('image fallback: eyebrow text stays in the DOM even if the still fails', () => {
+    mockMotion(true);
+    const { container } = renderHome();
+    const still = pin(container).querySelector('img.adam-fb-img');
+    act(() => { still.dispatchEvent(new Event('error')); });
+    expect(pin(container).querySelector('.adam-eyebrow').textContent).toBe('// NOT JUST ONCE A WEEK');
   });
 });

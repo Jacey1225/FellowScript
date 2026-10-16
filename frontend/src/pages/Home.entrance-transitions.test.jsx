@@ -1,5 +1,7 @@
 // Task 20261008-homepage-section-entrance-transitions: scroll-entrance for the
-// reaching-hands section and the ProblemCarousel. Proves: hidden start state is
+// family block and the ProblemCarousel. (Task 20261015-adam-hands-scroll-hero
+// removed the old reaching-hands entrance; the hand section is now AdamHands,
+// covered by Home.reaching-section.test.jsx and the adamHands driver tests.) Proves: hidden start state is
 // client-only (SSR / renderHome show final content), reduced motion shows the
 // final state immediately, count-up lands on exact values without touching the
 // aria-live text, stagger delays are removed after the entrance / first click,
@@ -52,7 +54,7 @@ function stubIO() {
 }
 
 const renderHomeDom = () => render(<MemoryRouter initialEntries={['/']}><Home /></MemoryRouter>);
-const reach = () => screen.getByText('// NOT JUST ONCE A WEEK').closest('section');
+const fam = () => document.querySelector('section.hm-fam');
 const problem = () => screen.getByText('// THE PROBLEM').closest('section');
 const nums = (s) => Array.from(s.querySelectorAll('[data-pc-count]')).map((n) => n.textContent);
 const stripStyle = (html) => html.replace(/<style[\s\S]*?<\/style>/g, '');
@@ -84,10 +86,10 @@ describe('entrance: prerender / no-JS shows final content', () => {
   test('hidden start state is gated on the client-set attribute, never default CSS', () => {
     const body = renderToStaticMarkup(<MemoryRouter><Home /></MemoryRouter>);
     const css = [...body.matchAll(/<style>([\s\S]*?)<\/style>/g)].map((m) => m[1]).join('\n').replace(/&quot;/g, '"').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
-    // every translate/rotate offset for the hands must live under [data-fs-reach="pre"]
-    const offsetRules = css.split('}').filter((r) => /\.hm-reach-hand-[lr][^{]*\{[^}]*translate:\s*(calc|var)/.test(r + '}'));
-    expect(offsetRules.length).toBeGreaterThan(0);
-    offsetRules.forEach((r) => expect(r).toMatch(/\[data-fs-reach="pre"\]/));
+    // the family block's hidden state is not default CSS on a markup element:
+    // it only applies to .hm-family-reveal, which the prerender still emits
+    // visible via the reduced-motion/no-attr backstop covered elsewhere.
+    expect(css).not.toMatch(/hm-reach/);
     // carousel pre-state likewise
     const pcOffset = css.split('}').filter((r) => /translate:\s*0 var\(--pc-enter-y\)/.test(r));
     expect(pcOffset.length).toBeGreaterThan(0);
@@ -95,79 +97,49 @@ describe('entrance: prerender / no-JS shows final content', () => {
   });
 });
 
-describe('entrance: hands (reaching section)', () => {
-  test('client: pre state applied on mount, flips to in at threshold 0.33 once, observer disconnected', () => {
+describe('entrance: family block (light section after the Adam pin)', () => {
+  test('client: reveal observer arms at threshold 0.2 and flips data-fs-in-view once', () => {
     mockMotion(false);
     const io = stubIO();
     renderHomeDom();
-    expect(reach().getAttribute('data-fs-reach')).toBe('pre');
-    const obs = io.all.find((o) => o.opts.threshold === 0.33);
+    expect(fam().hasAttribute('data-fs-in-view')).toBe(false);
+    const obs = io.all.find((o) => o.opts.threshold === 0.2 && o.opts.rootMargin);
     expect(obs).toBeTruthy();
-    io.fire(0.33);
-    expect(reach().getAttribute('data-fs-reach')).toBe('in');
-    expect(obs.disconnect).toHaveBeenCalled();
+    act(() => obs.fn([{ isIntersecting: true, target: fam() }]));
+    expect(fam().getAttribute('data-fs-in-view')).toBe('true');
+    expect(obs.unobserve).toHaveBeenCalled();
   });
 
-  test('plays once: a second intersect does not re-arm "pre"', () => {
-    mockMotion(false);
-    const io = stubIO();
-    renderHomeDom();
-    io.fire(0.33);
-    expect(reach().getAttribute('data-fs-reach')).toBe('in');
-    io.fire(0.33);
-    expect(reach().getAttribute('data-fs-reach')).toBe('in');
-  });
-
-  test('reduced motion: no entrance state, no observer at 0.33', () => {
+  test('reduced motion: no reveal observer is created for the family block', () => {
     mockMotion(true);
     const io = stubIO();
     renderHomeDom();
-    expect(reach().hasAttribute('data-fs-reach')).toBe(false);
-    expect(io.all.find((o) => o.opts.threshold === 0.33)).toBeFalsy();
+    expect(io.all.find((o) => o.opts.threshold === 0.2 && o.opts.rootMargin)).toBeFalsy();
+    expect(fam().hasAttribute('data-fs-in-view')).toBe(false);
   });
 
-  test('no IntersectionObserver: no hidden state (content stays visible)', () => {
+  test('no IntersectionObserver: nothing hidden by attribute, carousel has no phase', () => {
     mockMotion(false);
     vi.stubGlobal('IntersectionObserver', undefined);
     delete window.IntersectionObserver;
     renderHomeDom();
-    expect(reach().hasAttribute('data-fs-reach')).toBe(false);
+    expect(fam().hasAttribute('data-fs-in-view')).toBe(false);
     expect(problem().querySelector('.pc-root').hasAttribute('data-pc-phase')).toBe(false);
   });
 
-  test('CSS: entrance uses translate/rotate; drift transform declarations are unchanged', () => {
+  test('CSS: the family hidden state is class-based and reduced-motion forces it visible', () => {
     const { container } = renderHomeDom();
     const css = [...container.querySelectorAll('style')].map((s) => s.textContent).join('\n');
-    expect(css).toMatch(/\.hm-reach-hand-l\s*\{[^}]*transform:\s*translate3d\(calc\(var\(--fs-drift, 0\) \* var\(--fs-drift-px\)\), 0, 0\)/);
-    expect(css).toMatch(/\.hm-reach-hand-r\s*\{[^}]*transform:\s*translate3d\(calc\(var\(--fs-drift, 0\) \* var\(--fs-drift-px\) \* -1\), 0, 0\)/);
-    const pre = css.match(/\[data-fs-reach="pre"\] \.hm-reach-hand-l\s*\{([^}]*)\}/)[1];
-    const preR = css.match(/\[data-fs-reach="pre"\] \.hm-reach-hand-r\s*\{([^}]*)\}/)[1];
-    [pre, preR].forEach((decl) => {
-      expect(decl).toMatch(/\btranslate:/);
-      expect(decl).toMatch(/\brotate:/);
-      expect(decl).not.toMatch(/(^|[;\s])transform:/);
-    });
-    expect(pre).toMatch(/-9deg/);
-    expect(preR).toMatch(/9deg/);
-    // eased (no linear) with ~1s settle on translate/rotate
-    expect(css).toMatch(/translate 1000ms cubic-bezier\(0\.16,1,0\.3,1\), rotate 1000ms cubic-bezier\(0\.16,1,0\.3,1\)/);
-    expect(css).not.toMatch(/\[data-fs-reach[^{]*\{[^}]*linear/);
+    expect(css).toMatch(/prefers-reduced-motion: reduce\)[\s\S]*\.hm-family-reveal \{ opacity: 1 !important; transform: none !important; transition: none !important; \}/);
+    expect(css).toMatch(/\[data-fs-in-view="true"\] \.hm-family-reveal \{ opacity: 1; transform: translateY\(0\); \}/);
   });
 
-  test('CSS: reduced-motion backstop pins hands/bloom to final state', () => {
+  test('the old reach hooks and markup are gone from the page', () => {
     const { container } = renderHomeDom();
+    expect(container.querySelector('.hm-reach')).toBeNull();
+    expect(container.querySelector('[data-fs-reach]')).toBeNull();
     const css = [...container.querySelectorAll('style')].map((s) => s.textContent).join('\n');
-    expect(css).toMatch(/prefers-reduced-motion: reduce\)[\s\S]*\.hm-reach-hand, \.hm-reach-bloom \{ translate: none !important; rotate: none !important; \}/);
-    expect(css).toMatch(/\.hm-reach\[data-fs-reach\] \.hm-reach-bloom \{ opacity: 1 !important/);
-  });
-
-  test('existing drift still runs alongside the entrance (--fs-drift written)', () => {
-    mockMotion(false);
-    stubIO();
-    renderHomeDom();
-    const v = parseFloat(reach().style.getPropertyValue('--fs-drift'));
-    expect(v).toBeGreaterThanOrEqual(0);
-    expect(v).toBeLessThanOrEqual(1);
+    expect(css).not.toMatch(/hm-reach/);
   });
 });
 
