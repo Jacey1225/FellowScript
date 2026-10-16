@@ -118,9 +118,11 @@ final class CallController: ObservableObject {
         // still be sent (below) ahead of the summarize request.
         #if canImport(AmazonChimeSDK)
         let finishingRelay = manager.detachTranscriptRelay()
+        let managerDiagnostics = manager.transcriptDiagnostics
         manager.leave()
         #else
         let finishingRelay: TranscriptRelay? = nil
+        let managerDiagnostics = TranscriptDiagnostics()
         #endif
         session = nil; isExpanded = false; joinError = nil
         service = nil; userId = ""
@@ -132,8 +134,20 @@ final class CallController: ObservableObject {
         // consumes the transcript, so extra triggers cost no extra LLM call.
         Task { @MainActor in
             await finishingRelay?.stop(flushRemaining: true)
-            maybeSummarize(session: endingSession, service: endingService, userId: endingUserId)
+            let diagnostics = managerDiagnostics.merged(with: finishingRelay?.diagnostics)
+            Self.reportTranscriptionSummary(diagnostics, service: endingService)
+            maybeSummarize(session: endingSession, service: endingService, userId: endingUserId,
+                           diagnostics: diagnostics)
         }
+    }
+
+    // One end-of-call transcription summary (log + beacon) when transcription
+    // was on for the call. Counts and fixed words only (see TranscriptDiagnostics).
+    private static func reportTranscriptionSummary(_ diagnostics: TranscriptDiagnostics, service: DataServiceProtocol?) {
+        guard diagnostics.wasActive else { return }
+        let summary = diagnostics.summaryString
+        RefreshDiagnostics.transcriptionOutcome(stage: "call-end", summary: summary)
+        (service as? NetworkService)?.reportTranscriptionDiagnostic(stage: "call-end", summary: summary)
     }
 
     // Fire-and-forget: kicked off only after the synchronous teardown above
@@ -145,7 +159,8 @@ final class CallController: ObservableObject {
     private static let summarizeDeferMaxRetries = 2
     private static let summarizeDeferRetryNanos: UInt64 = 50_000_000_000   // ~50 s > 45 s stale window
 
-    private func maybeSummarize(session: FSSession?, service: DataServiceProtocol?, userId: String) {
+    private func maybeSummarize(session: FSSession?, service: DataServiceProtocol?, userId: String,
+                                diagnostics: TranscriptDiagnostics = TranscriptDiagnostics()) {
         guard let session, session.summarize, let service, !userId.isEmpty else { return }
         Task { @MainActor in
             // Task 20260923-session-summary-call-failure: `stage` records
@@ -176,24 +191,36 @@ final class CallController: ObservableObject {
                                 userId: userId, agentId: agentId, session: session, groupId: session.group_id)
                             if !again { break }
                         }
-                    } catch { }
+                    } catch {
+                        // Build 122 swallowed every error here, so a deferred
+                        // call whose retry hit the 422/502 produced no beacon
+                        // and no toast (the missing 2026-10-15 22:13 beacon).
+                        // Cancellation stays silent; anything else is reported.
+                        stage = "summarize-retry"
+                        if !RefreshDiagnostics.isCancellation(error) {
+                            self.handleSummarizeFailure(error, stage: stage, service: service, diagnostics: diagnostics)
+                        }
+                    }
                 }
             } catch {
-                // Free plan: session summaries are subscribers-only. The shared
-                // upgrade prompt replaces the generic "couldn't put together" toast.
-                if UpgradePromptCenter.shared.present(for: error) { return }
-                let errorClass = Self.summarizeErrorClass(error)
-                RefreshDiagnostics.summarizeOutcome(stage: stage, errorClass: errorClass)
-                // Best-effort server-side signal (fire-and-forget; a cancelled
-                // call/task is not a failure worth reporting). Fixed strings only.
-                if !RefreshDiagnostics.isCancellation(error) {
-                    (service as? NetworkService)?.reportSummarizeFailure(stage: stage, errorClass: errorClass)
-                }
-                self.showSummarizeNotice(
-                    "We couldn't put together your session summary this time — check back in your notes in a bit."
-                )
+                self.handleSummarizeFailure(error, stage: stage, service: service, diagnostics: diagnostics)
             }
         }
+    }
+
+    private func handleSummarizeFailure(_ error: Error, stage: String, service: DataServiceProtocol,
+                                        diagnostics: TranscriptDiagnostics) {
+        // Free plan: session summaries are subscribers-only. The shared
+        // upgrade prompt replaces the generic "couldn't put together" toast.
+        if UpgradePromptCenter.shared.present(for: error) { return }
+        let errorClass = Self.summarizeErrorClass(error)
+        RefreshDiagnostics.summarizeOutcome(stage: stage, errorClass: errorClass)
+        // Best-effort server-side signal (fire-and-forget; a cancelled
+        // call/task is not a failure worth reporting). Fixed strings only.
+        if !RefreshDiagnostics.isCancellation(error) {
+            (service as? NetworkService)?.reportSummarizeFailure(stage: stage, errorClass: errorClass)
+        }
+        self.showSummarizeNotice(SummarizeNoticeCopy.text(errorClass: errorClass, diagnostics: diagnostics))
     }
 
     // Refines RefreshDiagnostics.errorClass(_:) for this one call site only,
@@ -373,6 +400,11 @@ final class ChimeCallManager: NSObject, ObservableObject {
     private var transcriptUserId = ""
     private var transcriptSessionId = ""
     private var transcriptRelay: TranscriptRelay?
+    /// Observer-side transcription counters for the current call (reset by
+    /// `configureTranscript`); relay-side counters live on the relay.
+    private(set) var transcriptDiagnostics = TranscriptDiagnostics()
+    private var transcriptStatusBeacons = 0
+    private static let maxStatusBeaconsPerCall = 4   // /monitoring/client-error is 10/min
     // Task 20261009-discussion-rooms: mute / camera INTENT carried across a
     // meeting swap, re-applied once the new audio session is up.
     private var pendingCameraRestore = false
@@ -462,7 +494,13 @@ final class ChimeCallManager: NSObject, ObservableObject {
             old.audioVideo.stop()
         }
         // Flush-and-stop the relay of the meeting being left (a room is not transcribed).
-        if let relay = detachTranscriptRelay() { Task { @MainActor in await relay.stop(flushRemaining: true) } }
+        if let relay = detachTranscriptRelay() {
+            Task { @MainActor in
+                await relay.stop(flushRemaining: true)
+                // Keep this meeting's relay counters for the end-of-call summary.
+                self.transcriptDiagnostics = self.transcriptDiagnostics.merged(with: relay.diagnostics)
+            }
+        }
         meetingSession = nil
         isConnected = false; isCameraOn = false
         localTileId = nil; remoteTileIds = []; remoteAttendeeIds = []
@@ -510,6 +548,8 @@ final class ChimeCallManager: NSObject, ObservableObject {
 
     func configureTranscript(service: TranscriptRelayServiceProtocol?, userId: String, sessionId: String) {
         transcriptService = service; transcriptUserId = userId; transcriptSessionId = sessionId
+        transcriptDiagnostics = TranscriptDiagnostics()
+        transcriptStatusBeacons = 0
     }
 
     /// Main-call join only: a response without transcription fields (a room's
@@ -525,11 +565,46 @@ final class ChimeCallManager: NSObject, ObservableObject {
                                     sessionId: transcriptSessionId, initial: state)
         relay.onStatus = { [weak self] active, _ in self?.transcriptionActive = active }
         transcriptRelay = relay
-        meetingSession?.audioVideo.addRealtimeTranscriptEventObserver?(observer: self)
+        // The call is optional-chained on the SDK protocol: nil means the SDK did
+        // not accept the observer, which would explain a call with no events.
+        let registered: Void? = meetingSession?.audioVideo.addRealtimeTranscriptEventObserver?(observer: self)
+        transcriptDiagnostics.observerRegistered = registered != nil
+        transcriptDiagnostics.joinActive = transcriptDiagnostics.joinActive || state.active
+        transcriptDiagnostics.joinRelay = transcriptDiagnostics.joinRelay || state.relay
         relay.start()
     }
 
     /// Hands the relay to the caller (to flush and stop) and unhooks the SDK observer.
+    /// Counts a Transcript event (main actor). `inputs` carry no text beyond what
+    /// the relay itself needs; only counts are kept here.
+    func recordTranscriptEvent(_ inputs: [TranscriptResultInput]) {
+        transcriptDiagnostics.eventsReceived += 1
+        transcriptDiagnostics.finalResults += inputs.filter { !$0.isPartial }.count
+        if transcriptRelay?.isRelay != true { transcriptDiagnostics.eventsWhileNotRelay += 1 }
+    }
+
+    /// Counts a TranscriptionStatus event (main actor), logs it and sends a
+    /// bounded number of beacons. Only the kind and a fixed reason class leave
+    /// the device; the SDK's message text is never stored or sent.
+    func recordTranscriptionStatus(_ kind: TranscriptionStatusKind, reason: String) {
+        transcriptDiagnostics.record(status: kind, reason: reason)
+        let name: String
+        switch kind {
+        case .started: name = "started"
+        case .stopped: name = "stopped"
+        case .failed: name = "failed"
+        case .interrupted: name = "interrupted"
+        case .resumed: name = "resumed"
+        case .unknown: name = "unknown"
+        }
+        RefreshDiagnostics.transcriptionOutcome(stage: "status", summary: "status=\(name) reason=\(reason)")
+        guard kind == .failed || kind == .interrupted || kind == .stopped || kind == .started,
+              transcriptStatusBeacons < Self.maxStatusBeaconsPerCall else { return }
+        transcriptStatusBeacons += 1
+        (transcriptService as? NetworkService)?.reportTranscriptionDiagnostic(
+            stage: "status", summary: "status=\(name) reason=\(reason)")
+    }
+
     func detachTranscriptRelay() -> TranscriptRelay? {
         meetingSession?.audioVideo.removeRealtimeTranscriptEventObserver?(observer: self)
         let relay = transcriptRelay
@@ -768,13 +843,34 @@ extension ChimeCallManager: RealtimeObserver {
 
 extension ChimeCallManager: TranscriptEventObserver {
     func transcriptEventDidReceive(transcriptEvent: TranscriptEvent) {
+        if let status = transcriptEvent as? TranscriptionStatus {
+            // Only the type and a fixed reason class leave this method.
+            let kind = Self.statusKind(status.type)
+            let reason = TranscriptDiagnostics.reasonClass(status.message)
+            DispatchQueue.main.async { [weak self] in self?.recordTranscriptionStatus(kind, reason: reason) }
+            return
+        }
         guard let transcript = transcriptEvent as? Transcript else { return }
         let inputs = transcript.results.map { r -> TranscriptResultInput in
             let alt = r.alternatives.first
             let speaker = alt?.items.first(where: { !$0.attendee.externalUserId.isEmpty })?.attendee.externalUserId
             return TranscriptResultInput(isPartial: r.isPartial, text: alt?.transcript ?? "", speakerId: speaker)
         }
-        DispatchQueue.main.async { [weak self] in self?.transcriptRelay?.handle(inputs) }
+        DispatchQueue.main.async { [weak self] in
+            self?.recordTranscriptEvent(inputs)
+            self?.transcriptRelay?.handle(inputs)
+        }
+    }
+
+    private static func statusKind(_ type: TranscriptionStatusType) -> TranscriptionStatusKind {
+        switch type {
+        case .started:     return .started
+        case .stopped:     return .stopped
+        case .failed:      return .failed
+        case .interrupted: return .interrupted
+        case .resumed:     return .resumed
+        default:           return .unknown
+        }
     }
 }
 

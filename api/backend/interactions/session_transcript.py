@@ -28,7 +28,7 @@ _OMITTED = "[... middle of the conversation omitted for length ...]"
 
 _lock = threading.Lock()
 _transcripts: dict[str, dict] = {}   # session_id -> {"lines": [(speaker, text)], "chars": int, "expires": float}
-_active: dict[str, float] = {}       # session_id -> expiry; transcription started (drives consent banner)
+_active: dict[str, tuple[str, float]] = {}   # session_id -> (chime meeting_id, expiry); transcription started for THAT meeting (drives consent banner)
 
 
 def _now() -> float:
@@ -38,21 +38,35 @@ def _now() -> float:
 def _purge_locked(now: float) -> None:
     for k in [k for k, v in _transcripts.items() if v["expires"] <= now]:
         del _transcripts[k]
-    for k in [k for k, exp in _active.items() if exp <= now]:
+    for k in [k for k, (_mid, exp) in _active.items() if exp <= now]:
         del _active[k]
 
 
-def mark_active(session_id: str) -> None:
+def mark_active(session_id: str, meeting_id: str = "") -> None:
+    """Record that transcription runs for ``meeting_id`` of this session. The
+    marker is meeting-scoped so a recreated meeting never inherits it."""
     ttl = get_session_transcription_config().ttl_seconds
     with _lock:
         _purge_locked(_now())
-        _active[session_id] = _now() + ttl
+        _active[session_id] = (str(meeting_id or ""), _now() + ttl)
 
 
-def is_active(session_id: str) -> bool:
+def is_active(session_id: str, meeting_id: str | None = None) -> bool:
+    """Without ``meeting_id``: any marker for the session. With it: only a
+    marker set for that same meeting."""
     with _lock:
         _purge_locked(_now())
-        return session_id in _active
+        entry = _active.get(session_id)
+        if entry is None:
+            return False
+        return meeting_id is None or entry[0] == str(meeting_id or "")
+
+
+def clear_active(session_id: str) -> bool:
+    """Drop only the active marker (transcript lines are kept: summarize runs
+    after the last leave). Returns True if a marker was removed. Idempotent."""
+    with _lock:
+        return _active.pop(session_id, None) is not None
 
 
 def ingest(session_id: str, speaker: str, text: str) -> bool:

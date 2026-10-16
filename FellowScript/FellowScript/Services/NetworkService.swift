@@ -295,6 +295,24 @@ final class NetworkService: DataServiceProtocol {
         }
     }
 
+    /// Fire-and-forget beacon for live-call transcription diagnostics (task
+    /// 20261015-call-transcription-start-and-diagnostics). Reuses the
+    /// allow-listed `kind: "summarize"` so the server logs it as
+    /// CLIENT_SUMMARIZE_FAILURE-style WARNING. `summary` must be built from
+    /// `TranscriptDiagnostics.summaryString` / fixed status classes only: counts
+    /// and fixed words, never transcript text, ids or server detail.
+    func reportTranscriptionDiagnostic(stage: String, summary: String) {
+        let version = currentAppVersion()
+        Task {
+            _ = try? await requestRaw("/monitoring/client-error", method: "POST", jsonObject: [
+                "endpoint": "call transcription",
+                "client_app_version": version,
+                "error_summary": String("stage=\(stage) \(summary)".prefix(500)),
+                "kind": "summarize",
+            ])
+        }
+    }
+
     /// FastAPI's `detail` is a plain string for our own `HTTPException(...)` raises,
     /// but a pydantic field_validator rejection (e.g. SignUp's terms_accepted check)
     /// surfaces as the framework's default array shape:

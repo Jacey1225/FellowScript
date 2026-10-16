@@ -49,6 +49,108 @@ enum TranscriptSegments {
     }
 }
 
+/// Chime TranscriptionStatus event kinds, SDK types stripped away.
+enum TranscriptionStatusKind: Equatable {
+    case started, stopped, failed, interrupted, resumed, unknown
+}
+
+/// Counters for one call's live transcription (task
+/// 20261015-call-transcription-start-and-diagnostics). Counts and fixed class
+/// strings only: no transcript text, no user or session ids, no server text.
+struct TranscriptDiagnostics: Equatable {
+    var joinActive = false          // join response said transcription is on
+    var joinRelay = false           // join response designated this client the relay
+    var sawRelay = false            // this client was the relay at some point
+    var observerRegistered = false  // SDK accepted the transcript observer
+    var eventsReceived = 0          // Transcript events delivered by the SDK
+    var finalResults = 0            // non-partial results inside those events
+    var eventsWhileNotRelay = 0     // events that arrived while not the relay
+    var segmentsQueued = 0          // final segments buffered for ingest (relay only)
+    var ingestAccepted = 0
+    var ingestNotRelay = 0
+    var ingestRetryLater = 0
+    var ingestDropped = 0
+    var statusStarted = 0
+    var statusStopped = 0
+    var statusFailed = 0
+    var statusInterrupted = 0
+    var statusResumed = 0
+    var lastFailureClass = "none"
+
+    /// Fixed reason classes; the SDK message itself is never recorded.
+    static func reasonClass(_ message: String?) -> String {
+        let m = (message ?? "").lowercased()
+        if m.isEmpty { return "none" }
+        if m.contains("access") || m.contains("denied") || m.contains("permission")
+            || m.contains("unauthor") { return "access-denied" }
+        if m.contains("language") { return "language" }
+        if m.contains("limit") || m.contains("quota") || m.contains("throttl") { return "limit" }
+        if m.contains("timeout") || m.contains("timed out") || m.contains("network")
+            || m.contains("connect") { return "network" }
+        return "other"
+    }
+
+    mutating func record(status: TranscriptionStatusKind, reason: String) {
+        switch status {
+        case .started:     statusStarted += 1
+        case .stopped:     statusStopped += 1
+        case .failed:      statusFailed += 1; lastFailureClass = reason
+        case .interrupted: statusInterrupted += 1; lastFailureClass = reason
+        case .resumed:     statusResumed += 1
+        case .unknown:     break
+        }
+    }
+
+    /// True when transcription was on for this call in any way we could see.
+    var wasActive: Bool { joinActive || statusStarted > 0 || sawRelay }
+
+    /// "We heard nothing usable": transcription never started, it failed, or this
+    /// client was the relay and the server accepted no text.
+    var transcriptionProducedNothing: Bool {
+        if statusFailed > 0 { return true }
+        if !joinActive && statusStarted == 0 { return true }
+        return sawRelay && ingestAccepted == 0
+    }
+
+    func merged(with relay: TranscriptDiagnostics?) -> TranscriptDiagnostics {
+        guard let relay else { return self }
+        var out = self
+        out.sawRelay = out.sawRelay || relay.sawRelay
+        out.segmentsQueued += relay.segmentsQueued
+        out.ingestAccepted += relay.ingestAccepted
+        out.ingestNotRelay += relay.ingestNotRelay
+        out.ingestRetryLater += relay.ingestRetryLater
+        out.ingestDropped += relay.ingestDropped
+        return out
+    }
+
+    /// Fixed-format beacon body: ints, 0/1 flags and fixed class names only.
+    var summaryString: String {
+        func b(_ v: Bool) -> Int { v ? 1 : 0 }
+        return "joinActive=\(b(joinActive)) joinRelay=\(b(joinRelay)) sawRelay=\(b(sawRelay)) "
+            + "observer=\(b(observerRegistered)) events=\(eventsReceived) finalResults=\(finalResults) "
+            + "eventsNotRelay=\(eventsWhileNotRelay) queued=\(segmentsQueued) "
+            + "ingestOk=\(ingestAccepted) ingestNotRelay=\(ingestNotRelay) "
+            + "ingestRetry=\(ingestRetryLater) ingestDropped=\(ingestDropped) "
+            + "stStarted=\(statusStarted) stStopped=\(statusStopped) stFailed=\(statusFailed) "
+            + "stInterrupted=\(statusInterrupted) stResumed=\(statusResumed) failure=\(lastFailureClass)"
+    }
+}
+
+enum SummarizeNoticeCopy {
+    static let generic = "We couldn't put together your session summary this time — check back in your notes in a bit."
+    static let notHeard = "We couldn't hear enough of the call to write a summary."
+
+    /// The specific message only for the no-content 422 when transcription never
+    /// ran, failed, or the relay got no text accepted; everything else stays generic.
+    static func text(errorClass: String, diagnostics: TranscriptDiagnostics) -> String {
+        if errorClass == "no-summarizable-content-422", diagnostics.transcriptionProducedNothing {
+            return notHeard
+        }
+        return generic
+    }
+}
+
 /// Transcription fields every join response carries. Missing means off (fail closed).
 struct TranscriptJoinState: Equatable {
     let active: Bool
@@ -109,6 +211,8 @@ final class TranscriptRelay {
 
     private(set) var isActive = false
     private(set) var isRelay = false
+    /// Relay-side counters (queued segments, ingest outcomes); merged into the call summary.
+    private(set) var diagnostics = TranscriptDiagnostics()
     private var stopped = false
     private var inflight = false
     private var buffer: [TranscriptSegment] = []
@@ -141,6 +245,7 @@ final class TranscriptRelay {
         let segs = TranscriptSegments.from(results)
         if segs.isEmpty { return }
         buffer.append(contentsOf: segs)
+        diagnostics.segmentsQueued += segs.count
         if buffer.count > Self.maxBuffered { buffer.removeFirst(buffer.count - Self.maxBuffered) }
         scheduleFlush(after: flushInterval)
     }
@@ -201,6 +306,7 @@ final class TranscriptRelay {
         let newRelay = active && relay
         let changed = active != isActive || newRelay != isRelay
         isActive = active; isRelay = newRelay
+        if newRelay { diagnostics.sawRelay = true }
         if !isRelay { buffer = [] }
         if changed { onStatus?(isActive, isRelay) }
     }
@@ -256,13 +362,17 @@ final class TranscriptRelay {
         if stopped { return }   // stop() gave up waiting on this request
         var retryDelay = flushInterval
         switch result {
-        case .accepted, .dropped:
-            break
+        case .accepted:
+            diagnostics.ingestAccepted += 1
+        case .dropped:
+            diagnostics.ingestDropped += 1
         case .notRelay:
+            diagnostics.ingestNotRelay += 1
             // Re-check the role right away instead of waiting for the next tick.
             setStatus(active: isActive, relay: false)
             schedulePoll(after: 0)
         case .retryLater:
+            diagnostics.ingestRetryLater += 1
             buffer = Array((batch + buffer).suffix(Self.maxBuffered))
             retryDelay = flushInterval * 2
         }

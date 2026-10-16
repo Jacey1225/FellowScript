@@ -43,18 +43,40 @@ def maybe_start_transcription(session_id: str, meeting_id: str, user_id: str) ->
     try:
         if not is_transcription_enabled():
             return False
-        if st.is_active(session_id):
-            return True
+        if st.is_active(session_id, meeting_id):
+            return True   # already transcribing THIS meeting; a marker for an old meeting does not count
         if not _is_paid(user_id):
             return False
         from backend.interactions import chime_meetings
         if chime_meetings.start_transcription(meeting_id, get_session_transcription_config().language_code):
-            st.mark_active(session_id)
+            st.mark_active(session_id, meeting_id)
             logger.info("AUDIT transcription started session=%s meeting=%s by_user=%s", session_id, meeting_id, user_id)
             return True
     except Exception as e:
         logger.warning("transcription start skipped for session %s: %s", session_id, type(e).__name__)
     return False
+
+
+def on_attendee_leave(session_id: str, user_id: str) -> None:
+    """Record a leave; when the last attendee left, clear the meeting marker so
+    the next join re-issues start (Conflict maps to running, so this converges).
+    Deliberately no Chime stop (could race a re-join); transcript lines are kept
+    for the summarize call that follows. Never raises, never touches text."""
+    try:
+        if relay.record_leave(session_id, user_id) and st.clear_active(session_id):
+            logger.info("AUDIT transcription marker cleared session=%s reason=last_attendee_left by_user=%s",
+                        session_id, user_id)
+    except Exception as e:
+        logger.warning("transcription leave handling failed for session %s: %s", session_id, type(e).__name__)
+
+
+def on_meeting_recreated(session_id: str) -> None:
+    """A new Chime meeting replaced the old one: the old transcription is gone."""
+    try:
+        if st.clear_active(session_id):
+            logger.info("AUDIT transcription marker cleared session=%s reason=meeting_recreated", session_id)
+    except Exception as e:
+        logger.warning("transcription recreate handling failed for session %s: %s", session_id, type(e).__name__)
 
 
 def join_transcription_fields(session_id: str, meeting_id: str, user_id: str, creator_id: str) -> dict:

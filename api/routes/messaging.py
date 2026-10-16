@@ -45,6 +45,8 @@ def _create_and_save_meeting(db: DevotionManager, session_id: str) -> dict:
     )
     meeting_data = resp["Meeting"]
     db.save_chime_meeting(session_id, meeting_data["MeetingId"], meeting_data)
+    from backend.interactions.session_call_transcription import on_meeting_recreated
+    on_meeting_recreated(session_id)
     return meeting_data
 
 

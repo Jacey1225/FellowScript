@@ -468,6 +468,8 @@ def _create_and_save_meeting(db: DevotionManager, session_id: str) -> dict:
     )
     meeting_data = resp["Meeting"]
     db.save_chime_meeting(session_id, meeting_data["MeetingId"], meeting_data)
+    from backend.interactions.session_call_transcription import on_meeting_recreated
+    on_meeting_recreated(session_id)
     return meeting_data
 
 
@@ -633,8 +635,8 @@ async def transcript_relay_status(request: Request, response: Response, session_
 async def transcript_leave(session_id: str, user_id: str, _: str = Depends(require_match("user_id"))) -> dict:
     """Best-effort: the caller left the call, so the relay role can pass on
     immediately instead of after the stale window. Idempotent."""
-    from backend.interactions import session_relay
-    session_relay.record_leave(session_id, user_id)
+    from backend.interactions.session_call_transcription import on_attendee_leave
+    on_attendee_leave(session_id, user_id)
     return {"ok": True}
 
 

@@ -269,4 +269,11 @@ enum RefreshDiagnostics {
     static func summarizeOutcome(stage: String, errorClass: String) {
         emit("[summarize] stage=\(stage) errorClass=\(errorClass) ts=\(ts())")
     }
+
+    /// Live-call transcription outcome/summary (task
+    /// 20261015-call-transcription-start-and-diagnostics). Counts and fixed
+    /// class strings only.
+    static func transcriptionOutcome(stage: String, summary: String) {
+        emit("[transcription] stage=\(stage) \(summary) ts=\(ts())")
+    }
 }

@@ -631,6 +631,10 @@ final class ThrowingTestDataService: DataServiceProtocol {
     func summarizeSession(userId: String, agentId: String, session: FSSession, groupId: String) async throws {
         summarizeSessionCallCount += 1
         lastSummarizeSessionArgs = SummarizeSessionArgs(userId: userId, agentId: agentId, session: session, groupId: groupId)
+        // Task 20261015-call-transcription-start-and-diagnostics: per-call scripted
+        // outcomes (nil = succeed) consumed before the blanket error, so a test can
+        // make the first request succeed (deferred) and the retry throw.
+        if !summarizeSessionErrorScript.isEmpty, let scripted = summarizeSessionErrorScript.removeFirst() { throw scripted }
         if let summarizeSessionError { throw summarizeSessionError }
         try await MockDataService.shared.summarizeSession(userId: userId, agentId: agentId, session: session, groupId: groupId)
     }
@@ -640,6 +644,7 @@ final class ThrowingTestDataService: DataServiceProtocol {
     // empty the answer is false = generated). Each call also counts as a
     // summarize request via summarizeSession.
     var summarizeDeferralScript: [Bool] = []
+    var summarizeSessionErrorScript: [Error?] = []
     private(set) var summarizeDeferralCallTimes: [Date] = []
 
     func summarizeSessionReportingDeferral(userId: String, agentId: String, session: FSSession, groupId: String) async throws -> Bool {

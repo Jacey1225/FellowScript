@@ -84,13 +84,20 @@ def touch(session_id: str, user_id: str) -> bool:
         return True
 
 
-def record_leave(session_id: str, user_id: str) -> None:
+def record_leave(session_id: str, user_id: str) -> bool:
+    """Remove the user's presence. Returns True only when this user WAS present
+    and nobody fresh remains (they were the last attendee); else False."""
+    stale = get_session_transcription_config().relay_stale_seconds
     with _lock:
         users = _presence.get(session_id)
-        if users:
-            users.pop(user_id, None)
-            if not users:
-                del _presence[session_id]
+        if not users or user_id not in users:
+            return False
+        users.pop(user_id, None)
+        now = _now()
+        remaining = any(_is_fresh(e, now, stale) for e in users.values())
+        if not users:
+            del _presence[session_id]
+        return not remaining
 
 
 def present_users(session_id: str) -> list[str]:
