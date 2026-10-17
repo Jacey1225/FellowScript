@@ -241,7 +241,8 @@ struct GroupJoinRequestsSection: View {
             }
         }
         .task { await vm.load() }
-        .modifier(JoinRequestBadgeSync(groupId: context.groupId, loaded: vm.loaded, pendingCount: vm.pendingCount))
+        .modifier(JoinRequestBadgeSync(groupId: context.groupId, loaded: vm.loaded, pendingCount: vm.pendingCount,
+                                       newestRequestAt: vm.requests.compactMap(\.createdAt).max()))
         .alert("Add to group?", isPresented: Binding(get: { approving != nil }, set: { if !$0 { approving = nil } })) {
             Button("Add") { if let r = approving { Task { await vm.approve(r) } }; approving = nil }
             Button("Cancel", role: .cancel) { approving = nil }

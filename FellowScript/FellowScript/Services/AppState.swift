@@ -178,6 +178,7 @@ final class AppState: ObservableObject {
         badgesForward = badges.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }
         badges.owner = self
         restoreSession()
+        if isAuthenticated, let uid = currentUser?.user_id { badges.hydrate(userId: uid) }   // first-frame badges
         pendingInviteToken = PendingInviteStore.load()
     }
 
@@ -392,7 +393,7 @@ final class AppState: ObservableObject {
         // happen to collide (e.g. the same group id, or a mutual friend).
         storedLastReadData     = Data()
         clearUnreadSeed(forUserId: signedOutUserId)
-        badges.clear()
+        badges.clear(forUserId: signedOutUserId)
         unreadConversationCount = 0
         lastReadVersion += 1
         // Wipe cached data so the next account never sees the previous user's notes,
@@ -419,6 +420,7 @@ final class AppState: ObservableObject {
         storedEmail    = user.email
         currentUser    = user
         isAuthenticated = true
+        badges.hydrate(userId: user.user_id)   // this user's persisted badges, never the previous user's
         termsReacceptRequired = user.terms_reaccept_required
         needsProfileCompletion = user.needs_profile_completion
         refreshCapabilities(force: true)

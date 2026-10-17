@@ -181,6 +181,14 @@ struct WorkspaceView: View {
         // Existing deep links map onto rail selection.
         .onChange(of: appState.pendingBibleNav) { _, t in if t != nil { state.select(.bible) } }
         .onChange(of: appState.pendingChatContact) { _, t in if t != nil { state.select(.messages) } }
+        // friend_request push: open the Account sheet (AccountView consumes the
+        // flag and scrolls to the requests). Mirrors ContentView's account-tab
+        // routing, including the cold-start case where the flag was set before
+        // this view existed. Never re-presents an already-open sheet.
+        .onChange(of: appState.pendingFriendRequestsOpen) { _, wanted in
+            if wanted, !showAccount { showAccount = true }
+        }
+        .onAppear { if appState.pendingFriendRequestsOpen, !showAccount { showAccount = true } }
         .onReceive(NotificationCenter.default.publisher(for: .fsOpenSubscriptionPlans)) { _ in showAccount = true }
         // Bible "Add to Note": make sure the Notes panel is showing (reopen it, open the
         // drawer in portrait); NotesListView then opens its inline editor with the verse.
@@ -204,6 +212,25 @@ struct WorkspaceView: View {
         }
     }
 
+    /// Unseen friend requests (same value as the phone Account tab).
+    private var friendRequestCount: Int { appState.badges.pendingFriendRequestCount }
+
+    /// Messages rail badge: unread conversations + groups with join requests
+    /// (same value as the phone Chat tab). Other rail items carry none.
+    private func railBadgeCount(_ item: WorkspaceRailItem) -> Int {
+        item == .messages
+            ? appState.badges.chatBadgeCount(unreadConversations: appState.unreadConversationCount)
+            : 0
+    }
+
+    private func railAccessibilityLabel(_ item: WorkspaceRailItem) -> String {
+        guard item == .messages,
+              let summary = BadgeCountsStore.chatAccessibilitySummary(
+                unreadConversations: appState.unreadConversationCount,
+                joinRequestGroups: appState.badges.pendingJoinRequestGroupCount) else { return item.label }
+        return "\(item.label), \(summary)"
+    }
+
     private var header: some View {
         HStack {
             Text("FellowScript")
@@ -212,7 +239,8 @@ struct WorkspaceView: View {
                 .accessibilityAddTraits(.isHeader)
             Spacer()
             Menu {
-                Button("Account", systemImage: "person.crop.circle") { showAccount = true }
+                Button(friendRequestCount > 0 ? "Account (\(friendRequestCount > 9 ? "9+" : "\(friendRequestCount)"))" : "Account",
+                       systemImage: "person.crop.circle") { showAccount = true }
                 Button("Reset layout", systemImage: "rectangle.3.group") { animate { state.resetLayout() } }
             } label: {
                 Text(appState.currentUser?.username.prefix(1).uppercased() ?? "?")
@@ -220,9 +248,16 @@ struct WorkspaceView: View {
                     .foregroundColor(Theme.goldLight)
                     .frame(width: 32, height: 32)
                     .overlay(Circle().stroke(Theme.gold, lineWidth: 1.5))
+                    .overlay(alignment: .topTrailing) {
+                        if friendRequestCount > 0 {
+                            NavCountBadge(count: friendRequestCount, ring: Theme.bgPage).offset(x: 4, y: -4)
+                        }
+                    }
                     .frame(minWidth: 44, minHeight: 44)
             }
-            .accessibilityLabel("Account menu")
+            .accessibilityLabel(
+                BadgeCountsStore.friendRequestAccessibilitySummary(friendRequestCount)
+                    .map { "Account menu, \($0)" } ?? "Account menu")
         }
         .frame(height: WorkspaceLayout.headerHeight - 2 * WorkspaceLayout.outerInset)
         .padding(.horizontal, 8)
@@ -242,9 +277,13 @@ struct WorkspaceView: View {
                         .foregroundColor(active ? Color(hex: "#24170A") : Theme.tabInactive)
                         .frame(width: WorkspaceLayout.railActiveCircle, height: WorkspaceLayout.railActiveCircle)
                         .background(Circle().fill(active ? AnyShapeStyle(Theme.goldGradient) : AnyShapeStyle(Color.clear)))
+                        .overlay(alignment: .topTrailing) {
+                            let badge = railBadgeCount(item)
+                            if badge > 0 { NavCountBadge(count: badge, ring: Theme.bgPage).offset(x: 2, y: -2) }
+                        }
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel(item.label)
+                .accessibilityLabel(railAccessibilityLabel(item))
                 .accessibilityValue(home?.displayName ?? "Closed")
                 .accessibilityAddTraits(active ? [.isSelected, .isButton] : .isButton)
             }

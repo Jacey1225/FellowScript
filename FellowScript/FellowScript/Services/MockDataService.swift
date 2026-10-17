@@ -207,6 +207,7 @@ protocol DataServiceProtocol {
 
     // Badge summaries (task 20261016-notification-badges-logic) -- NetworkService+BadgeSummaries.swift.
     func fetchPendingFriendRequestCount(userId: String) async throws -> Int
+    func fetchPendingFriendRequestIds(userId: String) async throws -> [String]
     func fetchPendingJoinSummary(userId: String) async throws -> [FSJoinRequestSummaryRow]
 
     // Message reactions (task 20261010-chat-reactions) -- NetworkService+Reactions.swift.

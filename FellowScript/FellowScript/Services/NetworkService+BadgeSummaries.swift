@@ -12,10 +12,14 @@ import Foundation
 struct FSJoinRequestSummaryRow: Codable, Equatable {
     let groupId: String
     let pendingCount: Int
+    /// Newest pending request's created_at (UTC ISO-8601, microseconds, "Z").
+    /// Absent from an older server; nil then. Used for "unseen" detection.
+    var newestRequestAt: String? = nil
 
     enum CodingKeys: String, CodingKey {
         case groupId = "group_id"
         case pendingCount = "pending_count"
+        case newestRequestAt = "newest_request_at"
     }
 }
 
@@ -40,6 +44,17 @@ extension NetworkService {
         return rows.count
     }
 
+    // Same endpoint as above, returning the requester ids so the badge can tell
+    // which requests the user has already seen. Throws on any failure.
+    func fetchPendingFriendRequestIds(userId: String) async throws -> [String] {
+        let data = try await get("/friends/\(encodeURIComponent(userId))/requests")
+        guard let rows = decode([FriendRequestCountRow].self, from: data,
+                                endpoint: "/friends/{id}/requests") else {
+            throw FSJoinRequestsError.failed("Couldn't load friend requests.")
+        }
+        return rows.map(\.user_id)
+    }
+
     // GET /join-requests/{userId}/pending-summary. Flag off for the caller
     // returns 200 with an empty list server-side (a real "none").
     func fetchPendingJoinSummary(userId: String) async throws -> [FSJoinRequestSummaryRow] {
@@ -56,6 +71,9 @@ extension NetworkService {
 extension DataServiceProtocol {
     func fetchPendingFriendRequestCount(userId: String) async throws -> Int {
         try await fetchFriendRequests(userId: userId).count
+    }
+    func fetchPendingFriendRequestIds(userId: String) async throws -> [String] {
+        try await fetchFriendRequests(userId: userId).map(\.id)
     }
     func fetchPendingJoinSummary(userId: String) async throws -> [FSJoinRequestSummaryRow] {
         throw FSJoinRequestsError.failed("Join requests aren't available right now.")

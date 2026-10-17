@@ -25,14 +25,6 @@ struct FloatingTabBar: View {
     @EnvironmentObject var appState: AppState
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    // Task 20260913-chat-unread-badges: brief scale pulse when a badge count
-    // changes while the badge is already visible (e.g. 2 -> 3), signalling
-    // "something changed" without a discrete text-swap flash.
-    // Task 20261016-notification-badges-logic: tracked per tab now that Account
-    // carries a badge too.
-    @State private var pulsingTab: ContentView.Tab?
-    @State private var previousCounts: [ContentView.Tab: Int] = [:]
-
     private let items: [(tab: ContentView.Tab, label: String, symbol: String)] = [
         (.home,    "Home",    "house.fill"),
         (.bible,   "Bible",   "book.fill"),
@@ -64,40 +56,6 @@ struct FloatingTabBar: View {
         }
     }
 
-    // Numeral capsule (Theme.error, capped at 9+), rendered in both the selected
-    // and unselected icon states below via this one shared view.
-    private func countBadge(_ count: Int, tab: ContentView.Tab) -> some View {
-        Text(count > 9 ? "9+" : "\(count)")
-            .font(.system(size: Theme.fontXXS, weight: .heavy))
-            .foregroundColor(Theme.parchment)
-            .padding(.horizontal, 5)
-            .frame(minWidth: 16, minHeight: 16)
-            .background(
-                Capsule()
-                    .fill(Theme.error)
-                    .overlay(Capsule().stroke(Theme.navBg, lineWidth: 1.5))
-            )
-            .offset(x: -4, y: -2)
-            .scaleEffect(pulsingTab == tab ? 1.15 : 1.0)
-            .transition(.unreadBadge(reduceMotion: reduceMotion))
-            .accessibilityHidden(true) // folded into the item's own accessibilityLabel below instead
-    }
-
-    private func pulseIfChanged(tab: ContentView.Tab, newValue: Int) {
-        let previous = previousCounts[tab] ?? 0
-        previousCounts[tab] = newValue
-        guard previous > 0, newValue > 0, newValue != previous else { return }
-        withMotionAwareAnimation(.spring(response: 0.32, dampingFraction: 0.8), reduceMotion: reduceMotion) {
-            pulsingTab = tab
-        }
-        Task { @MainActor in
-            try? await Task.sleep(nanoseconds: 160_000_000)
-            withMotionAwareAnimation(.spring(response: 0.32, dampingFraction: 0.8), reduceMotion: reduceMotion) {
-                if pulsingTab == tab { pulsingTab = nil }
-            }
-        }
-    }
-
     var body: some View {
         HStack(spacing: 4) {
             ForEach(items, id: \.tab) { item in
@@ -115,7 +73,7 @@ struct FloatingTabBar: View {
                             Image(systemName: item.symbol)
                                 .font(.system(size: 15, weight: .semibold))
                                 .overlay(alignment: .topLeading) {
-                                    if showBadge { countBadge(count, tab: item.tab) }
+                                    if showBadge { NavCountBadge(count: count).offset(x: -4, y: -2) }
                                 }
                             Text(item.label)
                                 .font(.system(size: 13, weight: .bold))
@@ -136,7 +94,7 @@ struct FloatingTabBar: View {
                             .foregroundColor(Theme.tabInactive)
                             .frame(width: 50, height: 46)
                             .overlay(alignment: .topLeading) {
-                                if showBadge { countBadge(count, tab: item.tab) }
+                                if showBadge { NavCountBadge(count: count).offset(x: -4, y: -2) }
                             }
                     }
                 }
@@ -147,10 +105,6 @@ struct FloatingTabBar: View {
                 .accessibilityAddTraits(isSelected ? [.isSelected] : [])
             }
         }
-        // Pulse on any nonzero -> nonzero change; the 0 <-> nonzero cases are
-        // already handled by the badge's own insertion/removal transition.
-        .onChange(of: badgeCount(for: .chat)) { newValue in pulseIfChanged(tab: .chat, newValue: newValue) }
-        .onChange(of: badgeCount(for: .account)) { newValue in pulseIfChanged(tab: .account, newValue: newValue) }
         .padding(7)
         .background(
             Capsule()

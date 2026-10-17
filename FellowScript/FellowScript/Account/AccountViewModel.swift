@@ -29,6 +29,8 @@ final class AccountViewModel: ObservableObject {
     // rather than a second fetch path.
     @Published var groups:          [String: FSGroup] = [:]
     @Published var friendRequests:  [(id: String, username: String, profile_photo_url: String?)] = []
+    /// True once a friend-request fetch has succeeded (an empty list is then a real "none").
+    @Published private(set) var friendRequestsLoaded = false
     @Published var isLoading       = true
     @Published var editMsg:        (type: AlertType, text: String)? = nil
 
@@ -633,7 +635,7 @@ final class AccountViewModel: ObservableObject {
         if let noteCountResult { noteCount = noteCountResult }
         if let highlightCountResult { highlightCount = highlightCountResult }
         usage          = usageResult ?? usage
-        if let friendRequestsResult { friendRequests = friendRequestsResult }
+        if let friendRequestsResult { friendRequests = friendRequestsResult; friendRequestsLoaded = true }
         if let (_, groupMap) = contactsResult { groups = groupMap }
         // `heartbeatsResultsConsumed < heartbeatsTasksAdded` (see the
         // defensive fix above) means `allEvents` can't be trusted as

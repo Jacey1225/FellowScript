@@ -9,6 +9,11 @@
 // Throw-not-fabricate / preserve-cache-on-failed-refresh: a failed fetch never
 // changes a count. Counts are only replaced by a proven successful response.
 // Sign-out calls clear() and invalidates in-flight refreshes.
+//
+// Task 20261016-ipad-parity-and-persistent-badges: the published counts are the
+// UNSEEN counts, derived from a pure reducer (BadgeState) that is persisted per
+// user (BadgeCountsStore+Persistence.swift) and hydrated before the first frame.
+// Server snapshots replace "what exists"; seen events add to "what was seen".
 
 import Foundation
 import Combine
@@ -16,9 +21,18 @@ import Combine
 @MainActor
 final class BadgeCountsStore: ObservableObject {
 
+    /// Pending friend requests the user has not yet seen.
     @Published private(set) var pendingFriendRequestCount = 0
-    /// groupId -> pending join requests (owned groups only; zeros are not stored).
+    /// groupId -> unseen pending join requests (owned groups only; zeros are not stored).
     @Published private(set) var joinRequestCounts: [String: Int] = [:]
+
+    /// Reducer state (ids / watermarks). Persisted per user after every change.
+    var badgeState = BadgeState()
+    /// User the persisted state belongs to (set by hydrate / first refresh).
+    var activeUserId: String?
+    /// True once this session has a proven contacts load; before that the
+    /// persisted unread count is kept unless a real (non-empty) list exists.
+    private var contactsProven = false
 
     weak var owner: AppState?
     private weak var chatVM: ChatViewModel?
@@ -66,6 +80,7 @@ final class BadgeCountsStore: ObservableObject {
     func attach(chatVM: ChatViewModel) {
         cancellables.removeAll()
         self.chatVM = chatVM
+        contactsProven = false
         lastForegroundRefresh = Date()   // the startup load counts as a refresh
 
         Publishers.CombineLatest(chatVM.$friends, chatVM.$groups)
@@ -77,6 +92,7 @@ final class BadgeCountsStore: ObservableObject {
             .sink { [weak self, weak chatVM] _ in
                 guard let self, let chatVM else { return }
                 let contacts = chatVM.friends + chatVM.groups
+                self.contactsProven = true
                 self.owner?.seedUnreadBaselineIfNeeded(contacts: contacts)
                 self.recomputeUnread(contacts)
             }
@@ -90,8 +106,12 @@ final class BadgeCountsStore: ObservableObject {
             .store(in: &cancellables)
     }
 
+    /// Before a proven contacts load, an empty list is "not loaded yet", not
+    /// "no conversations": it must not zero the persisted count (preserve-cache).
     private func recomputeUnread(_ contacts: [FSContact]) {
+        guard contactsProven || !contacts.isEmpty else { return }
         owner?.recomputeUnreadConversationCount(contacts: contacts)
+        if let n = owner?.unreadConversationCount { noteUnreadCount(n) }
     }
 
     // MARK: Refresh
@@ -103,17 +123,20 @@ final class BadgeCountsStore: ObservableObject {
               !requestsInFlight else { return }
         requestsInFlight = true
         let gen = generation
+        if activeUserId != uid { activeUserId = uid }
         let service = owner.service
         defer { requestsInFlight = false }
 
-        async let friends = Self.attempt { try await service.fetchPendingFriendRequestCount(userId: uid) }
+        async let friends = Self.attempt { try await service.fetchPendingFriendRequestIds(userId: uid) }
         async let joins   = Self.attempt { try await service.fetchPendingJoinSummary(userId: uid) }
-        let (friendCount, joinRows) = await (friends, joins)
+        let (friendIds, joinRows) = await (friends, joins)
 
         // Drop results from a signed-out or replaced session.
         guard gen == generation, owner.currentUser?.user_id == uid else { return }
-        if let friendCount { pendingFriendRequestCount = max(0, friendCount) }
-        if let joinRows { joinRequestCounts = Self.counts(from: joinRows) }
+        // Only a proven response changes state; an empty one is a real "none".
+        if let friendIds { badgeState.applyFriendSnapshot(Set(friendIds)) }
+        if let joinRows { badgeState.applyJoinSnapshot(joinRows) }
+        if friendIds != nil || joinRows != nil { publish() }
     }
 
     /// Every return to the foreground (throttled): refresh contacts (so unread is
@@ -134,25 +157,62 @@ final class BadgeCountsStore: ObservableObject {
 
     // MARK: Action hooks (screens report a state they already proved)
 
+    /// Legacy count-only hook (no ids available): treats the count as proven
+    /// and unseen. The app itself reports ids via friendRequestsViewed.
     func setFriendRequestCount(_ count: Int) {
         let c = max(0, count)
-        if c != pendingFriendRequestCount { pendingFriendRequestCount = c }
+        guard c != badgeState.unseenFriendRequestCount else { return }
+        badgeState.friendSeen = []
+        badgeState.friendPending = Set((0..<c).map { "count-\($0)" })
+        publish()
     }
 
     func setJoinRequestCount(groupId: String, _ count: Int) {
-        let c = max(0, count)
-        if c == 0 {
-            if joinRequestCounts[groupId] != nil { joinRequestCounts[groupId] = nil }
-        } else if joinRequestCounts[groupId] != c {
-            joinRequestCounts[groupId] = c
-        }
+        badgeState.setJoinCount(groupId: groupId, count)
+        publish()
+    }
+
+    // MARK: Seen events (a screen reports what the user is looking at)
+
+    /// The Account screen is on screen with a successfully loaded friend-request
+    /// list (`ids` = requester ids). Marks them seen; a later new id re-raises.
+    func friendRequestsViewed(ids: [String]) {
+        badgeState.markFriendRequestsSeen(Set(ids))
+        publish()
+    }
+
+    /// The owner has a group's Join requests list on screen, successfully loaded.
+    func joinRequestsViewed(groupId: String, pendingCount: Int, newestRequestAt: String?) {
+        badgeState.markJoinRequestsSeen(groupId: groupId, pendingCount: pendingCount,
+                                        newestRequestAt: newestRequestAt)
+        publish()
+    }
+
+    /// Recomputes the published unseen counts from the reducer and persists it.
+    func publish() {
+        let friends = badgeState.unseenFriendRequestCount
+        let joins = badgeState.unseenJoinCounts
+        if friends != pendingFriendRequestCount { pendingFriendRequestCount = friends }
+        if joins != joinRequestCounts { joinRequestCounts = joins }
+        persistBadgeState()
+    }
+
+    func noteUnreadCount(_ n: Int) {
+        guard badgeState.unreadConversations != n else { return }
+        badgeState.unreadConversations = n
+        persistBadgeState()
     }
 
     /// Sign-out: drop everything and invalidate in-flight refreshes.
-    func clear() {
+    /// Also wipes the persisted state for the signed-out user.
+    func clear(forUserId userId: String? = nil) {
         generation += 1
         cancellables.removeAll()
         chatVM = nil
+        contactsProven = false
+        wipePersistedBadgeState(forUserId: userId ?? activeUserId)
+        activeUserId = nil
+        badgeState = BadgeState()
         pendingFriendRequestCount = 0
         joinRequestCounts = [:]
         lastForegroundRefresh = .distantPast
@@ -165,6 +225,7 @@ final class BadgeCountsStore: ObservableObject {
         for r in rows where r.pendingCount > 0 { out[r.groupId] = r.pendingCount }
         return out
     }
+
 
     /// nil on any failure (the caller then keeps its last known value).
     private static func attempt<T>(_ body: () async throws -> T) async -> T? {

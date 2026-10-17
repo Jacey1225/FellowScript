@@ -200,6 +200,9 @@ struct NotificationSettingsView: View {
             .padding(.horizontal, 20)
             .padding(.top, Theme.spacingMD)
             .padding(.bottom, 150)
+            // Readable column on wide (iPad) sheets; a no-op at phone widths.
+            .frame(maxWidth: 560)
+            .frame(maxWidth: .infinity)
         }
         .warmBloomBackground()
         .navigationTitle("Notifications")

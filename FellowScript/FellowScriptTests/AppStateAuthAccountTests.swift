@@ -696,6 +696,13 @@ final class ThrowingTestDataService: DataServiceProtocol {
         return pendingFriendRequestCountResult
     }
 
+    /// BadgeCountsStore reads requester ids now; this fixture derives stable
+    /// ids from the count seam so count-based tests keep working.
+    func fetchPendingFriendRequestIds(userId: String) async throws -> [String] {
+        let n = try await fetchPendingFriendRequestCount(userId: userId)
+        return (0..<max(0, n)).map { "test-requester-\($0)" }
+    }
+
     func fetchPendingJoinSummary(userId: String) async throws -> [FSJoinRequestSummaryRow] {
         pendingJoinSummaryCallCount += 1
         if let pendingSummaryDelayNanoseconds { try await Task.sleep(nanoseconds: pendingSummaryDelayNanoseconds) }
