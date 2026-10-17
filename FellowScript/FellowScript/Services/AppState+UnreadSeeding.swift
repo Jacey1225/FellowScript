@@ -6,6 +6,10 @@
 // as unread. On the first SUCCESSFUL contacts load for a user (never on a failed
 // load or a cache-only render) every conversation that has no marker gets one
 // set to its current lastMessageAt, and the seed point is persisted per user.
+// Seeding applies only when the device holds NO read markers at all (fresh install,
+// reinstall, new device). A user who already has markers (an upgrader; markers have
+// been persisted in UserDefaults since build 47) keeps real unread state for
+// never-opened conversations.
 // A conversation that shows up later with no marker is unread only if its newest
 // message postdates the seed point (see AppState.hasUnread).
 
@@ -22,13 +26,14 @@ extension AppState {
         return parseFlexibleISO8601(raw)
     }
 
-    /// Seeds markers + the seed point once per user. `contacts` must come from a
-    /// proven successful load. Existing markers are never overwritten. Returns
+    /// Seeds markers + the seed point once per user, and only when no read marker
+    /// exists yet. `contacts` must come from a proven successful load. Returns
     /// true when seeding happened.
     @discardableResult
     func seedUnreadBaselineIfNeeded(contacts: [FSContact]) -> Bool {
         guard let uid = currentUser?.user_id, !uid.isEmpty,
-              UserDefaults.standard.string(forKey: Self.unreadSeedKey(uid)) == nil else { return false }
+              UserDefaults.standard.string(forKey: Self.unreadSeedKey(uid)) == nil,
+              lastReadTimestamps.isEmpty else { return false }
 
         var timestamps = lastReadTimestamps
         var newest: (raw: String, date: Date)?

@@ -37,9 +37,11 @@ final class ChatUnreadBadgeRegressionTests: XCTestCase {
         // sibling fs_user_id/fs_username/fs_email keys.
         savedLastReadData = UserDefaults.standard.data(forKey: lastReadDefaultsKey)
         UserDefaults.standard.removeObject(forKey: lastReadDefaultsKey)
+        UserDefaults.standard.removeObject(forKey: seedDefaultsKey)
     }
 
     override func tearDown() {
+        UserDefaults.standard.removeObject(forKey: seedDefaultsKey)
         if let savedLastReadData {
             UserDefaults.standard.set(savedLastReadData, forKey: lastReadDefaultsKey)
         } else {
@@ -50,16 +52,23 @@ final class ChatUnreadBadgeRegressionTests: XCTestCase {
 
     // MARK: - Fixtures
 
+    /// Task 20261016-notification-badges-logic: unread now requires a known
+    /// current user and a known, different sender, so the shared fixture
+    /// signs in "user-1" and contacts default to a message from "other-user".
     private func makeAppState() -> AppState {
-        AppState(service: MockDataService.shared)
+        let appState = AppState(service: MockDataService.shared)
+        appState.currentUser = FSUser(user_id: "user-1", username: "me", email: "me@example.com")
+        return appState
     }
 
-    private func friend(id: String = "friend-1", lastMessageAt: String, lastMessageSenderId: String? = nil) -> FSContact {
+    private let seedDefaultsKey = "fs_last_read_seed_user-1"
+
+    private func friend(id: String = "friend-1", lastMessageAt: String, lastMessageSenderId: String? = "other-user") -> FSContact {
         FSContact(id: id, name: "Alice", type: .friend, lastMessageAt: lastMessageAt,
                   lastMessageSenderId: lastMessageSenderId)
     }
 
-    private func group(id: String = "group-1", lastMessageAt: String, lastMessageSenderId: String? = nil) -> FSContact {
+    private func group(id: String = "group-1", lastMessageAt: String, lastMessageSenderId: String? = "other-user") -> FSContact {
         FSContact(id: id, name: "Bible Study", type: .group, lastMessageAt: lastMessageAt,
                   lastMessageSenderId: lastMessageSenderId)
     }
@@ -316,21 +325,34 @@ final class ChatUnreadBadgeRegressionTests: XCTestCase {
                        "a genuinely newer message from another participant must still badge, even right after the user's own message was correctly suppressed")
     }
 
-    /// Q27 (propagate missing data, don't fabricate): a contact whose
-    /// sender is unknown (nil -- a cached contact predating this field, or a
-    /// fetch that couldn't resolve a last message) must fall back to the
-    /// existing timestamp-only behavior rather than being assumed "mine" or
-    /// "not mine."
-    func test_hasUnread_fallsBackToTimestampOnly_whenSenderIsUnknown() {
+    /// Q27 (throw-not-fabricate), UPDATED by task
+    /// 20261016-notification-badges-logic: a contact whose sender is unknown
+    /// (nil -- a cached contact predating the field, or a last message that
+    /// could not be decoded) is NEVER unread. It used to fall through to the
+    /// timestamp comparison, which guessed "from someone else". Applies with a
+    /// stale marker and with no marker at all.
+    func test_hasUnread_false_whenSenderIsUnknown_neverGuessed() {
         let appState = makeAppState()
-        appState.currentUser = FSUser(user_id: "user-1", username: "me", email: "me@example.com")
 
         let atOpen = friend(lastMessageAt: "2026-09-20T10:00:00Z", lastMessageSenderId: "friend-1")
         appState.markRead(atOpen)
 
         let unknownSenderNewer = friend(lastMessageAt: "2026-09-20T10:05:00Z", lastMessageSenderId: nil)
-        XCTAssertTrue(appState.hasUnread(unknownSenderNewer),
-                      "an unknown sender must fall back to the existing timestamp-vs-marker comparison, not be assumed self-authored")
+        XCTAssertFalse(appState.hasUnread(unknownSenderNewer),
+                       "an unknown sender must not be guessed as someone else's message")
+
+        let unknownSenderNeverOpened = friend(id: "friend-no-marker", lastMessageAt: "2026-09-20T10:05:00Z",
+                                              lastMessageSenderId: nil)
+        XCTAssertFalse(appState.hasUnread(unknownSenderNeverOpened))
+    }
+
+    /// Without a signed-in user the self/other question cannot be answered, so
+    /// nothing is unread (no fabricated badge during sign-out or a half-restored session).
+    func test_hasUnread_false_whenThereIsNoCurrentUser() {
+        let appState = makeAppState()
+        appState.currentUser = nil
+
+        XCTAssertFalse(appState.hasUnread(friend(lastMessageAt: "2026-09-20T10:00:00Z")))
     }
 
     /// A conversation that has ONLY EVER had messages from the current user
@@ -386,7 +408,7 @@ final class ChatUnreadBadgeRegressionTests: XCTestCase {
         // A different (or the same) account signing back in on this device
         // must see the conversation as unread again, not silently
         // "pre-read" from the previous session's marker.
-        let secondSession = makeAppState()
+        let secondSession = makeAppState()   // signs in user-1 again; no markers, no seed
         XCTAssertTrue(secondSession.hasUnread(contact),
                        "signOut() must wipe this device's last-read markers so a new sign-in never inherits a previous account's read state for a colliding conversation id")
     }

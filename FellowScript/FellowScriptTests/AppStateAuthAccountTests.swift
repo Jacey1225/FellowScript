@@ -673,7 +673,34 @@ final class ThrowingTestDataService: DataServiceProtocol {
             try await Task.sleep(nanoseconds: fetchContactsDelayNanoseconds)
         }
         if let fetchContactsError { throw fetchContactsError }
+        if let fetchContactsResult { return (fetchContactsResult, [:]) }
         return try await MockDataService.shared.fetchContacts(userId: userId)
+    }
+
+    // Task 20261016-notification-badges-logic (testing step 4): exact contacts
+    // fixture, plus seams for the two badge-summary reads BadgeCountsStore uses.
+    var fetchContactsResult: [FSContact]?
+
+    var pendingFriendRequestCountResult: Int = 0
+    var pendingFriendRequestCountError: Error?
+    var pendingJoinSummaryResult: [FSJoinRequestSummaryRow] = []
+    var pendingJoinSummaryError: Error?
+    var pendingSummaryDelayNanoseconds: UInt64?
+    private(set) var pendingFriendRequestCountCallCount = 0
+    private(set) var pendingJoinSummaryCallCount = 0
+
+    func fetchPendingFriendRequestCount(userId: String) async throws -> Int {
+        pendingFriendRequestCountCallCount += 1
+        if let pendingSummaryDelayNanoseconds { try await Task.sleep(nanoseconds: pendingSummaryDelayNanoseconds) }
+        if let pendingFriendRequestCountError { throw pendingFriendRequestCountError }
+        return pendingFriendRequestCountResult
+    }
+
+    func fetchPendingJoinSummary(userId: String) async throws -> [FSJoinRequestSummaryRow] {
+        pendingJoinSummaryCallCount += 1
+        if let pendingSummaryDelayNanoseconds { try await Task.sleep(nanoseconds: pendingSummaryDelayNanoseconds) }
+        if let pendingJoinSummaryError { throw pendingJoinSummaryError }
+        return pendingJoinSummaryResult
     }
 
     // Controllable (task 20260904-compliance-security-fixes testing gate):

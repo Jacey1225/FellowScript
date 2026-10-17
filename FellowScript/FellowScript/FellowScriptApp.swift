@@ -284,9 +284,6 @@ struct FellowScriptApp: App {
                 appState.requestPushNotifications()
                 // Task 20261002-shared-foundation: re-read capabilities (throttled).
                 appState.refreshCapabilities()
-                // Task 20261016-notification-badges-logic: refresh unread and
-                // friend / join request badges on every foreground (throttled).
-                appState.refreshBadgesOnForeground()
                 // Task 20260916-call-background-persistence: resume local
                 // video (if it was on and the call is still actually
                 // connected) now that the app is foreground again. No-ops
@@ -296,6 +293,9 @@ struct FellowScriptApp: App {
                 #endif
                 // Task 20261009-discussion-rooms: one immediate room heartbeat (no-op outside a room).
                 CallController.shared.rooms.appForegrounded()
+                // Task 20261016-notification-badges-logic: refresh unread and
+                // friend / join request badges on every foreground (throttled).
+                appState.refreshBadgesOnForeground()
             } else if phase == .background {
                 // Task 20260914-dictation-tts: per the intake spec's resolved
                 // open question, backgrounding stops dictation rather than
