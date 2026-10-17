@@ -1335,6 +1335,15 @@ def start_scheduler() -> None:
     scheduler.add_job(fire_due_announcement_reminders, "interval",
                       seconds=ANNOUNCEMENT_REMINDER_POLL_INTERVAL_SECONDS,
                       id="announcement_reminder_fire", replace_existing=True)
+    # Recurring re-push of published announcements (task 20261016-announcement-
+    # recurring-reminder): atomic claim on next_repeat_at; no-op while
+    # ANNOUNCEMENT_REPEAT_ENABLED is False.
+    from backend.interactions.announcement_repeat import (
+        ANNOUNCEMENT_REPEAT_POLL_INTERVAL_SECONDS, fire_due_announcement_repeats,
+    )
+    scheduler.add_job(fire_due_announcement_repeats, "interval",
+                      seconds=ANNOUNCEMENT_REPEAT_POLL_INTERVAL_SECONDS,
+                      id="announcement_repeat_fire", replace_existing=True)
     scheduler.add_job(fire_due_user_reminders, "cron", minute="*/5",
                       id="user_reminders_fire", replace_existing=True)
     # Non-recurring session auto-delete (task 20260921-session-auto-delete-
