@@ -23,11 +23,11 @@ from zoneinfo import ZoneInfo, available_timezones
 
 # Feature flag (Configuration Philosophy: flag new functionality by default).
 # A plain module constant, matching the neighbouring announcement modules
-# (ANNOUNCEMENTS_ENABLED / ANNOUNCEMENT_PUSH_ENABLED). Ships OFF; flipping it
-# is Jacey's decision, never a pipeline gate's. While False: create/update
-# reject a non-null repeat (422), the job claims and sends nothing, and the
-# announcement payload has no repeat keys.
-ANNOUNCEMENT_REPEAT_ENABLED = False
+# (ANNOUNCEMENTS_ENABLED / ANNOUNCEMENT_PUSH_ENABLED). Turned ON by Jacey's
+# explicit decision on 2026-10-17 ("Flag on and ship everything"). While False:
+# create/update reject a non-null repeat (422), the job claims and sends
+# nothing, and the announcement payload has no repeat keys.
+ANNOUNCEMENT_REPEAT_ENABLED = True
 
 REPEAT_INTERVALS = frozenset({"daily", "weekly", "monthly"})
 # Lifetime cap on repeat pushes for one announcement.

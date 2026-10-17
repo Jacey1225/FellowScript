@@ -402,8 +402,9 @@ def test_db_check(w):
 
 # ── C. flag off ─────────────────────────────────────────────────────────────
 def test_flag_off(client):
-    print("\n== C. flag off (shipped default) ==")
-    check("ANNOUNCEMENT_REPEAT_ENABLED ships False", rules.ANNOUNCEMENT_REPEAT_ENABLED is False)
+    print("\n== C. flag off (forced; shipped default is now True) ==")
+    check("ANNOUNCEMENT_REPEAT_ENABLED ships True (enabled by Jacey 2026-10-17)", rules.ANNOUNCEMENT_REPEAT_ENABLED is True)
+    rules.ANNOUNCEMENT_REPEAT_ENABLED = False
     w = World(client)
     try:
         r = w.raw_post(repeat_interval="daily")
@@ -1081,7 +1082,7 @@ def main():
                     w.close()
                 test_scheduler_registered()
             finally:
-                rules.ANNOUNCEMENT_REPEAT_ENABLED = False
+                rules.ANNOUNCEMENT_REPEAT_ENABLED = True
     finally:
         push_module.send_push = _real_send_push
 
