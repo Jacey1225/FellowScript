@@ -124,7 +124,10 @@ describe('screen share ON', () => {
     const { container, screenShare } = mount({
       features: F, screenShare: share({ remoteShare: { sharerId: 'f1', tileId: 7 } }),
     });
-    expect(screen.getByText('Fran is sharing')).toBeTruthy();
+    expect(screen.getByRole('region', { name: 'Fran is sharing' })).toBeTruthy();
+    // The "<Name> is sharing" heading is gone; only the accessible name remains.
+    expect(screen.queryByRole('heading')).toBeNull();
+    expect(screen.queryByText('Fran is sharing')).toBeNull();
     expect(container.querySelector('video.call-share-video')).toBeTruthy();
     expect(container.querySelector('.call-bubbles-row')).toBeTruthy();
     openMenu();
@@ -137,13 +140,13 @@ describe('screen share ON', () => {
 
   test('unknown sharer never shows a raw id', () => {
     const { container } = mount({ features: F, screenShare: share({ remoteShare: { sharerId: 'raw-uuid-999', tileId: 1 } }) });
-    expect(screen.getByText('Someone is sharing')).toBeTruthy();
+    expect(screen.getByRole('region', { name: 'Someone is sharing' })).toBeTruthy();
     expect(container.textContent).not.toContain('raw-uuid-999');
   });
 
   test('receiving a share works even with the send flag off (receive always on)', () => {
     mount({ features: {}, screenShare: share({ remoteShare: { sharerId: 'f1', tileId: 7 } }) });
-    expect(screen.getByText('Fran is sharing')).toBeTruthy();
+    expect(screen.getByRole('region', { name: 'Fran is sharing' })).toBeTruthy();
   });
 
   test('share wins content area over Prompts; Prompts return when share stops', () => {

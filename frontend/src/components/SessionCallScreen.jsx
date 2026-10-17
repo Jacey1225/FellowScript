@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   AudioMutedOutlined, AudioOutlined, BellOutlined, CloseOutlined, CommentOutlined,
-  DesktopOutlined, EllipsisOutlined, PhoneOutlined, RollbackOutlined, TeamOutlined,
+  DesktopOutlined, EllipsisOutlined, FullscreenOutlined, PhoneOutlined, RollbackOutlined, TeamOutlined,
   UserOutlined, VideoCameraOutlined,
 } from '@ant-design/icons';
 import { useCapabilities } from '../hooks/useCapabilities.js';
@@ -10,6 +10,7 @@ import {
   SCREEN_SHARE_FLAG, callLayoutMode, canOfferScreenShare, contentAreaKind, isDisplayCaptureSupported,
 } from '../lib/screenShareState.js';
 import { ROOM_COPY, isBusy, roomsAvailable, showsBackToMain, stateRoomName } from '../lib/callRoomState.js';
+import { MaxBackButton, useEscapeToClose } from './CallMaximize.jsx';
 import SessionRoomsModal from './SessionRoomsModal.jsx';
 import { TRANSCRIPT_CONSENT_COPY } from '../lib/transcriptRelay.js';
 
@@ -76,17 +77,43 @@ function SharePill({ onStop }) {
   );
 }
 
-// Incoming share: aspect-fit tile (letterboxed) under a "<Name> is sharing"
-// header. Closing a share you receive is not possible.
-function RemoteShareTile({ tileId, name, bindVideoTile }) {
+// Incoming share: the bare aspect-fit tile (no heading; the region keeps its
+// "<Name> is sharing" accessible name). The whole tile is a button that
+// enlarges it to fill the stage; the same <video> element stays mounted across
+// both states so the Chime tile never needs rebinding. Closing a share you
+// receive is not possible.
+function RemoteShareTile({ tileId, name, bindVideoTile, maximized, onToggle }) {
   const refCallback = useCallback(el => {
     if (el && bindVideoTile) bindVideoTile(tileId, el);
   }, [tileId, bindVideoTile]);
+  const surfaceRef = useRef(null);
+  const wasMax = useRef(false);
+  // Returning focus: the surface button persists, so hand focus back to it.
+  useEffect(() => {
+    if (wasMax.current && !maximized) surfaceRef.current?.focus();
+    wasMax.current = maximized;
+  }, [maximized]);
+  useEscapeToClose(maximized, onToggle);
   return (
-    <section className="call-share-area" role="region" aria-label={`${name} is sharing`}>
-      <h3 className="call-share-header">{name} is sharing</h3>
+    <section
+      className={`call-share-area${maximized ? ' call-share-max' : ''}`}
+      role="region"
+      aria-label={maximized ? 'Enlarged shared screen' : `${name} is sharing`}
+    >
       <div className="call-share-frame">
-        <video ref={refCallback} autoPlay playsInline muted className="call-share-video" aria-label={`${name}'s shared screen`} />
+        {maximized && <MaxBackButton onClick={onToggle} />}
+        <button
+          ref={surfaceRef}
+          type="button"
+          className="call-share-surface"
+          aria-label={maximized ? 'Return to everyone' : `Enlarge ${name}'s shared screen`}
+          onClick={onToggle}
+        >
+          <video ref={refCallback} autoPlay playsInline muted className="call-share-video" aria-hidden="true" />
+          {!maximized && (
+            <span className="call-max-glyph" aria-hidden="true"><FullscreenOutlined /></span>
+          )}
+        </button>
       </div>
     </section>
   );
@@ -152,6 +179,7 @@ export default function SessionCallScreen({
   const [promptsOpen, setPromptsOpen] = useState(false);
   const [roomsOpen, setRoomsOpen] = useState(false);
   const [liveText, setLiveText] = useState('');
+  const [shareMaximized, setShareMaximized] = useState(false);
   const btnRef = useRef(null);
   const menuRef = useRef(null);
 
@@ -187,14 +215,26 @@ export default function SessionCallScreen({
   const topRow = callLayoutMode({ promptsOpen, hasShare: !!remoteShare || sharingSelf }) === 'row';
   const sharerName = remoteShare ? (nameOf(remoteShare.sharerId) || 'Someone') : null;
 
-  // Announce share start/stop to assistive tech.
+  // The enlarged share only exists while the share tile is what the content
+  // area shows (derived, so a stopped share never leaves a blank stage).
+  const shareMax = shareMaximized && contentKind === 'remoteShare';
+
+  // Announce share start/stop to assistive tech. If the share was enlarged when
+  // it ended, the view has already returned to everyone: say so.
   const prevSharer = useRef(null);
+  const prevShareMax = useRef(false);
   useEffect(() => {
     const prev = prevSharer.current;
     prevSharer.current = sharerName;
     if (sharerName && !prev) setLiveText(`${sharerName} started sharing`);
-    else if (!sharerName && prev) setLiveText(`${prev} stopped sharing`);
+    else if (!sharerName && prev) {
+      setLiveText(`${prev} stopped sharing${prevShareMax.current ? '. Back to everyone.' : ''}`);
+    }
   }, [sharerName]);
+  // Declared after the effect above so it still sees the previous render's value there.
+  useEffect(() => { prevShareMax.current = shareMax; }, [shareMax]);
+  // Drop the stored flag once the share is gone so it cannot leak into the next share.
+  useEffect(() => { if (!remoteShare && shareMaximized) setShareMaximized(false); }, [remoteShare, shareMaximized]);
 
   const closeMenu = useCallback((returnFocus = true) => {
     setMenuOpen(false);
@@ -338,7 +378,13 @@ export default function SessionCallScreen({
         </div>
         {/* A share wins the content area over Prompts; Prompts return when it stops. */}
         {contentKind === 'remoteShare' && (
-          <RemoteShareTile tileId={remoteShare.tileId} name={sharerName} bindVideoTile={bindVideoTile} />
+          <RemoteShareTile
+            tileId={remoteShare.tileId}
+            name={sharerName}
+            bindVideoTile={bindVideoTile}
+            maximized={shareMax}
+            onToggle={() => setShareMaximized(m => !m)}
+          />
         )}
         {contentKind === 'selfShare' && <YourSharePanel onStop={screenShare.stop} />}
         {contentKind === 'prompts' && <PromptsPanel prompts={prompts} onClose={() => setPromptsOpen(false)} />}
