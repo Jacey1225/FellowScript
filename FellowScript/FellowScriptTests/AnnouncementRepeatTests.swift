@@ -95,4 +95,26 @@ final class AnnouncementRepeatTests: XCTestCase {
         XCTAssertNil(m("Server error 500"))
         XCTAssertNil(AnnouncementRepeatError.message(for: URLError(.notConnectedToInternet)))
     }
+
+    func testEditingOtherFieldsWithExistingRepeatSendsNoRepeatKeys() throws {
+        let a = try decode(#","repeat_interval":"weekly","repeat_active":true,"repeat_tz":"America/New_York""#)
+        let orig = AnnouncementRepeatDraft(from: a)
+        var draft = FSAnnouncementDraft(title: "new title", description: "b")
+        draft.repeatChange = orig.change(from: orig)
+        let o = draft.jsonObject
+        XCTAssertNil(o["repeat_interval"]); XCTAssertNil(o["repeat_tz"]); XCTAssertNil(o["repeat_until"])
+    }
+
+    func testMemberIndicatorExposesOnlyCadenceAndEndDate() throws {
+        let t = try decode(#","repeat_interval":"weekly","repeat_until":"2026-11-30T23:59:00+00:00","repeat_active":true,"repeat_tz":"America/New_York""#).repeatIndicator ?? ""
+        XCTAssertFalse(t.contains("America/New_York"))
+        XCTAssertTrue(t.hasPrefix("Repeats weekly, until "))
+    }
+
+    func testOffDraftStillEncodesTitleAndDescription() {
+        var draft = FSAnnouncementDraft(title: "a", description: "b")
+        draft.repeatChange = AnnouncementRepeatDraft.off.change(from: .off)
+        XCTAssertEqual(draft.jsonObject["title"] as? String, "a")
+        XCTAssertEqual(draft.jsonObject["description"] as? String, "b")
+    }
 }
