@@ -474,12 +474,13 @@ final class ScreenSharePillAndStopWiringPinTests: XCTestCase {
         let session = try shareSource("FellowScript/Chat/ChimeCallView+Session.swift")
         guard let sb = session.range(of: "@ViewBuilder private var shareBody: some View {"),
               let own = session.range(of: "if sharerIsSelf {", range: sb.upperBound..<session.endIndex),
-              let tile = session.range(of: "ChimeVideoTileView(tileId: tile", range: sb.upperBound..<session.endIndex) else {
+              let tile = session.range(of: "CallShareTile(tileId: tile", range: sb.upperBound..<session.endIndex) else {
             return XCTFail("shareBody markers")
         }
         XCTAssertLessThan(own.lowerBound, tile.lowerBound, "self check precedes the tile render")
         XCTAssertTrue(session.contains("YourShareBody(onStop: onStopSharing)"))
-        XCTAssertTrue(session.contains("sharerIsSelf ? \"You are sharing\""))
+        // The "<Name> is sharing"/"You are sharing" heading was removed (task 20261016-call-maximize-tiles).
+        XCTAssertFalse(session.contains("sharerIsSelf ? \"You are sharing\""))
     }
 
     func test_pickerLauncher_isPreselectedToOurExtension_andHidesTheMicToggle() throws {
