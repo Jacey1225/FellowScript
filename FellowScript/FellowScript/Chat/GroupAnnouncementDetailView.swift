@@ -41,6 +41,7 @@ struct GroupAnnouncementDetailView: View {
                         .accessibilityAddTraits(.isHeader)
                     Text("By \(item.creator_username ?? "a member"), \(FSAnnouncementDates.display(item.publish_at))")
                         .font(.inter(Theme.fontXS)).foregroundColor(theme.readableText.opacity(theme == .none ? 0.6 : 0.75))
+                    AnnouncementRepeatIndicator(item: item, color: theme.readableText.opacity(theme == .none ? 0.75 : 0.85), font: .inter(Theme.fontXS))
                     Text(item.description)
                         .font(.inter(Theme.fontSM)).foregroundColor(theme.readableText.opacity(0.9))
                         .fixedSize(horizontal: false, vertical: true)

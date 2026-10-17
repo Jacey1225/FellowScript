@@ -51,6 +51,15 @@ struct FSGroupAnnouncement: Codable, Identifiable, Equatable {
     /// Optional free-text place (flag announcement_location). Omitted by the server
     /// while the flag is off and in old payloads.
     var location:         String? = nil
+    // Recurring reminders (task 20261016-announcement-recurring-reminder). All
+    // keys are omitted by the server while its flag is off; nil = no repeat.
+    var repeat_interval:   String? = nil
+    var repeat_until:      String? = nil
+    var repeat_ends_at:    String? = nil
+    var repeat_auto_stops: Bool?   = nil
+    var repeat_active:     Bool?   = nil
+    /// Editors only (prefill); the device zone is always re-sent on change.
+    var repeat_tz:         String? = nil
 }
 
 struct FSAnnouncementLink: Codable, Equatable, Identifiable {
@@ -138,6 +147,8 @@ struct FSAnnouncementDraft {
     var paymentHandles: Change<[FSPaymentHandle]> = .unchanged
     var capacity: Change<Int> = .unchanged
     var location: Change<String> = .unchanged
+    /// Recurring reminders; `.unchanged` omits every repeat key.
+    var repeatChange: AnnouncementRepeatChange = .unchanged
     var includePublishAt: Bool = true
     var publishAt: Date?        // nil + includePublishAt on create = publish now
 
@@ -199,6 +210,7 @@ struct FSAnnouncementDraft {
         case .clear: o["location"] = NSNull()
         case .set(let s): o["location"] = s
         }
+        repeatChange.merge(into: &o)
         if includePublishAt {
             o["publish_at"] = publishAt.map(FSAnnouncementDates.string(from:)) ?? NSNull()
         }
