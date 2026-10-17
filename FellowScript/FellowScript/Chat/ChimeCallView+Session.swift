@@ -204,15 +204,30 @@ struct CallBubbleView: View {
     /// Row layout puts the name in the cell above the circle; field layout
     /// floats it over the circle's top edge. Both render it above the circle.
     var floatingName = false
+    /// Tap-to-enlarge (task 20261016-call-maximize-tiles). Only bubbles with
+    /// video are buttons; audio-only and camera-off bubbles stay plain labels.
+    var onEnlarge: ((CallBubbleItem) -> Void)? = nil
 
     var body: some View {
+        if let onEnlarge, CallFocusLogic.isMaximizable(item) {
+            Button { onEnlarge(item) } label: { content.contentShape(Rectangle()) }
+                .buttonStyle(.plain)
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel(item.accessibilityText)
+                .accessibilityHint(CallFocusLogic.enlargeHint)
+        } else {
+            content
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel(item.accessibilityText)
+        }
+    }
+
+    private var content: some View {
         VStack(spacing: 4) {
             nameLabel
             circle
         }
         .frame(width: diameter + 12)
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(item.accessibilityText)
     }
 
     @ViewBuilder private var nameLabel: some View {
@@ -260,6 +275,9 @@ struct CallBubbleRow: View {
     let diameter: CGFloat
     let vertical: Bool
     let manager: ChimeCallManager
+    var onEnlarge: ((CallBubbleItem) -> Void)? = nil
+    /// Optional head-of-strip cell (the share chip while a camera is enlarged).
+    var leading: AnyView? = nil
 
     var body: some View {
         ScrollView(vertical ? .vertical : .horizontal, showsIndicators: false) {
@@ -275,7 +293,8 @@ struct CallBubbleRow: View {
     }
 
     @ViewBuilder private var cells: some View {
-        ForEach(items) { CallBubbleView(item: $0, diameter: diameter, manager: manager) }
+        if let leading { leading }
+        ForEach(items) { CallBubbleView(item: $0, diameter: diameter, manager: manager, onEnlarge: onEnlarge) }
     }
 }
 
@@ -289,6 +308,8 @@ struct CallContentArea: View {
     let manager: ChimeCallManager
     var sharerIsSelf: Bool = false
     var onStopSharing: () -> Void = {}
+    /// Tap on the incoming share enlarges it (task 20261016-call-maximize-tiles).
+    var onEnlargeShare: () -> Void = {}
     let isCompact: Bool
     let onClosePrompts: () -> Void
     /// Rooms inherit the main session's prompts; "From the main session" shows in a room.
@@ -298,7 +319,9 @@ struct CallContentArea: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            header
+            // The share tile shows bare: no "<Name> is sharing" heading (it keeps an
+            // accessible name instead, see CallShareTile). Prompts keep their header.
+            if kind != .share { header }
             Group {
                 switch kind {
                 case .share:   shareBody
@@ -322,17 +345,11 @@ struct CallContentArea: View {
     private var header: some View {
         HStack {
             // The prompts panel has no visible title (the container carries the
-            // "Discussion prompts" VoiceOver label instead); share keeps its header.
+            // "Discussion prompts" VoiceOver label instead); the share has no header at all.
             if kind == .prompts, let note = inheritedNote {
                 Text(note)
                     .font(.interScaled(Theme.fontXS, relativeTo: .caption))
                     .foregroundColor(Theme.textPrimary.opacity(0.85))
-            }
-            if kind == .share {
-                Text(sharerIsSelf ? "You are sharing" : "\(sharerName ?? "Someone") is sharing")
-                    .font(.playfair(Theme.fontHeading)).foregroundColor(Theme.goldLight)
-                    .lineLimit(2)
-                    .accessibilityAddTraits(.isHeader)
             }
             Spacer()
             if kind == .prompts {
@@ -353,9 +370,7 @@ struct CallContentArea: View {
             // Never render my own share back at me (hall of mirrors).
             YourShareBody(onStop: onStopSharing)
         } else if let tile = shareTileId {
-            ChimeVideoTileView(tileId: tile, manager: manager, contentMode: .scaleAspectFit)
-                .background(Color.black)
-                .accessibilityLabel("Shared screen")
+            CallShareTile(tileId: tile, sharerName: sharerName, manager: manager, onEnlarge: onEnlargeShare)
         }
     }
 

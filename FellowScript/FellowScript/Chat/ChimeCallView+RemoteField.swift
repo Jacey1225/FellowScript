@@ -28,6 +28,8 @@ extension ChimeCallView {
         /// Task 20261009-session-ui-redesign: resolved display name for a tile
         /// (nil = unknown, no label). Name floats above the circle's top edge.
         var nameForTile: (Int) -> String? = { _ in nil }
+        /// Tap a camera tile to enlarge it (task 20261016-call-maximize-tiles).
+        var onEnlarge: (Int) -> Void = { _ in }
 
         @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -93,8 +95,14 @@ extension ChimeCallView {
 
         // MARK: - Tile rendering (design-notes.md §5, no new colors/shapes)
 
-        @ViewBuilder
         private func tile(id: Int) -> some View {
+            Button { onEnlarge(id) } label: { tileBody(id: id).contentShape(Circle()) }
+                .buttonStyle(.plain)
+                .accessibilityHint(CallFocusLogic.enlargeHint)
+        }
+
+        @ViewBuilder
+        private func tileBody(id: Int) -> some View {
             ChimeVideoTileView(tileId: id, manager: manager)
                 .frame(width: diameter, height: diameter)
                 .background(Color.white.opacity(0.04))

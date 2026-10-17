@@ -893,11 +893,11 @@ struct ChimeVideoTileView: UIViewRepresentable {
 
 struct ChimeCallView: View {
     @ObservedObject private var call    = CallController.shared
-    @ObservedObject private var manager = CallController.shared.manager
+    @ObservedObject var manager = CallController.shared.manager
     // Task 20261009-discussion-rooms: room-switch state (see CallRoomController).
     @ObservedObject private var rooms   = CallController.shared.rooms
     @Environment(\.fsCapabilities) private var capabilities
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.accessibilityReduceMotion) var reduceMotion
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     // Task 20260916-call-ring-members: presents RingMembersSheet (see
     // RingMembersSheet.swift), the member picker + multi-select ring action
@@ -910,10 +910,12 @@ struct ChimeCallView: View {
     @State private var onScreen = true
     // Step 5: bumped to present the system broadcast picker (see BroadcastPickerLauncher).
     @State private var pickerTrigger = 0
-    @StateObject private var names = CallParticipantNames()
+    @StateObject var names = CallParticipantNames()
+    // Task 20261016-call-maximize-tiles: the enlarged tile (local only, see ChimeCallView+Focus.swift).
+    @State var focus: CallFocus?
     @ScaledMetric(relativeTo: .body) private var dockScale: CGFloat = 64
 
-    private let layoutSpring = Animation.spring(response: 0.45, dampingFraction: 0.86)
+    let layoutSpring = Animation.spring(response: 0.45, dampingFraction: 0.86)
 
     var body: some View {
         ZStack {
@@ -942,8 +944,13 @@ struct ChimeCallView: View {
             // Announce share start/stop to VoiceOver.
             let who = manager.sharerIsSelf ? "You" : (sharerName ?? "Someone")
             if old == nil, new != nil { AccessibilityNotification.Announcement("\(who) started sharing").post() }
-            if old != nil, new == nil { AccessibilityNotification.Announcement("Sharing stopped").post() }
+            // An enlarged share announces its own warm "stopped sharing" line instead.
+            if old != nil, new == nil, focus?.tile != .share { AccessibilityNotification.Announcement("Sharing stopped").post() }
         }
+        .onChange(of: activeFocus) { _, _ in reconcileFocus() }
+        // Room switches and leaving the screen clear the enlarged tile silently.
+        .onChange(of: rooms.state) { _, _ in focus = nil }
+        .onDisappear { focus = nil }
         .sheet(isPresented: $showRingSheet) {
             if let session = call.session, let service = call.service {
                 RingMembersSheet(session: session, service: service, userId: call.userId)
@@ -958,7 +965,7 @@ struct ChimeCallView: View {
 
     // MARK: Derived state
 
-    private var layoutMode: CallLayoutMode {
+    var layoutMode: CallLayoutMode {
         CallLayoutState.mode(promptsOpen: interactions.promptsOpen, contentShareTileId: manager.contentShareTileId)
     }
 
@@ -966,7 +973,7 @@ struct ChimeCallView: View {
         CallLayoutState.contentKind(promptsOpen: interactions.promptsOpen, contentShareTileId: manager.contentShareTileId)
     }
 
-    private var bubbleItems: [CallBubbleItem] {
+    var bubbleItems: [CallBubbleItem] {
         CallBubbleRoster.items(
             localTileId: manager.localTileId, cameraOn: manager.isCameraOn,
             remoteTileIds: manager.remoteTileIds, tileAttendee: manager.tileAttendeeIds,
@@ -978,7 +985,7 @@ struct ChimeCallView: View {
         manager.tileAttendeeIds[tile].flatMap { manager.externalUserIds[$0] }.flatMap { names.names[$0] }
     }
 
-    private var sharerName: String? {
+    var sharerName: String? {
         manager.contentShare.sharerAttendeeId
             .flatMap { manager.externalUserIds[$0] }.flatMap { names.names[$0] }
     }
@@ -998,7 +1005,7 @@ struct ChimeCallView: View {
 
             ZStack(alignment: .bottom) {
                 Group {
-                    if layoutMode == .field {
+                    if showsFieldLayout {
                         fieldLayout(geo: geo, dockZone: dockZone)
                             .transition(.opacity)
                     } else {
@@ -1008,7 +1015,7 @@ struct ChimeCallView: View {
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .motionAwareAnimation(reduceMotion ? .easeInOut(duration: 0.15) : layoutSpring,
-                                      value: layoutMode, reduceMotion: false)
+                                      value: showsFieldLayout, reduceMotion: false)
 
                 dockStack(geo: geo, dockSize: dockSize, compact: compact)
             }
@@ -1020,7 +1027,8 @@ struct ChimeCallView: View {
             Group {
                 if !manager.remoteTileIds.isEmpty {
                     RemoteCameraField(manager: manager, containerSize: geo.size,
-                                      nameForTile: { displayName(forTile: $0) })
+                                      nameForTile: { displayName(forTile: $0) },
+                                      onEnlarge: { focusCamera(id: "tile-\($0)") })
                 } else if !manager.remoteAttendeeIds.isEmpty {
                     audioParticipantsView
                 } else {
@@ -1032,8 +1040,13 @@ struct ChimeCallView: View {
             if manager.isCameraOn, let localId = manager.localTileId {
                 // Self-PiP stays its own fixed, non-randomized element (design-notes.md
                 // §2) -- raised to clear the new dock.
-                ChimeVideoTileView(tileId: localId, manager: manager)
-                    .frame(width: 96, height: 128)
+                Button { focusCamera(id: "self") } label: {
+                    ChimeVideoTileView(tileId: localId, manager: manager)
+                        .frame(width: 96, height: 128)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .frame(width: 96, height: 128)
                     .background(Theme.bgPage.opacity(0.72))
                     .clipShape(RoundedRectangle(cornerRadius: 8))
                     .overlay(RoundedRectangle(cornerRadius: 8).stroke(Theme.gold.opacity(0.40), lineWidth: 1))
@@ -1041,6 +1054,7 @@ struct ChimeCallView: View {
                     .frame(maxWidth: .infinity, alignment: .trailing)
                     .padding(.trailing, 16).padding(.bottom, dockZone + 8)
                     .accessibilityLabel("You, video on")
+                    .accessibilityHint(CallFocusLogic.enlargeHint)
             }
             VStack { headerStack(topPadding: 56); Spacer() }
         }
@@ -1052,22 +1066,25 @@ struct ChimeCallView: View {
             kind: contentKind, prompts: CallPromptsSource.prompts(from: call.session),
             shareTileId: manager.contentShareTileId, sharerName: sharerName, manager: manager,
             sharerIsSelf: manager.sharerIsSelf, onStopSharing: { manager.stopScreenShare() },
+            onEnlargeShare: { focusShare() },
             isCompact: compact, onClosePrompts: { withMotionAwareAnimation(layoutSpring, reduceMotion: reduceMotion) { interactions.closePrompts() } },
             inheritedNote: rooms.state.showsBackToMain ? "From the main session" : nil)
         return VStack(spacing: 0) {
             headerStack(topPadding: compact || landscape ? 16 : 56)
             if landscape {
                 HStack(alignment: .top, spacing: 12) {
-                    CallBubbleRow(items: bubbleItems, diameter: bubbleDiameter, vertical: true, manager: manager)
+                    bubbleStrip(diameter: bubbleDiameter, vertical: true)
                         .frame(width: max(geo.size.width * 0.30, bubbleDiameter + 40))
-                    contentArea.padding(.trailing, 16)
+                    contentOrFocus(contentArea).padding(.trailing, 16)
                 }
                 .padding(.leading, 16)
                 .padding(.bottom, dockZone)
             } else {
-                CallBubbleRow(items: bubbleItems, diameter: bubbleDiameter, vertical: false, manager: manager)
-                    .padding(.vertical, 4)
-                contentArea
+                if showsPortraitStrip(height: geo.size.height, diameter: bubbleDiameter, compact: compact, dockZone: dockZone) {
+                    bubbleStrip(diameter: bubbleDiameter, vertical: false)
+                        .padding(.vertical, 4)
+                }
+                contentOrFocus(contentArea)
                     .padding(.horizontal, 16).padding(.top, 8).padding(.bottom, dockZone)
             }
         }
