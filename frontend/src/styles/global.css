@@ -2668,8 +2668,7 @@ body {
 .call-share-dot { width: 8px; height: 8px; border-radius: 50%; background: #fff; animation: callShareDot 1.2s cubic-bezier(0.45,0,0.55,1) infinite alternate; }
 @keyframes callShareDot { from { opacity: 1; } to { opacity: 0.35; } }
 .call-share-area { display: flex; flex-direction: column; border-radius: var(--radius-md); background: rgba(18,13,5,0.8); border: 1px solid rgba(255,198,26,0.35); overflow: hidden; animation: callPop 0.2s cubic-bezier(0.4,0,0.2,1) both; }
-.call-share-header { margin: 0; min-height: 44px; display: flex; align-items: center; padding: 0 0.75rem; font-family: 'Inter', sans-serif; font-size: 0.78rem; font-weight: 600; color: var(--gold); }
-.call-share-frame { background: #000; aspect-ratio: 16 / 9; width: 100%; display: flex; align-items: center; justify-content: center; }
+.call-share-frame { position: relative; background: #000; aspect-ratio: 16 / 9; width: 100%; display: flex; align-items: center; justify-content: center; }
 .call-share-video { width: 100%; height: 100%; object-fit: contain; background: #000; }
 .call-share-self { align-items: center; gap: 0.7rem; padding: 1.1rem 1rem; text-align: center; }
 .call-share-self-icon { font-size: 2.2rem; color: rgba(176,120,32,0.9); }
@@ -2695,6 +2694,25 @@ body {
 .call-room-try { border: none; background: rgba(240,174,64,0.92); color: #1E1812; }
 .call-room-end { background: none; border: 1px solid rgba(224,96,96,0.7); color: #ffb4ab; }
 .call-share-pill:focus-visible, .call-share-stop-btn:focus-visible, .call-notice-close:focus-visible, .call-backmain-pill:focus-visible, .call-room-try:focus-visible, .call-room-end:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+
+/* Task 20261016-call-maximize-tiles: tap-to-maximize camera tiles + incoming share.
+   Scrim fills match the existing 0.72 glass capsule; 44px hit areas; gold focus ring. */
+.call-share-surface, .call-vtile-btn, .call-max-surface { display: block; position: relative; width: 100%; padding: 0; margin: 0; border: none; background: none; cursor: pointer; color: inherit; font: inherit; }
+.call-share-surface { height: 100%; }
+.call-vtile-btn { border-radius: 6px; overflow: hidden; }
+.call-vtile-away { aspect-ratio: 16 / 9; border-radius: 6px; background: #000; opacity: 0.6; }
+.call-max-glyph { position: absolute; top: 6px; right: 6px; width: 44px; height: 44px; display: inline-flex; align-items: center; justify-content: center; border-radius: 50%; background: rgba(18,13,5,0.72); color: var(--gold); font-size: 18px; pointer-events: none; }
+.call-max-back { position: absolute; top: 6px; right: 6px; z-index: 2; display: inline-flex; align-items: center; gap: 0.4rem; min-height: 44px; min-width: 44px; padding: 0 0.9rem; border-radius: var(--radius-pill); cursor: pointer; background: rgba(18,13,5,0.72); color: rgba(242,242,242,0.95); border: 1px solid rgba(255,198,26,0.45); font-family: 'Inter', sans-serif; font-size: 0.75rem; font-weight: 600; }
+.call-max-back:hover { background: rgba(18,13,5,0.9); }
+.call-max-name { position: absolute; left: 8px; bottom: 8px; z-index: 2; max-width: calc(100% - 16px); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 4px 10px; border-radius: var(--radius-pill); background: rgba(18,13,5,0.72); color: rgba(242,242,242,0.95); font-family: 'Inter', sans-serif; font-size: 0.72rem; pointer-events: none; }
+.call-max-overlay { position: absolute; inset: 0; z-index: 30; display: flex; background: #000; border-radius: var(--radius-md); border: 1px solid rgba(255,198,26,0.35); overflow: hidden; animation: callMaxIn 0.28s cubic-bezier(0.4,0,0.2,1) both; }
+.call-max-overlay .call-max-surface { height: 100%; }
+.call-share-max { flex: 1 1 auto; animation: callMaxIn 0.28s cubic-bezier(0.4,0,0.2,1) both; }
+.call-share-max .call-share-frame { aspect-ratio: auto; flex: 1 1 auto; min-height: min(60vh, 420px); }
+@keyframes callMaxIn { from { opacity: 0; transform: scale(0.96); } to { opacity: 1; transform: none; } }
+@keyframes callMaxFade { from { opacity: 0; } to { opacity: 1; } }
+.call-share-surface:focus-visible, .call-vtile-btn:focus-visible, .call-max-surface:focus-visible, .call-max-back:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+.call-share-surface:focus-visible, .call-max-surface:focus-visible { outline-offset: -3px; }
 
 /* Rooms dialog (reuses the .ring-modal list/row styles) */
 .rooms-modal .rooms-body { display: flex; flex-direction: column; gap: 0.7rem; font-family: 'Inter', sans-serif; color: rgba(242,242,242,0.92); }
@@ -2741,6 +2759,7 @@ body {
   .call-prompts { animation: none; }
   .call-menu { animation: none; }
   .call-share-dot, .call-share-area { animation: none; }
+  .call-max-overlay, .call-share-max { animation: callMaxFade 0.15s linear both; }
   .rooms-modal .rooms-seg { transition: none; }
 }
 

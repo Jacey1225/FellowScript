@@ -5,6 +5,7 @@ import { API } from '../config.js';
 import { useJoinWindow } from '../hooks/useJoinWindow.js';
 import { isSessionHost, JOIN_GRACE_MINUTES } from '../lib/sessionAccess.js';
 import RingMembersModal from './RingMembersModal.jsx';
+import { MaxBackButton, useEscapeToClose } from './CallMaximize.jsx';
 import SessionCallScreen, { resolveName } from './SessionCallScreen.jsx';
 
 const { Text } = Typography;
@@ -71,7 +72,7 @@ function IconBtn({ icon, onClick, title, danger, active }) {
   );
 }
 
-function VideoTile({ tileId, isLocal, bindVideoTile }) {
+function VideoTile({ tileId, isLocal, bindVideoTile, fit = 'cover', fill = false }) {
   const refCallback = useCallback(el => {
     if (el) bindVideoTile(tileId, el);
   }, [tileId, bindVideoTile]);
@@ -88,8 +89,9 @@ function VideoTile({ tileId, isLocal, bindVideoTile }) {
         background: '#000',
         display: 'block',
         transform: isLocal ? 'scaleX(-1)' : 'none',
-        aspectRatio: '16 / 9',
-        objectFit: 'cover',
+        aspectRatio: fill ? undefined : '16 / 9',
+        height: fill ? '100%' : undefined,
+        objectFit: fit,
       }}
     />
   );
@@ -219,8 +221,43 @@ export function ActiveCard({ session, user, ringCandidates, friends, muted = fal
   const talkingName = talkingUserId ? nameOf(talkingUserId) : null;
   const canRing = Array.isArray(ringCandidates) && ringCandidates.length > 0;
 
+  // Tap-to-maximize for camera tiles (task 20261016-call-maximize-tiles). Local
+  // only; holds a snapshot of the tile so a leave / camera-off can be announced
+  // after the tile itself is gone. The tile's <video> moves into the overlay
+  // (one binding at a time) and back to the strip on return.
+  const cardRef = useRef(null);
+  const [maxTile, setMaxTile] = useState(null);
+  const [liveText, setLiveText] = useState('');
+  const restoreFocusId = useRef(null);
+  const tileName = tile => (tile.isLocal ? 'You' : (tile.userId ? nameOf(tile.userId) : null));
+  const closeMax = () => { restoreFocusId.current = maxTile?.tileId ?? null; setMaxTile(null); };
+  useEscapeToClose(!!maxTile, closeMax);
+  useEffect(() => {
+    if (maxTile || restoreFocusId.current == null) return;
+    const id = restoreFocusId.current;
+    restoreFocusId.current = null;
+    cardRef.current?.querySelector(`[data-call-tile="${id}"]`)?.focus();
+  }, [maxTile]);
+  // Auto-restore: the enlarged tile vanished (participant left, camera off,
+  // own camera off) or the call ended. Cleared in the render pass that sees it.
+  const maxStillThere = !!maxTile && isJoined && videoTiles.some(t => t.tileId === maxTile.tileId);
+  useEffect(() => {
+    if (!maxTile || maxStillThere) return;
+    setMaxTile(null);
+    if (!isJoined) { setLiveText(''); return; }
+    const gone = !maxTile.isLocal && maxTile.userId && !(session.participants || []).includes(maxTile.userId);
+    const who = maxTile.isLocal ? null : maxTile.name;
+    if (maxTile.isLocal) setLiveText('Your camera is off. Back to everyone.');
+    else if (who && gone) setLiveText(`${who} left the call. Back to everyone.`);
+    else if (who) setLiveText(`${who} turned their camera off. Back to everyone.`);
+    else setLiveText('Back to everyone.');
+  }, [maxTile, maxStillThere, isJoined, session.participants]);
+  const shownMax = maxStillThere ? videoTiles.find(t => t.tileId === maxTile.tileId) : null;
+  const shownMaxName = shownMax ? tileName(shownMax) : null;
+
   return (
-    <div className={isJoined ? 'call-card' : undefined} style={isJoined ? { ...islandStyle, background: undefined } : islandStyle}>
+    <div ref={cardRef} className={isJoined ? 'call-card' : undefined} style={isJoined ? { ...islandStyle, background: undefined, position: 'relative' } : islandStyle}>
+      {isJoined && <div className="visually-hidden" role="status" aria-live="polite">{liveText}</div>}
       <div style={{ padding: '0.6rem 0.75rem' }}>
 
         {/* Row 1: title + controls */}
@@ -332,14 +369,39 @@ export function ActiveCard({ session, user, ringCandidates, friends, muted = fal
             gap: '0.3rem',
             marginBottom: '0.4rem',
           }}>
-            {videoTiles.map(tile => (
-              <VideoTile
-                key={tile.tileId}
-                tileId={tile.tileId}
-                isLocal={tile.isLocal}
-                bindVideoTile={bindVideoTile}
-              />
-            ))}
+            {videoTiles.map(tile => {
+              const name = tileName(tile);
+              const label = tile.isLocal ? 'Enlarge your video' : (name ? `Enlarge ${name}'s video` : 'Enlarge video');
+              if (maxTile?.tileId === tile.tileId) {
+                return <div key={tile.tileId} className="call-vtile-away" aria-hidden="true" />;
+              }
+              return (
+                <button
+                  key={tile.tileId}
+                  type="button"
+                  className="call-vtile-btn"
+                  data-call-tile={tile.tileId}
+                  aria-label={label}
+                  onClick={() => setMaxTile({ tileId: tile.tileId, isLocal: !!tile.isLocal, userId: tile.userId || '', name: name && !tile.isLocal ? name : null })}
+                >
+                  <VideoTile tileId={tile.tileId} isLocal={tile.isLocal} bindVideoTile={bindVideoTile} />
+                </button>
+              );
+            })}
+          </div>
+        )}
+
+        {shownMax && (
+          <div
+            className="call-max-overlay"
+            role="region"
+            aria-label={shownMaxName && !shownMax.isLocal ? `${shownMaxName}, enlarged video` : (shownMax.isLocal ? 'Your enlarged video' : 'Enlarged video')}
+          >
+            <MaxBackButton onClick={closeMax} />
+            <button type="button" className="call-max-surface" aria-label="Return to everyone" onClick={closeMax}>
+              <VideoTile tileId={shownMax.tileId} isLocal={shownMax.isLocal} bindVideoTile={bindVideoTile} fit="contain" fill />
+            </button>
+            {shownMaxName && <span className="call-max-name">{shownMaxName}</span>}
           </div>
         )}
 
