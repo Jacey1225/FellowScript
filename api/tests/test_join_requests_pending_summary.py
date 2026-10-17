@@ -1,7 +1,7 @@
 """Tests for GET /join-requests/{user_id}/pending-summary (notification badge source).
 
 Properties proved:
-  1. Owner gets {groups: [{group_id, pending_count}]} for owned groups with pending
+  1. Owner gets {groups: [{group_id, pending_count, newest_request_at}]} for owned groups with pending
      requests only; groups with none pending are omitted; decided requests do not count.
   2. Counts only: no applicant ids, usernames or notes in the body.
   3. A non-owner member, a non-member and a user with no owned groups get an empty
@@ -16,6 +16,10 @@ Scratch DB only (asserts SHOW port = 55432 first).
 Run with: cd api && ../.venv/bin/python tests/test_join_requests_pending_summary.py
 """
 import _pathfix  # noqa: F401
+
+import re
+
+from backend.interactions import paging
 
 import _jrq_common as J
 from _jrq_common import call, check, make_listing, make_user, req, sql
@@ -43,8 +47,17 @@ def test_owner_counts(cli):
     got = {x["group_id"]: x["pending_count"] for x in r.json()["groups"]}
     check("g1 counts only the pending one, g2 counts one, g3 omitted", got == {g1: 1, g2: 1}, got)
     check("body is counts only",
-          all(set(x) == {"group_id", "pending_count"} for x in r.json()["groups"]) and set(r.json()) == {"groups"},
+          all(set(x) == {"group_id", "pending_count", "newest_request_at"} for x in r.json()["groups"]) and set(r.json()) == {"groups"},
           r.json())
+    stamp = {x["group_id"]: x["newest_request_at"] for x in r.json()["groups"]}
+    fmt = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6}Z$")
+    check("newest_request_at is UTC ISO with microseconds and Z", all(fmt.match(v) for v in stamp.values()), stamp)
+    expect = sql("SELECT max(created_at) FROM group_join_requests WHERE group_id = %s AND status = 'pending'", (g1,))[0][0]
+    check("g1 newest_request_at equals max pending created_at", stamp[g1] == paging.format_timestamp(expect), (stamp[g1], expect))
+    # newest moves forward with a later pending request and ignores decided ones
+    sql("UPDATE group_join_requests SET created_at = created_at + INTERVAL '1 hour' WHERE group_id = %s AND user_id = %s", (g1, b))
+    again = {x["group_id"]: x["newest_request_at"] for x in summary(cli, owner).json()["groups"]}
+    check("denied request does not move newest_request_at", again[g1] == stamp[g1], (again, stamp))
     text = r.text
     check("no applicant ids in the body", a not in text and b not in text and c not in text, text)
     # not owner

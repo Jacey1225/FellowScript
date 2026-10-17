@@ -3,7 +3,7 @@
   POST /join-requests/{user_id}/listings/{public_id}/request            ask to join a published listing
   GET  /join-requests/{user_id}/requests[?public_id=]                   my requests (optionally for one listing)
   POST /join-requests/{user_id}/requests/{request_id}/withdraw          withdraw my pending request
-  GET  /join-requests/{user_id}/pending-summary                         owner: pending counts per owned group (badges)
+  GET  /join-requests/{user_id}/pending-summary                         owner: pending count + newest_request_at per owned group
   GET  /join-requests/{user_id}/groups/{group_id}/requests              owner: pending list, pending_count, accepting_requests
   POST /join-requests/{user_id}/groups/{group_id}/requests/{request_id}/approve
   POST /join-requests/{user_id}/groups/{group_id}/requests/{request_id}/deny        body {block_reapply}
@@ -150,7 +150,8 @@ def withdraw_request(
 def pending_summary(
     request: Request, user_id: str, _: str = Depends(require_match("user_id")),
 ) -> dict:
-    """Badge source: ``{groups: [{group_id, pending_count}]}`` for groups the
+    """Badge source: ``{groups: [{group_id, pending_count,
+    newest_request_at}]}`` (newest pending request time, UTC ISO Z) for groups the
     caller owns and may approve for; others are never listed. With the
     ``join_requests`` flag off for the caller this is an empty list (200), so a
     badge refresh never errors on a rollback."""

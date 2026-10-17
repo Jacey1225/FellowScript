@@ -425,11 +425,14 @@ class JoinRequestsManager(DBManager):
     def pending_summary(self) -> dict:
         """Pending counts per group the caller may approve for (same predicate as
         ``approver_ok``: creator, current member, not suspended). Counts only, no
-        applicant data; groups with nothing pending are omitted."""
+        applicant data; groups with nothing pending are omitted. ``newest_request_at`` is
+        the latest ``created_at`` among the group's pending requests (UTC ISO with
+        microseconds and a trailing Z, same format as the rest of this module); it
+        lets a client tell "new since I last looked" from "same count"."""
         if not self.user_id:
             return {"groups": []}
         self.cur.execute(
-            "SELECT g._id::text, count(*) FROM groups g "
+            "SELECT g._id::text, count(*), max(r.created_at) FROM groups g "
             "JOIN users u ON u._id = g.creator_id "
             "JOIN group_join_requests r ON r.group_id = g._id AND r.status = 'pending' "
             "WHERE g.creator_id = %s AND u.suspended_at IS NULL "
@@ -437,7 +440,10 @@ class JoinRequestsManager(DBManager):
             "GROUP BY g._id ORDER BY g._id LIMIT %s",
             (self.user_id, self.user_id, MAX_OWNER_LIST_ROWS),
         )
-        return {"groups": [{"group_id": gid, "pending_count": int(n)} for gid, n in self.cur.fetchall()]}
+        return {"groups": [
+            {"group_id": gid, "pending_count": int(n), "newest_request_at": paging.format_timestamp(newest)}
+            for gid, n, newest in self.cur.fetchall()
+        ]}
 
     @_transactional
     def approve(self, group_id: str, request_id: str) -> dict:
