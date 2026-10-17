@@ -80,10 +80,20 @@ final class StartupCoordinator: ObservableObject {
     func start(
         service: DataServiceProtocol,
         userId: String,
-        versionCheck: @escaping () async -> AppUpdateInfo? = { await VersionGateService.checkForUpdate() }
+        versionCheck: @escaping () async -> AppUpdateInfo? = { await VersionGateService.checkForUpdate() },
+        badges appState: AppState? = nil
     ) {
         guard !started else { return }
         started = true
+
+        // Task 20261016-notification-badges-logic: app-level badges. Attach
+        // before the chat load below so unread is computed the moment contacts
+        // land (no dependency on the Chat tab mounting), and load the friend /
+        // join request counts now.
+        if let appState {
+            appState.badges.attach(chatVM: chatVM)
+            appState.refreshBadgeRequests()
+        }
 
         // Runs independently of the timeout race below — if it's still in
         // flight when the timeout wins, it keeps going in the background and

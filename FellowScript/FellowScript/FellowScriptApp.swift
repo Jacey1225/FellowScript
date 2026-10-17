@@ -284,6 +284,9 @@ struct FellowScriptApp: App {
                 appState.requestPushNotifications()
                 // Task 20261002-shared-foundation: re-read capabilities (throttled).
                 appState.refreshCapabilities()
+                // Task 20261016-notification-badges-logic: refresh unread and
+                // friend / join request badges on every foreground (throttled).
+                appState.refreshBadgesOnForeground()
                 // Task 20260916-call-background-persistence: resume local
                 // video (if it was on and the call is still actually
                 // connected) now that the app is foreground again. No-ops

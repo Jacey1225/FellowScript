@@ -205,6 +205,10 @@ protocol DataServiceProtocol {
     func undoDenyJoinRequest(userId: String, groupId: String, requestId: String) async throws
     func setAcceptingJoinRequests(userId: String, groupId: String, accepting: Bool) async throws
 
+    // Badge summaries (task 20261016-notification-badges-logic) -- NetworkService+BadgeSummaries.swift.
+    func fetchPendingFriendRequestCount(userId: String) async throws -> Int
+    func fetchPendingJoinSummary(userId: String) async throws -> [FSJoinRequestSummaryRow]
+
     // Message reactions (task 20261010-chat-reactions) -- NetworkService+Reactions.swift.
     // Default implementations throw there.
     func addMessageReaction(userId: String, messageId: String, emoji: String) async throws -> ReactionSummary

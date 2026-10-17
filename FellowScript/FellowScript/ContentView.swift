@@ -224,7 +224,7 @@ struct ContentView: View {
         // reusing the previous account's already-loaded view models.
         .task {
             if appState.isAuthenticated, let uid = appState.currentUser?.user_id {
-                startup.start(service: appState.service, userId: uid)
+                startup.start(service: appState.service, userId: uid, badges: appState)
             }
         }
         .onChange(of: appState.isAuthenticated) { _, authenticated in
@@ -232,7 +232,7 @@ struct ContentView: View {
             if authenticated { appState.inviteDeferredForAuth = false }
             if authenticated { appState.releaseDeferredShareLink() }
             if authenticated, let uid = appState.currentUser?.user_id {
-                startup.start(service: appState.service, userId: uid)
+                startup.start(service: appState.service, userId: uid, badges: appState)
             } else {
                 startup.reset()
             }

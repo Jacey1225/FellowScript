@@ -119,19 +119,13 @@ struct ChatRootView: View {
         .task {
             vm.capabilities = appState.capabilities
             await vm.load(service: appState.service, userId: appState.currentUser?.user_id ?? "")
-            recomputeUnread()
         }
         // Task 20261001-chat-pagination: keep the preview gate current; the
         // next load/refresh uses it.
         .onChange(of: appState.capabilities) { _, caps in vm.capabilities = caps }
-        // Task 20260913-chat-unread-badges: whenever the friend/group list
-        // itself changes (initial load, pull-to-refresh, a new group just
-        // created, ...) or a thread elsewhere got marked read
-        // (appState.lastReadVersion), recompute the tab-bar aggregate from
-        // the current real data -- never incremented/decremented by hand.
-        .onChange(of: vm.friends) { _ in recomputeUnread() }
-        .onChange(of: vm.groups) { _ in recomputeUnread() }
-        .onChange(of: appState.lastReadVersion) { _ in recomputeUnread() }
+        // Task 20261016-notification-badges-logic: the unread aggregate is now
+        // recomputed app-wide by BadgeCountsStore (attached to this shared
+        // view model at startup), so it no longer depends on this tab.
         .onChange(of: appState.pendingChatContact) { _, target in
             // Opened from the dashboard community widget, or from a tap on a
             // session-created/session-reminder push (AppState.openSession) —
@@ -393,11 +387,7 @@ struct ChatRootView: View {
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .accessibilityLabel(
-                appState.hasUnread(contact)
-                    ? "Chat with \(contact.name), unread messages"
-                    : "Chat with \(contact.name)"
-            )
+            .accessibilityLabel(appState.rowAccessibilityLabel("Chat with \(contact.name)", contact: contact))
             Menu {
                 if contact.type == .friend {
                     Button("Remove", systemImage: "person.badge.minus", role: .destructive) {
@@ -567,11 +557,7 @@ struct ChatRootView: View {
                         // Task 20260913-chat-unread-badges: folded into this
                         // row's existing label rather than a separate
                         // accessible element for the dot glyph itself.
-                        .accessibilityLabel(
-                            appState.hasUnread(contact)
-                                ? "Chat with \(contact.name), unread messages"
-                                : "Chat with \(contact.name)"
-                        )
+                        .accessibilityLabel(appState.rowAccessibilityLabel("Chat with \(contact.name)", contact: contact))
                 }
                 .listStyle(.plain)
                 // Pull-to-refresh (task 20260831-interaction-polish-conventions)
@@ -694,9 +680,7 @@ struct ChatRootView: View {
                         contact: contact,
                         service: appState.service,
                         userId: appState.currentUser?.user_id ?? "",
-                        accessibilityText: appState.hasUnread(contact)
-                            ? "Open group: \(contact.name), unread messages"
-                            : "Open group: \(contact.name)",
+                        accessibilityText: appState.rowAccessibilityLabel("Open group: \(contact.name)", contact: contact),
                         onOpenChat: { activeContact = contact },
                         onOpenThread: { thread in
                             // ChatThreadView consumes pendingThreadOpen once
@@ -843,14 +827,6 @@ struct ChatRootView: View {
         }
     }
 
-    // Task 20260913-chat-unread-badges: the one place that recomputes the
-    // Chat tab's aggregate unread count, since this is the one view that
-    // owns both vm.friends and vm.groups together (AppState itself doesn't
-    // hold the contacts list, by design -- see AppState.swift).
-    private func recomputeUnread() {
-        appState.recomputeUnreadConversationCount(contacts: vm.friends + vm.groups)
-    }
-
     @ViewBuilder
     private func emptyState(icon: String, message: String, hint: String) -> some View {
         VStack(spacing: Theme.spacingMD) {
@@ -901,6 +877,9 @@ final class ChatViewModel: ObservableObject {
     @Published var groups:    [FSContact] = []
     @Published var agents:    [FSAgent]   = []
     @Published var isLoading  = true
+    /// Bumped only when a contacts fetch succeeds (never for the cache-first
+    /// render or a failed fetch). BadgeCountsStore seeds the unread baseline on it.
+    @Published private(set) var contactsSyncVersion = 0
     // Surfaces createGroup rejections (see ChatRootView's showAddGroup sheet)
     // instead of the previous silent `try?` no-op — backend step 8 finding #1.
     @Published var groupError: String? = nil
@@ -1044,6 +1023,7 @@ final class ChatViewModel: ObservableObject {
             // Sort each list so the conversation with the most recent message is first.
             friends = contacts.filter { $0.type == .friend }.sorted { $0.lastMessageAt > $1.lastMessageAt }
             groups  = contacts.filter { $0.type == .group  }.sorted { $0.lastMessageAt > $1.lastMessageAt }
+            contactsSyncVersion += 1
         }
         if let fetchedAgents = await agentsTask {
             agents = fetchedAgents
@@ -1216,6 +1196,7 @@ struct ContactRow: View {
                         .overlay(Circle().stroke(Theme.bgPage, lineWidth: 2))
                 }
             }
+            .overlay(alignment: .topTrailing) { JoinRequestRowDot(contact: contact, size: 10) }
             .accessibilityHidden(true)
             Text(contact.name)
                 .font(.inter(Theme.fontSM, weight: .semibold))
@@ -1267,6 +1248,7 @@ struct ContactRow: View {
                         .transition(.unreadBadge(reduceMotion: reduceMotion))
                 }
             }
+            .overlay(alignment: .topTrailing) { JoinRequestRowDot(contact: contact) }
             .accessibilityHidden(true)
 
             VStack(alignment: .leading, spacing: 3) {

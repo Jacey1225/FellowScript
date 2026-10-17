@@ -224,6 +224,8 @@ struct AccountView: View {
         .onChange(of: upgradeCenter.blockCount) { _, _ in
             Task { await vm.refreshUsage() }
         }
+        // Task 20261016-notification-badges-logic: keep the Account tab badge in step with the list.
+        .modifier(FriendRequestBadgeSync(count: vm.friendRequests.count))
         .task {
             if let user = appState.currentUser {
                 await vm.load(service: appState.service, user: user)

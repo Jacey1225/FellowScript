@@ -106,7 +106,8 @@ final class AppState: ObservableObject {
     // about the one contact being marked read, not the full friend+group set).
     @Published private(set) var lastReadVersion: Int = 0
 
-    private var lastReadTimestamps: [String: String] {
+    // Internal (not private) so AppState+UnreadSeeding.swift can seed baselines.
+    var lastReadTimestamps: [String: String] {
         get { (try? JSONDecoder().decode([String: String].self, from: storedLastReadData)) ?? [:] }
         set { storedLastReadData = (try? JSONEncoder().encode(newValue)) ?? Data() }
     }
@@ -118,30 +119,27 @@ final class AppState: ObservableObject {
     /// thread clears it, not merely the contact list loading/refreshing.
     func hasUnread(_ contact: FSContact) -> Bool {
         guard let latest = parseFlexibleISO8601(contact.lastMessageAt) else { return false }
-        // Task 20260920-chat-self-sent-unread-badge: a conversation whose
-        // newest known message was sent by the current user must never read
-        // as unread, regardless of the timestamp-vs-marker comparison below
-        // -- sending a message advances `lastMessageAt` (both via the
-        // optimistic local echo and the next fetchContacts() refresh) without
-        // ever re-triggering markRead(_:), which only fires when the thread
-        // is actually opened. Without this, leaving a thread right after
-        // sending in it would spuriously badge it as unread. Only suppresses
-        // when the sender is confidently known to be the current user (Q27:
-        // propagate missing data, don't fabricate a guess) -- a contact
-        // whose sender is unknown (nil, e.g. a cached contact predating this
-        // field, or a fetch that couldn't resolve a last message) falls
-        // through to the existing timestamp-only behavior below rather than
-        // assuming either "mine" or "not mine". This also naturally covers a
-        // conversation that has only ever had messages from the current user
-        // -- it never becomes eligible to badge until someone else actually
-        // sends into it.
-        if let senderId = contact.lastMessageSenderId, let currentUserId = currentUser?.user_id,
-           senderId == currentUserId {
-            return false
+        // Task 20261016-notification-badges-logic: unread = the newest message
+        // is confidently from someone else AND not yet opened. An unknown
+        // sender (nil: cached contact, undecodable last message) is never
+        // unread (throw-not-fabricate: do not guess), and the current user's
+        // own message never is (Task 20260920-chat-self-sent-unread-badge:
+        // sending advances lastMessageAt without re-triggering markRead).
+        // member_joined system lines never reach lastMessageAt (contact-list
+        // loads omit include_system).
+        guard let senderId = contact.lastMessageSenderId,
+              let currentUserId = currentUser?.user_id,
+              senderId != currentUserId else { return false }
+        if let lastReadRaw = lastReadTimestamps[contact.id],
+           let lastRead = parseFlexibleISO8601(lastReadRaw) {
+            return latest > lastRead
         }
-        guard let lastReadRaw = lastReadTimestamps[contact.id],
-              let lastRead = parseFlexibleISO8601(lastReadRaw) else { return true }
-        return latest > lastRead
+        // No marker. Once this user's baseline has been seeded (first
+        // successful contacts load), a conversation without a marker is
+        // unread only if its newest message postdates the seed, so a
+        // reinstall or first launch never floods old history as unread.
+        if let seed = unreadSeedDate { return latest > seed }
+        return true
     }
 
     /// Records `contact`'s thread as read as of its own latest known message
@@ -166,10 +164,19 @@ final class AppState: ObservableObject {
         unreadConversationCount = contacts.filter { hasUnread($0) }.count
     }
 
+    /// App-level badge state (task 20261016-notification-badges-logic): pending
+    /// friend requests and join-request counts, plus the refresh orchestration.
+    /// Its changes are forwarded to AppState.objectWillChange in init so every
+    /// existing `appState` observer re-renders.
+    let badges = BadgeCountsStore()
+    private var badgesForward: AnyCancellable?
+
     let service: DataServiceProtocol
 
     init(service: DataServiceProtocol = MockDataService.shared) {
         self.service = service
+        badgesForward = badges.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }
+        badges.owner = self
         restoreSession()
         pendingInviteToken = PendingInviteStore.load()
     }
@@ -366,6 +373,7 @@ final class AppState: ObservableObject {
     }
 
     func signOut() {
+        let signedOutUserId = currentUser?.user_id ?? storedUserId
         pendingNoteDraft = nil   // in-memory verse draft must not outlive the session
         clearPendingInvite()
         clearShareLinks()
@@ -383,6 +391,8 @@ final class AppState: ObservableObject {
         // previous user's read/unread state for conversation ids that
         // happen to collide (e.g. the same group id, or a mutual friend).
         storedLastReadData     = Data()
+        clearUnreadSeed(forUserId: signedOutUserId)
+        badges.clear()
         unreadConversationCount = 0
         lastReadVersion += 1
         // Wipe cached data so the next account never sees the previous user's notes,
