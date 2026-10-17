@@ -3,6 +3,7 @@
   POST /join-requests/{user_id}/listings/{public_id}/request            ask to join a published listing
   GET  /join-requests/{user_id}/requests[?public_id=]                   my requests (optionally for one listing)
   POST /join-requests/{user_id}/requests/{request_id}/withdraw          withdraw my pending request
+  GET  /join-requests/{user_id}/pending-summary                         owner: pending counts per owned group (badges)
   GET  /join-requests/{user_id}/groups/{group_id}/requests              owner: pending list, pending_count, accepting_requests
   POST /join-requests/{user_id}/groups/{group_id}/requests/{request_id}/approve
   POST /join-requests/{user_id}/groups/{group_id}/requests/{request_id}/deny        body {block_reapply}
@@ -142,6 +143,20 @@ def withdraw_request(
 ) -> dict:
     _gate(user_id)
     return _run(user_id, lambda m: m.withdraw(request_id))
+
+
+@join_requests_router.get("/{user_id}/pending-summary")
+@limiter.shared_limit(_rate("owner_read"), scope="jrq_owner_read", key_func=_user_key)
+def pending_summary(
+    request: Request, user_id: str, _: str = Depends(require_match("user_id")),
+) -> dict:
+    """Badge source: ``{groups: [{group_id, pending_count}]}`` for groups the
+    caller owns and may approve for; others are never listed. With the
+    ``join_requests`` flag off for the caller this is an empty list (200), so a
+    badge refresh never errors on a rollback."""
+    if not flags.is_enabled("join_requests", user_id):
+        return {"groups": []}
+    return _run(user_id, lambda m: m.pending_summary())
 
 
 @join_requests_router.get("/{user_id}/groups/{group_id}/requests")

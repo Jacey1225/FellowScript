@@ -597,6 +597,7 @@ Owner routes (group owner only: creator, still a member, not suspended; everyone
 
 | Method | Route | Description |
 |---|---|---|
+| GET | `/join-requests/{user_id}/pending-summary` | Badge source: `{ "groups": [{ group_id, pending_count }] }` for groups you own and may approve for, pending requests only (counts, no applicant data; groups with none are omitted). Other users get an empty list. With `join_requests` off for you it is `200 { "groups": [] }`, not a 404. Shares the owner-read rate limit. |
 | GET | `/join-requests/{user_id}/groups/{group_id}/requests` | `{ "accepting_requests": bool \| null, "pending_count", "requests": [{ id, applicant_user_id, username, profile_photo_url, note, created_at }] }`, newest first. `accepting_requests` is null when the group has no listing. `applicant_user_id` is for Report and Block only. |
 | POST | `/join-requests/{user_id}/groups/{group_id}/requests/{request_id}/approve` | Adds the applicant to the group in one transaction (member cap and blocks re-checked). `{ "status": "approved", "already_member" }`; repeating is `200`. `409 group_full` leaves the request pending; `409 no_longer_available` (blocked or suspended applicant; the request is expired); `409 not_pending`. |
 | POST | `/join-requests/{user_id}/groups/{group_id}/requests/{request_id}/deny` | Body `{ "block_reapply"?: bool }`. `{ "status": "denied", "undo_seconds" }`. The applicant is not notified and cannot ask again for the cooldown (14 days), or ever with `block_reapply`. |

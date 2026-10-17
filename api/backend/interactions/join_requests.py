@@ -422,6 +422,24 @@ class JoinRequestsManager(DBManager):
         }
 
     @_transactional
+    def pending_summary(self) -> dict:
+        """Pending counts per group the caller may approve for (same predicate as
+        ``approver_ok``: creator, current member, not suspended). Counts only, no
+        applicant data; groups with nothing pending are omitted."""
+        if not self.user_id:
+            return {"groups": []}
+        self.cur.execute(
+            "SELECT g._id::text, count(*) FROM groups g "
+            "JOIN users u ON u._id = g.creator_id "
+            "JOIN group_join_requests r ON r.group_id = g._id AND r.status = 'pending' "
+            "WHERE g.creator_id = %s AND u.suspended_at IS NULL "
+            "AND %s = ANY(COALESCE(g.users, '{}')) "
+            "GROUP BY g._id ORDER BY g._id LIMIT %s",
+            (self.user_id, self.user_id, MAX_OWNER_LIST_ROWS),
+        )
+        return {"groups": [{"group_id": gid, "pending_count": int(n)} for gid, n in self.cur.fetchall()]}
+
+    @_transactional
     def approve(self, group_id: str, request_id: str) -> dict:
         """Approve: one transaction, groups row then request row (see module doc).
 
