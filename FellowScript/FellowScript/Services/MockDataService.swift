@@ -946,7 +946,23 @@ final class MockDataService: DataServiceProtocol {
     func removeProfilePhoto(userId: String) async throws {}
 
     // Friends
-    func fetchFriendRequests(userId: String) async throws -> [(id: String, username: String, profile_photo_url: String?)] { [] }
+    // UI-TESTING-BADGES (additive test-only launch argument, task
+    // 20261016-ipad-parity-and-persistent-badges): serves 3 pending friend
+    // requests and 2 pending join requests for the mock group so the Account /
+    // Chat badges can be screenshotted on the iPad rail and header with no
+    // network. Without the argument the pre-existing behaviour is unchanged
+    // (no friend requests; the join summary throws -> badges preserve state).
+    private static var isUITestingBadges: Bool {
+        ProcessInfo.processInfo.arguments.contains("UI-TESTING-BADGES")
+    }
+    func fetchFriendRequests(userId: String) async throws -> [(id: String, username: String, profile_photo_url: String?)] {
+        guard Self.isUITestingBadges else { return [] }
+        return [("mock-requester-1", "ruth", nil), ("mock-requester-2", "caleb", nil), ("mock-requester-3", "naomi", nil)]
+    }
+    func fetchPendingJoinSummary(userId: String) async throws -> [FSJoinRequestSummaryRow] {
+        guard Self.isUITestingBadges else { throw FSJoinRequestsError.failed("Join requests aren't available right now.") }
+        return [FSJoinRequestSummaryRow(groupId: "group-abc", pendingCount: 2, newestRequestAt: "2026-10-16T22:41:07.123456Z")]
+    }
     func sendFriendRequest(userId: String, username: String) async throws {}
     func acceptFriendRequest(userId: String, username: String) async throws {}
     func removeFriend(userId: String, friendId: String) async throws {}
