@@ -18,8 +18,9 @@ from backend.auth.dependencies import require_match
 from backend.interactions.announcement_banner import generate_announcement_banner_upload_policy
 from backend.interactions.announcements import (
     ANNOUNCEMENTS_ENABLED, AnnouncementForbidden, AnnouncementFull, AnnouncementNotFound,
-    AnnouncementsManager, parse_publish_at,
+    AnnouncementsManager, REPEAT_KEYS, parse_publish_at,
 )
+from backend.interactions.announcement_repeat_rules import RepeatLimitReached
 from backend.interactions.announcement_notifier import notify_on_create
 from backend.interactions.attachments import AttachmentConfigError
 from backend.moderation.content_filter import ContentRejected, check_clean, rejection_message
@@ -73,6 +74,10 @@ class AnnouncementCreateRequest(BaseModel):
     payment_handles: list[PaymentHandleIn] | None = None
     capacity: StrictInt | None = None
     location: str | None = None  # flag-gated (422 while off); blank/null = none
+    # Recurring reminder (ANNOUNCEMENT_REPEAT_ENABLED; a non-null interval is 422 while off).
+    repeat_interval: str | None = None  # "daily" | "weekly" | "monthly"; null = no repeat
+    repeat_until: str | None = None  # ISO-8601 with offset, after publish_at, <= 365d ahead
+    repeat_tz: str | None = None  # IANA name the wall-clock time repeats in; null = UTC
 
 
 class AnnouncementUpdateRequest(BaseModel):
@@ -90,6 +95,9 @@ class AnnouncementUpdateRequest(BaseModel):
     payment_handles: list[PaymentHandleIn] | None = None
     capacity: StrictInt | None = None  # null clears (drops RSVPs)
     location: str | None = None  # null / blank clears
+    repeat_interval: str | None = None  # null clears the whole repeat; editable after publish
+    repeat_until: str | None = None  # null removes the end date
+    repeat_tz: str | None = None  # null = UTC
 
 
 class BannerUploadUrlRequest(BaseModel):
@@ -149,7 +157,8 @@ async def create_announcement(
     """Create an announcement.
 
     Raises: 403 not a member / foreign banner key / free limit reached (body
-    is the limits dict, as for notes); 422 validation or content filter.
+    is the limits dict, as for notes); 409 repeat limit reached; 422 validation
+    or content filter.
     """
     manager = _open(user_id, group_id)
     try:
@@ -163,11 +172,15 @@ async def create_announcement(
             created = manager.create_announcement(body.title, body.description, body.banner_key, publish_at,
                                                 title_color=body.title_color,
                                                 title_font=body.title_font, bg_theme=body.bg_theme,
-                                                extra=_extra_fields({k: getattr(body, k) for k in body.model_fields_set}))
+                                                extra=_extra_fields({k: getattr(body, k) for k in body.model_fields_set}),
+                                                repeat={k: getattr(body, k) for k in REPEAT_KEYS
+                                                        if k in body.model_fields_set})
             # Group push runs after the response (off the request path); the
             # notifier claims atomically and never raises.
             background_tasks.add_task(notify_on_create, created["id"])
             return created
+        except RepeatLimitReached as e:
+            raise HTTPException(status_code=409, detail=str(e))
         except ValueError as e:
             raise HTTPException(status_code=422, detail=str(e))
         except AnnouncementForbidden:
@@ -212,7 +225,8 @@ async def update_announcement(
     """Edit (creator or group creator). Not counted against the free limit.
 
     Raises: 403 not a member / not allowed / foreign banner key; 404;
-    422 validation, content filter, or publish_at change after publishing.
+    409 repeat limit reached; 422 validation, content filter, or publish_at
+    change after publishing.
     """
     fields = {k: getattr(body, k) for k in body.model_fields_set}
     fields.update(_extra_fields(fields))
@@ -228,6 +242,8 @@ async def update_announcement(
             raise HTTPException(status_code=404, detail="Announcement not found")
         except AnnouncementForbidden:
             raise HTTPException(status_code=403, detail="Not allowed to edit this announcement")
+        except RepeatLimitReached as e:
+            raise HTTPException(status_code=409, detail=str(e))
         except ValueError as e:
             raise HTTPException(status_code=422, detail=str(e))
     finally:

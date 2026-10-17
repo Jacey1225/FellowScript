@@ -44,6 +44,7 @@ struct GroupAnnouncementFormView: View {
     @State private var titleFont: String?
     @State private var bgTheme: String?
     @State private var extras: AnnouncementExtrasDraft
+    @State private var repeatDraft: AnnouncementRepeatDraft
     @State private var extrasBusy = false
     @State private var showStock = false
     @State private var pendingStock: UIImage?
@@ -69,6 +70,7 @@ struct GroupAnnouncementFormView: View {
         _titleFont = State(initialValue: editing?.title_font)
         _bgTheme = State(initialValue: editing?.bg_theme)
         _extras = State(initialValue: AnnouncementExtrasDraft(from: editing))
+        _repeatDraft = State(initialValue: AnnouncementRepeatDraft(from: editing))
         let scheduled = editing.map { !$0.published } ?? false
         _schedule = State(initialValue: scheduled)
         _when = State(initialValue: editing.flatMap { FSAnnouncementDates.parse($0.publish_at) } ?? Date().addingTimeInterval(3600))
@@ -79,7 +81,10 @@ struct GroupAnnouncementFormView: View {
     private var canReschedule: Bool { editing == nil || editing?.published == false }
     private var trimmedTitle: String { title.trimmingCharacters(in: .whitespacesAndNewlines) }
     private var trimmedText: String { text.trimmingCharacters(in: .whitespacesAndNewlines) }
-    private var canSubmit: Bool { !trimmedTitle.isEmpty && !trimmedText.isEmpty && !saving && !bannerBusy && !extrasBusy && extrasError == nil }
+    private var canSubmit: Bool { !trimmedTitle.isEmpty && !trimmedText.isEmpty && !saving && !bannerBusy && !extrasBusy && extrasError == nil && repeatError == nil }
+    /// First post time for the repeat end-date rule (publish time, or now once live).
+    private var repeatBase: Date { canReschedule && schedule ? when : Date() }
+    private var repeatError: String? { repeatDraft.blockingError(base: repeatBase) }
     /// Server-gated controls: hidden (and never sent) while their flag is off.
     private var fontsOn: Bool { capabilities.isEnabled(AnnouncementTitleFont.flagName) }
     private var themesOn: Bool { capabilities.isEnabled(AnnouncementBgTheme.flagName) }
@@ -103,6 +108,12 @@ struct GroupAnnouncementFormView: View {
                         titleColorField
                         messageField
                         if canReschedule { publishField }
+                        // Only authors/editors ever see this sheet; a repeat can be set
+                        // or cleared even after publish (publish time stays locked).
+                        AnnouncementRepeatSection(draft: $repeatDraft, base: repeatBase, saving: saving) { dirty = true; error = nil }
+                        if let repeatError {
+                            Text(repeatError).font(.inter(Theme.fontXS)).foregroundColor(Theme.error)
+                        }
                         if extrasOn {
                             AnnouncementExtrasSection(
                                 extras: $extras, linksOn: linksOn, galleryOn: galleryOn, paymentsOn: paymentsOn, rsvpOn: rsvpOn, locationOn: locationOn,
@@ -454,6 +465,7 @@ struct GroupAnnouncementFormView: View {
         if extrasOn {
             extras.apply(to: &draft, original: editing, links: linksOn, gallery: galleryOn, payments: paymentsOn, rsvp: rsvpOn, location: locationOn)
         }
+        draft.repeatChange = repeatDraft.change(from: AnnouncementRepeatDraft(from: editing))
         if schedule { draft.publishAt = when }
         else if isEditing { draft.publishAt = Date() }   // update rejects a null publish_at
         do {
@@ -463,6 +475,8 @@ struct GroupAnnouncementFormView: View {
             gateHit = true
         } catch {
             if vm.removedFromGroup { return }
+            // Repeat rejections (flag off 422, limits 409, 403): warm line, sheet state kept.
+            if let warm = AnnouncementRepeatError.message(for: error) { self.error = warm; return }
             let msg = (error as? LocalizedError)?.errorDescription
             if case AppError.networkError = error, let msg, !msg.isEmpty, msg != "Server error 500" {
                 self.error = msg.count < 140 ? msg : "That didn't save. Please try again."

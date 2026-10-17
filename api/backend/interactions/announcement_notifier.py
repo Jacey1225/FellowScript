@@ -138,8 +138,10 @@ def _over_cap(db: DBManager, group_id: str) -> bool:
     db.cur.execute(
         "SELECT count(*) FROM group_announcements WHERE group_id = %s AND ("
         " push_sent_at > now() - make_interval(secs => %s)"
-        " OR creation_push_sent_at > now() - make_interval(secs => %s))",
-        (group_id, ANNOUNCEMENT_PUSH_CAP_WINDOW_SECONDS, ANNOUNCEMENT_PUSH_CAP_WINDOW_SECONDS),
+        " OR creation_push_sent_at > now() - make_interval(secs => %s)"
+        " OR last_repeat_push_at > now() - make_interval(secs => %s))",
+        (group_id, ANNOUNCEMENT_PUSH_CAP_WINDOW_SECONDS, ANNOUNCEMENT_PUSH_CAP_WINDOW_SECONDS,
+         ANNOUNCEMENT_PUSH_CAP_WINDOW_SECONDS),
     )
     return db.cur.fetchone()[0] > ANNOUNCEMENT_PUSH_GROUP_HOURLY_CAP
 

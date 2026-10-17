@@ -14,11 +14,13 @@ never returned. Errors are raised, never defaulted.
 
 import json
 import re
+import uuid
 from datetime import datetime, timedelta, timezone
 
 from backend.errors import SaveFailedError
 from backend.interactions.announcement_banner import is_announcement_banner_key
 from backend.interactions import announcement_extras as extras
+from backend.interactions import announcement_repeat_rules as repeat_rules
 from backend.interactions import flags
 from backend.interactions.attachments import delete_object, generate_download_url
 from backend.interactions.groups import GroupsManager
@@ -42,8 +44,13 @@ ANNOUNCEMENT_WIDGET_WINDOW_DAYS = 7
 _COLUMNS = (
     "a._id, a.group_id, a.creator_id, u.username, a.title, a.description, a.banner_key, "
     "a.publish_at, a.created_at, a.updated_at, a.title_color, a.title_font, a.bg_theme, "
-    "a.links, a.gallery_keys, a.is_event, a.payment_handles, a.capacity, a.location"
+    "a.links, a.gallery_keys, a.is_event, a.payment_handles, a.capacity, a.location, "
+    "a.repeat_interval, a.repeat_until, a.repeat_tz, a.repeat_started_at, a.next_repeat_at, "
+    "a.repeat_push_count"
 )
+
+REPEAT_KEYS = ("repeat_interval", "repeat_until", "repeat_tz")
+_NIL_UUID = str(uuid.UUID(int=0))
 
 # Task 20261009-announcements-advanced (parts C and D). Server allowlists for the
 # title font and background theme keys; the iOS client owns the actual fonts and
@@ -169,7 +176,9 @@ class AnnouncementsManager(GroupsManager):
     def _serialize(self, row: tuple, group_creator: str | None) -> dict:
         (aid, gid, creator, username, title, description, banner_key,
          publish_at, created_at, updated_at, title_color, title_font, bg_theme,
-         links, gallery_keys, is_event, payment_handles, capacity, location) = row
+         links, gallery_keys, is_event, payment_handles, capacity, location,
+         repeat_interval, repeat_until, repeat_tz, repeat_started_at, next_repeat_at,
+         _repeat_push_count) = row
         creator_s = str(creator) if creator else None
         out = {
             "id": str(aid),
@@ -204,6 +213,20 @@ class AnnouncementsManager(GroupsManager):
             out["capacity"] = capacity
         if flags.is_enabled(LOCATION_FLAG, self.user_id):
             out["location"] = location
+        # Recurring reminder (task 20261016-announcement-recurring-reminder).
+        # Read-only for members; omitted entirely while the flag is off so the
+        # payload is the pre-feature shape. The exact next occurrence and the
+        # push counter are never exposed; repeat_tz only to editors.
+        if repeat_rules.ANNOUNCEMENT_REPEAT_ENABLED:
+            end = (repeat_rules.effective_end(repeat_until, repeat_started_at)
+                   if repeat_interval else None)
+            out["repeat_interval"] = repeat_interval
+            out["repeat_until"] = repeat_until.isoformat() if repeat_until else None
+            out["repeat_ends_at"] = end.isoformat() if end else None
+            out["repeat_auto_stops"] = bool(repeat_interval and repeat_until is None)
+            out["repeat_active"] = bool(repeat_interval and next_repeat_at is not None)
+            if out["can_edit"]:
+                out["repeat_tz"] = repeat_tz
         return out
 
     def _serialize_many(self, rows: list, group_creator: str | None) -> list[dict]:
@@ -305,6 +328,71 @@ class AnnouncementsManager(GroupsManager):
             out["bg_theme"] = value
         return out
 
+    def _other_active_repeaters(self, exclude_id: str) -> int:
+        self.cur.execute(
+            "SELECT count(*) FROM group_announcements WHERE group_id = %s AND deleted_at IS NULL "
+            "AND next_repeat_at IS NOT NULL AND _id <> %s",
+            (self.group_id, exclude_id),
+        )
+        return int(self.cur.fetchone()[0])
+
+    def _checked_repeat(self, given: dict, *, publish_at: datetime, current: dict,
+                        exclude_id: str = _NIL_UUID) -> dict:
+        """Validate the repeat keys in ``given`` against the stored ``current``
+        values (``interval``, ``until``, ``tz``, ``push_count``) and return the
+        column values to write. A null ``repeat_interval`` clears the whole rule
+        (always allowed). Anything else needs the flag (fail closed), a valid
+        allowlisted interval, a known IANA zone, a future ``repeat_until`` after
+        ``publish_at`` within the horizon, and room under the lifetime and
+        per-group caps. Re-computes the next occurrence from now, forward only.
+        Raises ValueError (422) or RepeatLimitReached (409)."""
+        if not any(k in given for k in REPEAT_KEYS):
+            return {}
+        now = datetime.now(timezone.utc)
+        interval = (repeat_rules.normalize_repeat_interval(given["repeat_interval"])
+                    if "repeat_interval" in given else current["interval"])
+        if interval is None:
+            if given.get("repeat_until") is not None or given.get("repeat_tz") is not None:
+                raise ValueError("repeat_until and repeat_tz need a repeat_interval")
+            return {"repeat_interval": None, "repeat_until": None, "repeat_tz": None,
+                    "repeat_started_at": None, "next_repeat_at": None}
+        if not repeat_rules.ANNOUNCEMENT_REPEAT_ENABLED:
+            raise ValueError("Repeating reminders are not available")
+        tz = (repeat_rules.normalize_repeat_tz(given["repeat_tz"])
+              if "repeat_tz" in given else current["tz"])
+        if "repeat_until" in given:
+            until = repeat_rules.parse_repeat_until(given["repeat_until"], publish_at=publish_at, now=now)
+        else:
+            until = current["until"]
+            if until is not None and until <= now:
+                raise ValueError("repeat_until must be in the future and after the publish time")
+        if current["push_count"] >= repeat_rules.ANNOUNCEMENT_REPEAT_MAX_OCCURRENCES:
+            raise repeat_rules.RepeatLimitReached("This announcement has reached its reminder limit")
+        if self._other_active_repeaters(exclude_id) >= repeat_rules.ANNOUNCEMENT_REPEAT_MAX_ACTIVE_PER_GROUP:
+            raise repeat_rules.RepeatLimitReached(
+                f"A group can have at most {repeat_rules.ANNOUNCEMENT_REPEAT_MAX_ACTIVE_PER_GROUP} "
+                "repeating announcements")
+        end = repeat_rules.effective_end(until, now)
+        nxt = repeat_rules.next_armed(publish_at, interval, tz, max(now, publish_at), end,
+                                      current["push_count"])
+        if nxt is None:
+            raise ValueError("repeat_until is too soon for even one reminder")
+        return {"repeat_interval": interval, "repeat_until": until, "repeat_tz": tz,
+                "repeat_started_at": now, "next_repeat_at": nxt}
+
+    def _rearmed_next(self, row: tuple, publish_at: datetime) -> datetime | None:
+        """Next occurrence for an already-repeating row (new publish time or
+        restore), forward only from now. None disarms (fail closed)."""
+        interval, until, tz, started, push_count = row[19], row[20], row[21], row[22], row[24]
+        if not interval:
+            return None
+        try:
+            now = datetime.now(timezone.utc)
+            end = repeat_rules.effective_end(until, started)
+            return repeat_rules.next_armed(publish_at, interval, tz, max(now, publish_at), end, push_count)
+        except Exception:  # noqa: BLE001 - bad stored state disarms
+            return None
+
     def _fetch_row(self, announcement_id: str, *, include_deleted: bool = False) -> tuple | None:
         """Row visible to the caller (published, or their own scheduled)."""
         deleted_clause = "" if include_deleted else "AND a.deleted_at IS NULL "
@@ -375,7 +463,8 @@ class AnnouncementsManager(GroupsManager):
     def create_announcement(self, title: str, description: str | None,
                             banner_key: str | None, publish_at: datetime | None,
                             title_color: str | None = None, title_font: str | None = None,
-                            bg_theme: str | None = None, extra: dict | None = None) -> dict:
+                            bg_theme: str | None = None, extra: dict | None = None,
+                            repeat: dict | None = None) -> dict:
         """Insert an announcement. The caller must already have passed the
         free-limit gate. Raises ValueError (validation, incl. bad title_color),
         AnnouncementForbidden (foreign banner key), SaveFailedError."""
@@ -386,16 +475,27 @@ class AnnouncementsManager(GroupsManager):
                                     font_given=title_font is not None, theme_given=bg_theme is not None)
         self._check_banner_key(banner_key)
         ex = self._checked_extras(extra or {}, {"is_event": False, "payment_handles": None})
+        rp: dict = {}
+        if repeat:
+            if repeat.get("repeat_interval") is not None and publish_at is None:
+                publish_at = datetime.now(timezone.utc)  # the anchor must be known up front
+            rp = self._checked_repeat(
+                repeat, publish_at=publish_at or datetime.now(timezone.utc),
+                current={"interval": None, "until": None, "tz": None, "push_count": 0})
         try:
             self.cur.execute(
                 "INSERT INTO group_announcements "
                 "(group_id, creator_id, title, description, banner_key, publish_at, title_color, "
-                "title_font, bg_theme, links, gallery_keys, is_event, payment_handles, capacity, location) "
-                "VALUES (%s, %s, %s, %s, %s, COALESCE(%s, now()), %s, %s, %s, %s::jsonb, %s::jsonb, %s, %s::jsonb, %s, %s) "
+                "title_font, bg_theme, links, gallery_keys, is_event, payment_handles, capacity, location, "
+                "repeat_interval, repeat_until, repeat_tz, repeat_started_at, next_repeat_at) "
+                "VALUES (%s, %s, %s, %s, %s, COALESCE(%s, now()), %s, %s, %s, %s::jsonb, %s::jsonb, %s, %s::jsonb, %s, %s, "
+                "%s, %s, %s, %s, %s) "
                 "RETURNING _id",
                 (self.group_id, self.user_id, title, description, banner_key, publish_at, title_color,
                  style.get("title_font"), style.get("bg_theme"), ex.get("links"), ex.get("gallery_keys"),
-                 ex.get("is_event", False), ex.get("payment_handles"), ex.get("capacity"), ex.get("location")),
+                 ex.get("is_event", False), ex.get("payment_handles"), ex.get("capacity"), ex.get("location"),
+                 rp.get("repeat_interval"), rp.get("repeat_until"), rp.get("repeat_tz"),
+                 rp.get("repeat_started_at"), rp.get("next_repeat_at")),
             )
             new_id = self.cur.fetchone()[0]
             self.conn.commit()
@@ -408,7 +508,8 @@ class AnnouncementsManager(GroupsManager):
         """Partial update. ``fields`` may contain title, description,
         banner_key (None clears), title_color (None resets), title_font and
         bg_theme (None resets; non-null needs the feature flag), publish_at (datetime; only while still
-        unpublished). Only keys present are applied."""
+        unpublished), repeat_interval / repeat_until / repeat_tz (editable
+        after publish; null interval clears the repeat). Only keys present are applied."""
         row = self._fetch_row(announcement_id)
         if not row:
             raise AnnouncementNotFound()
@@ -431,6 +532,13 @@ class AnnouncementsManager(GroupsManager):
             {k: fields[k] for k in ("links", "gallery_keys", "is_event", "payment_handles", "capacity", "location") if k in fields},
             {"is_event": bool(row[15]), "payment_handles": row[16]})
         sets.update(ex)
+        given_repeat = {k: fields[k] for k in REPEAT_KEYS if k in fields}
+        new_publish = fields.get("publish_at") if fields.get("publish_at") is not None else row[7]
+        if given_repeat:
+            sets.update(self._checked_repeat(
+                given_repeat, publish_at=new_publish,
+                current={"interval": row[19], "until": row[20], "tz": row[21], "push_count": row[24]},
+                exclude_id=announcement_id))
         if "publish_at" in fields:
             if fields["publish_at"] is None:
                 raise ValueError("publish_at can't be cleared")
@@ -442,6 +550,9 @@ class AnnouncementsManager(GroupsManager):
             sets["reminder_push_sent_at"] = (
                 datetime.now(timezone.utc)
                 if fields["publish_at"] - datetime.now(timezone.utc) < timedelta(hours=1) else None)
+            if row[19] and not given_repeat:
+                # Rescheduling a still-unpublished repeating announcement moves its anchor.
+                sets["next_repeat_at"] = self._rearmed_next(row, fields["publish_at"])
         if not sets:
             raise ValueError("No changes supplied")
         sets["updated_at"] = datetime.now(timezone.utc)
@@ -595,4 +706,8 @@ class AnnouncementsManager(GroupsManager):
         self.conn.commit()
         if not restored:
             raise AnnouncementNotFound()
+        if row[19]:
+            # Restore re-arms forward only: occurrences missed while deleted are never back-filled.
+            self.update("group_announcements", {"next_repeat_at": self._rearmed_next(row, row[7])},
+                        {"_id": announcement_id, "group_id": self.group_id})
         return self.get_announcement(announcement_id)

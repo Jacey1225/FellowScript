@@ -98,6 +98,7 @@ DDL_MODULES = (
     "message_replies",
     "message_pins",
     "notification_preferences",
+    "announcement_repeat",
 )
 
 

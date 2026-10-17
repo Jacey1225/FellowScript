@@ -26,7 +26,7 @@ struct NotificationPushType: Equatable, Identifiable {
             .init(key: "pins", label: "Pinned messages", detail: "When someone pins a message.", flag: "message_pins"),
             .init(key: "reactions", label: "Reactions", detail: "When someone reacts to your message.", flag: "message_reaction_push"),
             .init(key: "announcements", label: "Announcements", detail: "Group announcements, including heads-ups before they publish.", flag: nil),
-            .init(key: "announcement_reminder", label: "Announcement reminder", detail: "A reminder one hour before a scheduled announcement goes live.", flag: nil),
+            .init(key: "announcement_reminder", label: "Announcement reminder", detail: "A reminder one hour before a scheduled announcement goes live, and each repeat of a recurring announcement.", flag: nil),
         ]),
         ("Groups and sessions", [
             .init(key: "session_reminders", label: "Session reminders", detail: "New sessions and sessions that are starting.", flag: nil),

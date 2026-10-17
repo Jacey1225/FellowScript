@@ -236,6 +236,7 @@ private struct AnnouncementRow: View {
                     Text("\(item.creator_username ?? "a member") · \(FSAnnouncementDates.display(item.publish_at))")
                         .font(.inter(Theme.fontXXS)).foregroundColor(Theme.parchment.opacity(0.6))
                 }
+                AnnouncementRepeatIndicator(item: item, color: Theme.gold)
             }
         }
         // Same treatment as NoteRow (Notes/NotesRowViews.swift).
