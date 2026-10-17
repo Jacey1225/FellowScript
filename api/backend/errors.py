@@ -101,3 +101,22 @@ class NoSummarizableContentError(Exception):
     def __init__(self, message: str = "This session doesn't have any content to summarize.") -> None:
         super().__init__(message)
         self.message = message
+
+
+class TemplateDerivationError(Exception):
+    """Raise when a schedule's note template (task 20261017-devotion-note-format)
+    can't be derived from its prompt after the bounded retries: the
+    derivation call raised, or every attempt returned a template that failed
+    strict validation.
+
+    Same propagate-upward posture as ``TimelineGenerationError``: nothing is
+    fabricated and prior state is untouched. ``add_heartbeat`` lets it
+    propagate (no row is created), ``update_heartbeat`` lets it propagate
+    before writing anything (the previous prompt, template and timeline stay
+    intact), and the fire paths catch it to unwind their claim and return an
+    explicit ``{"error": ...}``.
+    """
+
+    def __init__(self, message: str = "Could not work out this event's note format. Please try again.") -> None:
+        super().__init__(message)
+        self.message = message

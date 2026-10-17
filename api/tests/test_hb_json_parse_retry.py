@@ -28,7 +28,10 @@ import _pathfix  # noqa: F401
 import uuid
 
 from db import DBManager
+from backend.interactions.note_template import validate_template as _vt
 from backend.interactions.agent import AgentManager, _HB_JSON_PARSE_MAX_ATTEMPTS
+
+FREEFORM_TEMPLATE = _vt({"kind": "freeform"})
 
 PASSED, FAILED = [], []
 
@@ -119,7 +122,7 @@ def main():
                     return "not json at all, oops"
                 return '{"__action": "create_note", "title": "T", "text": "Body.", "verses": []}'
 
-        result = EventuallyValidManager(uid)._generate_and_save_note(agent_id, hb1, "Reflect.")
+        result = EventuallyValidManager(uid)._generate_and_save_note(agent_id, hb1, "Reflect.", template=FREEFORM_TEMPLATE)
         check("succeeds once a within-cap attempt returns valid JSON",
               result == {"success": "saved note"}, str(result))
         check("took exactly _HB_JSON_PARSE_MAX_ATTEMPTS calls to succeed (last attempt in the cap)",
@@ -145,7 +148,7 @@ def main():
                 return '{"__action": "create_note", "title": broken}'  # has braces, fails json.loads
 
         notes_before_hb2 = _total_notes_for_user(uid)
-        result2 = AlwaysInvalidManager(uid)._generate_and_save_note(agent_id, hb2, "Reflect.")
+        result2 = AlwaysInvalidManager(uid)._generate_and_save_note(agent_id, hb2, "Reflect.", template=FREEFORM_TEMPLATE)
         check("gives up with the original error shape after exhausting the cap",
               result2 == {"error": "invalid response"}, str(result2))
         check("called _call_api exactly _HB_JSON_PARSE_MAX_ATTEMPTS times -- never more, never fewer",
@@ -170,7 +173,7 @@ def main():
                 type(self).calls += 1
                 return "Sorry, I cannot help with that request."
 
-        result3 = NoBracesManager(uid)._generate_and_save_note(agent_id, hb3, "Reflect.")
+        result3 = NoBracesManager(uid)._generate_and_save_note(agent_id, hb3, "Reflect.", template=FREEFORM_TEMPLATE)
         check("no-braces case also gives up with the same error shape",
               result3 == {"error": "invalid response"}, str(result3))
         check("no-braces case is also capped at exactly _HB_JSON_PARSE_MAX_ATTEMPTS calls",
@@ -188,7 +191,7 @@ def main():
 
         unwind_calls = []
         result4 = ConnectionErrorManager(uid)._generate_and_save_note(
-            agent_id, hb4, "Reflect.", on_llm_error=lambda: unwind_calls.append(1),
+            agent_id, hb4, "Reflect.", template=FREEFORM_TEMPLATE, on_llm_error=lambda: unwind_calls.append(1),
         )
         check("connection error still returns the original friendly error message",
               result4 == {"error": "I'm having trouble connecting right now. Please try again in a moment."},
@@ -208,7 +211,7 @@ def main():
                 type(self).calls += 1
                 return '{"__action": "not_create_note"}'
 
-        result5 = WrongActionManager(uid)._generate_and_save_note(agent_id, hb5, "Reflect.")
+        result5 = WrongActionManager(uid)._generate_and_save_note(agent_id, hb5, "Reflect.", template=FREEFORM_TEMPLATE)
         check("wrong-action valid JSON returns 'cannot find action' unchanged",
               result5 == {"error": "cannot find action"}, str(result5))
         check("wrong-action valid JSON is NOT retried -- exactly one call (unrelated failure mode)",

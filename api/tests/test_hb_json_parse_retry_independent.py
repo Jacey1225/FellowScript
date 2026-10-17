@@ -29,7 +29,10 @@ import _pathfix  # noqa: F401
 import uuid
 
 from db import DBManager
+from backend.interactions.note_template import validate_template as _vt
 from backend.interactions.agent import AgentManager, _HB_JSON_PARSE_MAX_ATTEMPTS
+
+FREEFORM_TEMPLATE = _vt({"kind": "freeform"})
 
 PASSED, FAILED = [], []
 
@@ -114,13 +117,13 @@ def main():
         hb_a = make_heartbeat(agent_id, uid)
         ImmediateSuccessManager.calls = 0
         ImmediateSuccessManager.prompts = []
-        ImmediateSuccessManager(uid)._generate_and_save_note(agent_id, hb_a, "Reflect.")
+        ImmediateSuccessManager(uid)._generate_and_save_note(agent_id, hb_a, "Reflect.", template=FREEFORM_TEMPLATE)
         prompt_run_a = ImmediateSuccessManager.prompts[0]
 
         hb_b = make_heartbeat(agent_id, uid)
         ImmediateSuccessManager.calls = 0
         ImmediateSuccessManager.prompts = []
-        ImmediateSuccessManager(uid)._generate_and_save_note(agent_id, hb_b, "Reflect.")
+        ImmediateSuccessManager(uid)._generate_and_save_note(agent_id, hb_b, "Reflect.", template=FREEFORM_TEMPLATE)
         prompt_run_b = ImmediateSuccessManager.prompts[0]
 
         check("first-attempt prompt is byte-for-byte identical across two independent successful runs",
@@ -152,7 +155,7 @@ def main():
                 return "still not json"
 
         hb_c = make_heartbeat(agent_id, uid)
-        result_c = WouldSucceedTooLateManager(uid)._generate_and_save_note(agent_id, hb_c, "Reflect.")
+        result_c = WouldSucceedTooLateManager(uid)._generate_and_save_note(agent_id, hb_c, "Reflect.", template=FREEFORM_TEMPLATE)
         check("gives up with the standard error shape rather than reaching the would-succeed attempt",
               result_c == {"error": "invalid response"}, str(result_c))
         check("stopped calling at exactly the cap, never attempting the (N+1)th call",
@@ -182,7 +185,7 @@ def main():
                     return type(self).responses[idx]
 
             hb_d = make_heartbeat(agent_id, uid)
-            result_d = MixedFailureManager(uid)._generate_and_save_note(agent_id, hb_d, "Reflect.")
+            result_d = MixedFailureManager(uid)._generate_and_save_note(agent_id, hb_d, "Reflect.", template=FREEFORM_TEMPLATE)
             check("mixed no-braces-then-bad-JSON sequence still recovers to success within the cap",
                   result_d == {"success": "saved note"}, str(result_d))
             check("mixed-sequence success took exactly 3 calls (both failure branches exercised once each)",
@@ -206,7 +209,7 @@ def main():
                 return "never valid"
 
         hb_e = make_heartbeat(agent_id, uid)
-        AlwaysFailManager(uid)._generate_and_save_note(agent_id, hb_e, "Reflect.")
+        AlwaysFailManager(uid)._generate_and_save_note(agent_id, hb_e, "Reflect.", template=FREEFORM_TEMPLATE)
         check("captured one prompt per attempt up to the cap",
               len(AlwaysFailManager.prompts) == _HB_JSON_PARSE_MAX_ATTEMPTS,
               str(len(AlwaysFailManager.prompts)))
@@ -235,7 +238,7 @@ def main():
         hb_f = make_heartbeat(agent_id, uid)
         unwind_hits = []
         result_f = NetworkFailManager(uid)._generate_and_save_note(
-            agent_id, hb_f, "Reflect.", on_llm_error=lambda: unwind_hits.append(True),
+            agent_id, hb_f, "Reflect.", template=FREEFORM_TEMPLATE, on_llm_error=lambda: unwind_hits.append(True),
         )
         check("connection-error path returns the original friendly message, unchanged",
               result_f == {"error": "I'm having trouble connecting right now. Please try again in a moment."},
@@ -259,7 +262,7 @@ def main():
                 return '{"__action": "delete_everything"}'
 
         hb_g = make_heartbeat(agent_id, uid)
-        result_g = WrongActionManager2(uid)._generate_and_save_note(agent_id, hb_g, "Reflect.")
+        result_g = WrongActionManager2(uid)._generate_and_save_note(agent_id, hb_g, "Reflect.", template=FREEFORM_TEMPLATE)
         check("wrong-__action path still returns 'cannot find action', unchanged",
               result_g == {"error": "cannot find action"}, str(result_g))
         check("wrong-__action path makes exactly one call -- not retried by the JSON-parse loop",

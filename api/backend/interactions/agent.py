@@ -15,7 +15,8 @@ import os
 from pathlib import Path
 from dotenv import load_dotenv
 from db import DBManager
-from backend.errors import SaveFailedError, TimelineGenerationError
+from backend.errors import SaveFailedError, TimelineGenerationError, TemplateDerivationError
+from backend.interactions import note_template as nt
 from backend.interactions.groups import GroupsManager
 from backend.interactions import flags
 from backend.interactions.agent_chats import AgentChatStore
@@ -45,6 +46,19 @@ PROMPT = (Path(__file__).parent / "agent_prompt.txt").read_text(encoding="utf-8"
 # its own file for the same maintainability reason PROMPT is (easy to tune
 # without touching this module).
 TIMELINE_PROMPT = (Path(__file__).parent / "timeline_prompt.txt").read_text(encoding="utf-8").strip()
+
+# System prompt for the note-template derivation call (task
+# 20261017-devotion-note-format): reads a schedule's standing prompt ONCE and
+# describes the note layout it asks for as strict JSON. Never writes a note.
+TEMPLATE_PROMPT = (Path(__file__).parent / "template_prompt.txt").read_text(encoding="utf-8").strip()
+
+# Bounded retry cap (total attempts) for template derivation, mirroring
+# _HB_JSON_PARSE_MAX_ATTEMPTS / _TIMELINE_JSON_PARSE_MAX_ATTEMPTS.
+_TEMPLATE_DERIVATION_MAX_ATTEMPTS = 3
+
+# agent_heartbeats columns added by the note-template task. Internal state,
+# not part of the heartbeats API response (see get_heartbeats).
+_HB_INTERNAL_COLUMNS = ("note_template", "note_template_prompt_hash", "last_application")
 
 # Per-connection cap on the agent chat WebSocket: every HTTP write on
 # agent_router is gated by check_limit's free-tier caps, but connect_agent's
@@ -227,6 +241,8 @@ class AgentManager(DBManager):
             silent no-op.
 
         Raises:
+            TemplateDerivationError: if the note template can't be derived
+                from the prompt (same no-row-created guarantee as below).
             TimelineGenerationError: if the initial `timeline_instruction`
                 (task 20260906-heartbeat-timeline-instructions) can't be
                 generated after retries -- deliberately raised BEFORE the
@@ -236,9 +252,15 @@ class AgentManager(DBManager):
                 degraded-but-usable state per the spec's propagate-errors
                 preference (Q27), it's a state that must never occur.
         """
+        # Task 20261017-devotion-note-format: derive this schedule's note
+        # template from its prompt FIRST (the timeline's per-day contract
+        # depends on it). Raises TemplateDerivationError before any INSERT.
+        template = self._derive_note_template(heartbeat.prompt)
         window_start = self._local_date()
         firing_offsets = self._firing_offsets(heartbeat.timestamps, window_start)
-        planned = self._generate_timeline_days(heartbeat.prompt, firing_offsets, prior_coverage_summary=None)
+        planned = self._generate_timeline_days(
+            heartbeat.prompt, firing_offsets, prior_coverage_summary=None, template=template,
+        )
         days = {offset: planned["days"].get(offset, "") for offset in firing_offsets}
         timeline_raw = self._encode_timeline(window_start, days, planned.get("coverage_summary", ""))
 
@@ -255,11 +277,12 @@ class AgentManager(DBManager):
             self.cur.execute(
                 "INSERT INTO agent_heartbeats "
                 "(_id, agent_id, user_id, timestamps, prompt, group_id, notes_public, idempotency_key, "
-                "timeline_instruction) "
-                "VALUES (%s, %s, %s, %s::jsonb, %s, %s, %s, %s, %s)",
+                "timeline_instruction, note_template, note_template_prompt_hash) "
+                "VALUES (%s, %s, %s, %s::jsonb, %s, %s, %s, %s, %s, %s, %s)",
                 (hb_id, heartbeat.agent_id, heartbeat.user_id,
                  json.dumps(heartbeat.timestamps), heartbeat.prompt, heartbeat.group_id or None,
-                 heartbeat.notes_public, idempotency_key, timeline_raw)
+                 heartbeat.notes_public, idempotency_key, timeline_raw,
+                 nt.dump_template(template), nt.prompt_hash(heartbeat.prompt))
             )
             self.conn.commit()
             return hb_id
@@ -292,7 +315,8 @@ class AgentManager(DBManager):
 
     def get_heartbeats(self, agent_id: str) -> list[dict]:
         result = self.lookup(self.hb_table, {"agent_id": agent_id, "user_id": self.user_id})
-        return [{"_id": k, **v} for k, v in result.items()]
+        return [{"_id": k, **{c: val for c, val in v.items() if c not in _HB_INTERNAL_COLUMNS}}
+                for k, v in result.items()]
 
     def update_heartbeat(self, heartbeat_id: str, heartbeat: AgentHeartbeats) -> None:
         """Update a heartbeat row's editable fields.
@@ -307,9 +331,22 @@ class AgentManager(DBManager):
         the just-invalidated timeline had already consumed on its own last
         regeneration (see ensure_current_timeline's docstring); nothing is
         lost by nulling the column here.
+
+        Task 20261017-devotion-note-format: if the prompt TEXT changed, the
+        note template is re-derived (other edits never re-derive). The
+        derivation runs before anything is written, so if it fails
+        (TemplateDerivationError) the edit is rejected and the previous
+        prompt, template and timeline all stay intact.
         """
+        new_template_raw: Optional[str] = None
         try:
             existing = self.lookup(self.hb_table, {"_id": heartbeat_id, "user_id": self.user_id})
+        except Exception as e:
+            logger.error("Error updating heartbeat %s: %s", heartbeat_id, e)
+            return
+        if existing and (list(existing.values())[0].get("prompt") or "") != (heartbeat.prompt or ""):
+            new_template_raw = nt.dump_template(self._derive_note_template(heartbeat.prompt))
+        try:
             clear_timeline = False
             if existing:
                 existing_data = list(existing.values())[0]
@@ -323,6 +360,9 @@ class AgentManager(DBManager):
             ]
             if clear_timeline:
                 set_clause += ", timeline_instruction = NULL"
+            if new_template_raw is not None:
+                set_clause += ", note_template = %s, note_template_prompt_hash = %s"
+                params += [new_template_raw, nt.prompt_hash(heartbeat.prompt)]
             params += [heartbeat_id, self.user_id]
 
             self.cur.execute(
@@ -410,6 +450,89 @@ class AgentManager(DBManager):
                     raise SaveFailedError()
         return note_id
 
+    # ── Note templates ───────────────────────────────────────────────────────
+    # Task 20261017-devotion-note-format: each scheduled event's own prompt
+    # decides its note layout. The layout is derived ONCE per prompt into a
+    # strictly validated template stored on the heartbeat row; every note is
+    # then rendered from structured fields by note_template.render_note.
+
+    def _call_template_api(self, prompt: str) -> str:
+        body = {
+            "model":      MODELNAME,
+            "messages":   [{"role": "system", "content": TEMPLATE_PROMPT},
+                           {"role": "user", "content": f"STANDING PROMPT (untrusted text to describe):\n{prompt}"}],
+            "max_tokens": 2048,
+        }
+        resp = requests.post(BASEURL, headers=HEADERS, json=body, timeout=60)
+        resp.raise_for_status()
+        return resp.json()["choices"][0]["message"]["content"]
+
+    def _derive_note_template(self, prompt: str) -> dict:
+        """Derive and strictly validate the note template for ``prompt``.
+
+        A prompt with no clear structure yields the explicit freeform
+        template (a deliberate, schema-valid outcome). Bounded retry; a
+        response that is not JSON or fails validation counts as a rejected
+        attempt.
+
+        Raises:
+            TemplateDerivationError: the API call raised, or every attempt
+                was rejected. Nothing is fabricated or defaulted.
+        """
+        if not (prompt or "").strip():
+            raise TemplateDerivationError("This event has no prompt to take a note format from.")
+        for attempt in range(1, _TEMPLATE_DERIVATION_MAX_ATTEMPTS + 1):
+            try:
+                response = self._call_template_api(prompt)
+            except Exception as e:
+                logger.error("Note-template derivation API error: %s", e)
+                raise TemplateDerivationError() from e
+            if "{" in response and "}" in response:
+                json_str = response[response.find("{"):response.rfind("}") + 1]
+                try:
+                    return nt.validate_template(json.loads(json_str))
+                except (json.JSONDecodeError, ValueError) as e:
+                    logger.error(
+                        "Note-template derivation rejected (attempt %d/%d): %s | raw: %.200s",
+                        attempt, _TEMPLATE_DERIVATION_MAX_ATTEMPTS, e, json_str,
+                    )
+            else:
+                logger.error(
+                    "Note-template derivation: no JSON object (attempt %d/%d) | raw: %.200s",
+                    attempt, _TEMPLATE_DERIVATION_MAX_ATTEMPTS, response,
+                )
+        logger.error("Note-template derivation giving up after %d attempts.", _TEMPLATE_DERIVATION_MAX_ATTEMPTS)
+        raise TemplateDerivationError()
+
+    def ensure_note_template(
+        self, heartbeat_id: str, prompt: str, template_raw: Optional[str], template_hash: Optional[str],
+    ) -> dict:
+        """Return the validated template for this heartbeat, deriving and
+        storing it first when the row has none yet (a schedule that predates
+        this feature) or the stored one is invalid or was derived from a
+        different prompt. Only called after the fire's claim/lock is held.
+
+        Raises:
+            TemplateDerivationError: derivation failed. The row is left
+                completely untouched; the caller fails the fire loudly.
+        """
+        stored = nt.load_stored_template(template_raw)
+        if stored is not None and template_hash == nt.prompt_hash(prompt):
+            return stored
+        template = self._derive_note_template(prompt)
+        try:
+            self.cur.execute(
+                "UPDATE agent_heartbeats SET note_template = %s, note_template_prompt_hash = %s "
+                "WHERE _id = %s AND user_id = %s",
+                (nt.dump_template(template), nt.prompt_hash(prompt), heartbeat_id, self.user_id),
+            )
+            self.conn.commit()
+        except Exception as e:
+            self.conn.rollback()
+            logger.error("Could not store derived note template for heartbeat %s: %s", heartbeat_id, e)
+            raise TemplateDerivationError() from e
+        return template
+
     # ── Timeline instructions ────────────────────────────────────────────────
     # Task 20260906-heartbeat-timeline-instructions: replaces the old
     # agentic_context/get_context/save_context reactive dedup mechanism with
@@ -456,7 +579,9 @@ class AgentManager(DBManager):
                 offsets.append(offset)
         return offsets
 
-    def _encode_timeline(self, window_start: date, days: dict[int, str], coverage_summary: str) -> str:
+    def _encode_timeline(self, window_start: date, days: dict, coverage_summary: str) -> str:
+        # A day is a plain instruction string (legacy rows, freeform
+        # templates) or a content-contract dict (structured templates).
         return json.dumps({
             "window_start": window_start.isoformat(),
             "days": {str(k): v for k, v in days.items()},
@@ -465,7 +590,7 @@ class AgentManager(DBManager):
 
     def _decode_timeline(self, raw: Optional[str]) -> Optional[dict]:
         """Decode a `timeline_instruction` column value into
-        {"window_start": date, "days": {int: str}, "coverage_summary": str},
+        {"window_start": date, "days": {int: str | dict}, "coverage_summary": str},
         or None if there's nothing there yet or it's unreadable (treated as
         "no current timeline" -- ensure_current_timeline regenerates rather
         than raising over a corrupt/legacy value)."""
@@ -484,6 +609,7 @@ class AgentManager(DBManager):
 
     def _build_planning_prompt(
         self, heartbeat_prompt: str, firing_offsets: list[int], prior_coverage_summary: Optional[str],
+        template: Optional[dict] = None,
     ) -> str:
         offsets_str = ", ".join(str(o) for o in firing_offsets) if firing_offsets else "(none)"
         prior_block = (
@@ -492,9 +618,11 @@ class AgentManager(DBManager):
             if prior_coverage_summary else
             "No prior windows exist yet for this recurring event -- this is its first timeline.\n\n"
         )
+        layout_block = f"{nt.describe_for_planner(template)}\n\n" if nt.wants_contract(template) else ""
         return (
             f"Recurring event request: \"{heartbeat_prompt}\"\n\n"
             f"{prior_block}"
+            f"{layout_block}"
             f"This window's firing days (day-offsets from the window's first day, 0-indexed): {offsets_str}\n\n"
             "Produce the JSON timeline object as specified in your instructions, with exactly one entry "
             "in \"days\" per firing day-offset listed above, and nothing else."
@@ -512,6 +640,7 @@ class AgentManager(DBManager):
 
     def _generate_timeline_days(
         self, heartbeat_prompt: str, firing_offsets: list[int], prior_coverage_summary: Optional[str],
+        template: Optional[dict] = None,
     ) -> dict:
         """Call the timeline-planning agent and return a validated
         {"days": {offset: instruction}, "coverage_summary": str} dict
@@ -532,7 +661,7 @@ class AgentManager(DBManager):
                 the same failure mode) -- a successfully parsed plan's
                 content is never logged.
         """
-        planning_prompt = self._build_planning_prompt(heartbeat_prompt, firing_offsets, prior_coverage_summary)
+        planning_prompt = self._build_planning_prompt(heartbeat_prompt, firing_offsets, prior_coverage_summary, template)
         parsed: Optional[dict] = None
         for attempt in range(1, _TIMELINE_JSON_PARSE_MAX_ATTEMPTS + 1):
             attempt_prompt = planning_prompt
@@ -557,13 +686,23 @@ class AgentManager(DBManager):
                     candidate = json.loads(json_str)
                     days_raw = candidate.get("days")
                     summary = candidate.get("coverage_summary", "") or ""
-                    days: dict[int, str] = {}
+                    days: dict = {}
                     if isinstance(days_raw, dict):
                         for k, v in days_raw.items():
                             try:
-                                days[int(k)] = str(v)
+                                days[int(k)] = v if nt.wants_contract(template) else str(v)
                             except (TypeError, ValueError):
                                 continue
+                    if nt.wants_contract(template) and set(firing_offsets).issubset(days.keys()):
+                        # Per-day content contract: validated against the
+                        # template. The check-in rule is assigned here, not
+                        # by the model: every day after the very first
+                        # follows up on the previous application.
+                        built: dict = {}
+                        for idx, off in enumerate(firing_offsets):
+                            rule = nt.CHECK_IN_FOLLOW_UP if (idx > 0 or prior_coverage_summary) else nt.CHECK_IN_THEME
+                            built[off] = nt.build_day_entry(days[off], template, rule)
+                        days = built
                     if set(firing_offsets).issubset(days.keys()):
                         parsed = {"days": days, "coverage_summary": summary}
                         break
@@ -571,7 +710,9 @@ class AgentManager(DBManager):
                         "Timeline-planning response missing required day offsets (attempt %d/%d).",
                         attempt, _TIMELINE_JSON_PARSE_MAX_ATTEMPTS,
                     )
-                except (json.JSONDecodeError, ValueError) as e:
+                except (json.JSONDecodeError, ValueError, AttributeError) as e:
+                    # NoteValidationError is a ValueError: a malformed day
+                    # contract is rejected and retried like malformed JSON.
                     logger.error(
                         "Timeline-planning JSON parse error (attempt %d/%d): %s | raw: %.200s",
                         attempt, _TIMELINE_JSON_PARSE_MAX_ATTEMPTS, e, json_str,
@@ -592,6 +733,7 @@ class AgentManager(DBManager):
 
     def ensure_current_timeline(
         self, heartbeat_id: str, timestamps: list, prompt: str, timeline_instruction_raw: Optional[str],
+        template: Optional[dict] = None,
     ) -> dict:
         """Return this heartbeat's current, up-to-date decoded timeline,
         regenerating it first if none exists yet or its window has
@@ -627,7 +769,7 @@ class AgentManager(DBManager):
         window_start = today
         firing_offsets = self._firing_offsets(timestamps, window_start)
         prior_summary = decoded["coverage_summary"] if decoded else None
-        planned = self._generate_timeline_days(prompt, firing_offsets, prior_summary)
+        planned = self._generate_timeline_days(prompt, firing_offsets, prior_summary, template=template)
         days = {offset: planned["days"].get(offset, "") for offset in firing_offsets}
         coverage_summary = planned.get("coverage_summary", "")
         new_raw = self._encode_timeline(window_start, days, coverage_summary)
@@ -639,11 +781,13 @@ class AgentManager(DBManager):
         self.conn.commit()
         return {"window_start": window_start, "days": days, "coverage_summary": coverage_summary}
 
-    def _todays_instruction(self, timeline: dict) -> Optional[str]:
+    def _todays_instruction(self, timeline: dict):
         """This heartbeat's planned content instruction for today, per its
         current (already-ensured-current) decoded timeline, or None if
         today doesn't fall on a firing offset within that timeline (e.g. a
-        forced/manual fire on an otherwise non-firing day)."""
+        forced/manual fire on an otherwise non-firing day). The entry is the
+        stored day as-is: a plain string (legacy / freeform) or a content-
+        contract dict (see note_template.normalize_day)."""
         offset = (self._local_date() - timeline["window_start"]).days
         return timeline["days"].get(offset)
 
@@ -740,6 +884,12 @@ class AgentManager(DBManager):
         heartbeat_timestamps = owned_data.get("timestamps") or []
         heartbeat_prompt     = owned_data.get("prompt", "") or ""
         timeline_instruction_raw = owned_data.get("timeline_instruction")
+        # Note-template state (task 20261017-devotion-note-format).
+        template_state = {
+            "template_raw":     owned_data.get("note_template"),
+            "template_hash":    owned_data.get("note_template_prompt_hash"),
+            "last_application": owned_data.get("last_application"),
+        }
 
         if force:
             return self._commit_hb_response_forced(
@@ -747,6 +897,7 @@ class AgentManager(DBManager):
                 heartbeat_notes_public=heartbeat_notes_public,
                 heartbeat_timestamps=heartbeat_timestamps, heartbeat_prompt=heartbeat_prompt,
                 timeline_instruction_raw=timeline_instruction_raw,
+                template_state=template_state,
             )
 
         # Idempotency guard. Heartbeats can now fire from either the
@@ -807,11 +958,14 @@ class AgentManager(DBManager):
         # been won -- see its own docstring on why this composes safely
         # with two racing fires for the same heartbeat.
         try:
-            timeline = self.ensure_current_timeline(
-                heartbeat_id, heartbeat_timestamps, heartbeat_prompt, timeline_instruction_raw,
+            template = self.ensure_note_template(
+                heartbeat_id, heartbeat_prompt, template_state["template_raw"], template_state["template_hash"],
             )
-        except TimelineGenerationError as e:
-            logger.error("Timeline generation failed for heartbeat %s: %s", heartbeat_id, e)
+            timeline = self.ensure_current_timeline(
+                heartbeat_id, heartbeat_timestamps, heartbeat_prompt, timeline_instruction_raw, template=template,
+            )
+        except (TimelineGenerationError, TemplateDerivationError) as e:
+            logger.error("Timeline/template generation failed for heartbeat %s: %s", heartbeat_id, e)
             _unset_claim()
             return {"error": e.message}
 
@@ -819,6 +973,7 @@ class AgentManager(DBManager):
             agent_id, heartbeat_id, heartbeat_content, on_llm_error=_unset_claim,
             heartbeat_group_id=heartbeat_group_id, heartbeat_notes_public=heartbeat_notes_public,
             day_instruction=self._todays_instruction(timeline),
+            template=template, prior_application=template_state["last_application"],
         )
 
     def _commit_hb_response_forced(
@@ -826,6 +981,7 @@ class AgentManager(DBManager):
         heartbeat_group_id: Optional[str] = None, heartbeat_notes_public: bool = False,
         heartbeat_timestamps: Optional[list] = None, heartbeat_prompt: str = "",
         timeline_instruction_raw: Optional[str] = None,
+        template_state: Optional[dict] = None,
     ):
         """Manual/forced heartbeat fire: still deliberately never BLOCKED by
         the once-per-day `last_fired` gate -- a manual trigger always
@@ -939,12 +1095,17 @@ class AgentManager(DBManager):
             # above has been acquired -- see its own docstring on why this
             # composes safely with two racing forced fires for the same
             # heartbeat.
+            ts = template_state or {}
             try:
+                template = self.ensure_note_template(
+                    heartbeat_id, heartbeat_prompt, ts.get("template_raw"), ts.get("template_hash"),
+                )
                 timeline = self.ensure_current_timeline(
                     heartbeat_id, heartbeat_timestamps or [], heartbeat_prompt, timeline_instruction_raw,
+                    template=template,
                 )
-            except TimelineGenerationError as e:
-                logger.error("Timeline generation failed for heartbeat %s: %s", heartbeat_id, e)
+            except (TimelineGenerationError, TemplateDerivationError) as e:
+                logger.error("Timeline/template generation failed for heartbeat %s: %s", heartbeat_id, e)
                 _unset_forced_claim()
                 return {"error": e.message}
 
@@ -952,6 +1113,7 @@ class AgentManager(DBManager):
                 agent_id, heartbeat_id, heartbeat_content, on_llm_error=_unset_forced_claim,
                 heartbeat_group_id=heartbeat_group_id, heartbeat_notes_public=heartbeat_notes_public,
                 day_instruction=self._todays_instruction(timeline),
+                template=template, prior_application=ts.get("last_application"),
             )
         finally:
             try:
@@ -964,7 +1126,7 @@ class AgentManager(DBManager):
     def _generate_and_save_note(
         self, agent_id: str, heartbeat_id: str, heartbeat_content: str, on_llm_error=None,
         heartbeat_group_id: Optional[str] = None, heartbeat_notes_public: bool = False,
-        day_instruction: Optional[str] = None,
+        day_instruction=None, *, template: dict, prior_application: Optional[str] = None,
     ):
         """Shared by both the unforced (claim-gated) and forced (advisory-
         lock-gated) paths above: build the note prompt, call the LLM, and
@@ -1000,7 +1162,16 @@ class AgentManager(DBManager):
         None only for a fire that doesn't land on a firing offset within
         the current timeline (e.g. a forced/manual fire on an otherwise
         non-scheduled day) -- falls back to responding directly to the
-        heartbeat's own standing request with no day-specific steer.
+        heartbeat's own standing request with no day-specific steer. May be a
+        plain string (legacy rows / freeform) or a content-contract dict.
+
+        `template`: this heartbeat's validated note template (task
+        20261017-devotion-note-format). The model returns structured fields
+        keyed to it; they are validated (a rejected response is retried
+        within the same bounded cap as a JSON parse failure) and the stored
+        note text is produced ONLY by note_template.render_note.
+        `prior_application`: the previous note's application text, for the
+        template's check-in rule.
         """
         effective_group_id = None
         if heartbeat_group_id:
@@ -1019,28 +1190,8 @@ class AgentManager(DBManager):
         effective_notes_public = bool(heartbeat_notes_public) if effective_group_id else False
         result     = self.lookup(self.agent_table, {"_id": agent_id})
         agent_role = list(result.values())[0].get("role", "") if result else ""
-        if day_instruction:
-            context_str = f"TODAY'S PLANNED CONTENT (from this event's current timeline instruction): {day_instruction}"
-            # Materially stronger than a soft "try to follow this" wording --
-            # an explicit, unambiguous no-duplication rule, same posture the
-            # old CHAPTERS/VERSES/THEME dedup block used before this task
-            # replaced it with the upfront timeline plan above.
-            dedup_instruction = (
-                "STRICT RULE: Base your note specifically on today's planned content above -- do not "
-                "substitute different content, and do not cover material assigned to a different day of "
-                "this event's timeline.\n\n"
-            )
-        else:
-            context_str = "No day-specific timeline instruction found for today — respond directly to the request below."
-            dedup_instruction = ""
-        note_prompt = (
-            f"{heartbeat_content}\n\n"
-            f"{context_str}\n\n"
-            f"{dedup_instruction}"
-            "Respond with a create_note JSON block as specified in your instructions, "
-            "including a \"theme\" field naming this note's central theme. "
-            "Output only the JSON block and nothing else."
-        )
+        day = nt.normalize_day(day_instruction, template)
+        note_prompt = nt.build_note_prompt(heartbeat_content, template, day, prior_application)
         # Retry loop covers only the JSON-parse-failure branches below (no
         # "{"/"}" pair found, or a found pair that doesn't json.loads) --
         # this is a transient LLM output-formatting glitch that a same-input
@@ -1051,9 +1202,20 @@ class AgentManager(DBManager):
         # immediately exactly as before on the first such error.
         response_dict = None
         parse_failed  = True
+        fields = None
+        last_problem: Optional[str] = None
         for attempt in range(1, _HB_JSON_PARSE_MAX_ATTEMPTS + 1):
             attempt_prompt = note_prompt
-            if attempt > 1:
+            if attempt > 1 and last_problem:
+                # The previous attempt parsed but its fields failed template
+                # validation: tell the model the concrete reason.
+                attempt_prompt = (
+                    f"{note_prompt}\n\n"
+                    f"NOTE: Your previous attempt ({attempt - 1} of "
+                    f"{_HB_JSON_PARSE_MAX_ATTEMPTS - 1} allowed retries) was rejected: {last_problem}. "
+                    "Respond with ONLY a single valid JSON object as specified and nothing else."
+                )
+            elif attempt > 1:
                 # Only appended on retries -- the first attempt's prompt is
                 # byte-for-byte the original note_prompt. Telling the model
                 # its last attempt was rejected for invalid JSON gives it a
@@ -1067,6 +1229,7 @@ class AgentManager(DBManager):
                     "was not valid JSON. Respond with ONLY a single valid JSON create_note block "
                     "and nothing else."
                 )
+            last_problem = None
             try:
                 response = self._call_api(agent_role, [{"role": "user", "content": attempt_prompt}])
             except Exception as e:
@@ -1081,13 +1244,27 @@ class AgentManager(DBManager):
                 json_str = response[start:end]
                 try:
                     response_dict = json.loads(json_str)
-                    parse_failed = False
-                    break
                 except (json.JSONDecodeError, ValueError) as e:
                     logger.error(
                         "JSON parse error in commit_hb_response (attempt %d/%d) for heartbeat %s: %s | raw: %.200s",
                         attempt, _HB_JSON_PARSE_MAX_ATTEMPTS, heartbeat_id, e, json_str,
                     )
+                    continue
+                if not isinstance(response_dict, dict) or response_dict.get("__action", "") != nt.NOTE_ACTION:
+                    # Not a note action: handled after the loop as before.
+                    parse_failed = False
+                    break
+                try:
+                    fields = nt.validate_fields(response_dict, template, day)
+                except nt.NoteValidationError as e:
+                    last_problem = str(e)
+                    logger.error(
+                        "Note fields rejected in commit_hb_response (attempt %d/%d) for heartbeat %s: %s",
+                        attempt, _HB_JSON_PARSE_MAX_ATTEMPTS, heartbeat_id, e,
+                    )
+                    continue
+                parse_failed = False
+                break
             else:
                 logger.error(
                     "Malformed LLM response in commit_hb_response (attempt %d/%d) for heartbeat %s: "
@@ -1098,23 +1275,37 @@ class AgentManager(DBManager):
         if parse_failed:
             logger.error(
                 "commit_hb_response giving up for heartbeat %s after %d attempts -- all returned "
-                "unparseable JSON.",
+                "unparseable or invalid note JSON.",
                 heartbeat_id, _HB_JSON_PARSE_MAX_ATTEMPTS,
             )
             return {"error": "invalid response"}
 
-        if response_dict.get("__action", "") == "create_note":
-            # No separate context-link write needed anymore (the old
-            # agentic_context.save_context call) -- no-duplication is
-            # already handled upfront by this heartbeat's timeline
-            # instruction, not by a per-note durable link consumed on a
-            # later fire.
-            self.note_via_hb(
-                response_dict, group_id=effective_group_id, notes_public=effective_notes_public,
-            )
-            return {"success": "saved note"}
-        else:
+        if fields is None:
             return {"error": "cannot find action"}
+
+        # No separate context-link write needed anymore (the old
+        # agentic_context.save_context call) -- no-duplication is already
+        # handled upfront by this heartbeat's timeline instruction.
+        self.note_via_hb(
+            nt.note_data(template, fields), group_id=effective_group_id, notes_public=effective_notes_public,
+        )
+        # Carry this note's application into the next day's check-in. The
+        # note is already saved; a failure here only loses a follow-up
+        # question (the next check-in falls back to a theme question), so it
+        # is logged rather than failing the fire.
+        application = nt.application_text(template, fields)
+        if application:
+            try:
+                self.cur.execute(
+                    "UPDATE agent_heartbeats SET last_application = %s WHERE _id = %s AND user_id = %s",
+                    (application, heartbeat_id, self.user_id),
+                )
+                self.conn.commit()
+            except Exception as e:
+                self.conn.rollback()
+                logger.error("Could not record last_application for heartbeat %s: %s", heartbeat_id, e)
+        return {"success": "saved note"}
+
     # ── Messages CRUD ─────────────────────────────────────────────────────────
 
     def save_agent_message(self, msg: AgentMessages) -> None:

@@ -36,7 +36,7 @@ for why), this never leaks across test files.
 from backend.interactions.agent import AgentManager
 
 
-def _stub_generate_timeline_days(self, heartbeat_prompt, firing_offsets, prior_coverage_summary):
+def _stub_generate_timeline_days(self, heartbeat_prompt, firing_offsets, prior_coverage_summary, template=None):
     return {
         "days": {offset: f"stub timeline instruction for day-offset {offset}" for offset in firing_offsets},
         "coverage_summary": "stub coverage summary",
@@ -44,3 +44,15 @@ def _stub_generate_timeline_days(self, heartbeat_prompt, firing_offsets, prior_c
 
 
 AgentManager._generate_timeline_days = _stub_generate_timeline_days
+
+
+def _stub_derive_note_template(self, prompt):
+    """Note-template derivation (task 20261017-devotion-note-format) is also a
+    network call made at add_heartbeat and at the first fire of a template-less
+    row. Stubbed to the explicit freeform template (plain title + text body),
+    so these tests' create_note-shaped stub responses keep working."""
+    from backend.interactions import note_template as nt
+    return nt.validate_template({"kind": nt.KIND_FREEFORM})
+
+
+AgentManager._derive_note_template = _stub_derive_note_template

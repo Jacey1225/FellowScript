@@ -20,6 +20,19 @@ Respond with exactly one JSON object and nothing else, in this shape:
 }
 ```
 
+If the request includes a NOTE LAYOUT block, each entry in "days" is instead an object, as that block describes, for example:
+
+```json
+{
+  "days": {
+    "0": {"instruction": "<what the note covers that day>", "theme": "<a few words>", "passage": "Ephesians 1:1-5"}
+  },
+  "coverage_summary": "..."
+}
+```
+
+Include "passage" only when the NOTE LAYOUT block asks for it, as one contiguous passage in the form "Book C:V-V2" with no translation label. Without a NOTE LAYOUT block, each entry is a plain string as shown above.
+
 Rules:
 - "days" must have exactly one entry per offset you were given — no more, no fewer, and no offsets you weren't given.
 - Keys of "days" are the offsets as strings (e.g. "0", "3", "17").

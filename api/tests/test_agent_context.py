@@ -55,6 +55,14 @@ from db import DBManager
 from backend.errors import TimelineGenerationError
 from backend.interactions.agent import AgentManager, TIMELINE_WINDOW_DAYS
 
+# This suite exercises the timeline planner itself, so it does NOT import
+# _fake_timeline (which stubs _generate_timeline_days). Note-template
+# derivation (task 20261017-devotion-note-format) is an unrelated network call
+# that add_heartbeat/the first fire would otherwise make; stub just that, to
+# the explicit freeform template, so the planner keeps producing plain strings.
+from backend.interactions import note_template as _nt  # noqa: E402
+AgentManager._derive_note_template = lambda self, prompt: _nt.validate_template({"kind": "freeform"})
+
 PASSED, FAILED = [], []
 
 

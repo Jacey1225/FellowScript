@@ -58,7 +58,7 @@ from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 from db import DBManager, BACKUP_DB_NAME, _connect, create_tables
-from backend.errors import SaveFailedError, TimelineGenerationError, NoSummarizableContentError
+from backend.errors import SaveFailedError, TimelineGenerationError, TemplateDerivationError, NoSummarizableContentError
 from backend.rate_limiting import get_client_ip, limiter
 from backend.subscription.owner_rewards import credit_signup_reward
 from backend.interactions.helpers import load_users_data, save_users_data, save_user_row
@@ -343,6 +343,17 @@ async def _timeline_generation_failed_handler(request: Request, exc: TimelineGen
 
 
 app.add_exception_handler(TimelineGenerationError, _timeline_generation_failed_handler)
+
+
+async def _template_derivation_failed_handler(request: Request, exc: TemplateDerivationError) -> JSONResponse:
+    """App-wide handler for a failed note-template derivation (task
+    20261017-devotion-note-format) reaching a route uncaught: add_heartbeat
+    (no row created) or update_heartbeat (nothing written). 502 for the same
+    upstream-LLM-failure reason as the timeline handler above."""
+    return JSONResponse(status_code=502, content={"detail": exc.message})
+
+
+app.add_exception_handler(TemplateDerivationError, _template_derivation_failed_handler)
 
 
 async def _no_summarizable_content_handler(request: Request, exc: NoSummarizableContentError) -> JSONResponse:

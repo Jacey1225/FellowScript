@@ -967,6 +967,21 @@ def create_tables(cur):
     cur.execute(
         "ALTER TABLE agent_heartbeats ADD COLUMN IF NOT EXISTS timeline_instruction TEXT"
     )
+    # Task 20261017-devotion-note-format: the per-schedule note template
+    # (JSON, derived once from `prompt`), the SHA-256 of the prompt it was
+    # derived from (re-derive only when the prompt text changes), and the last
+    # generated note's application text (carried into the next day's
+    # check-in). All nullable: a NULL template means "derive lazily at the
+    # next fire". Additive only.
+    cur.execute(
+        "ALTER TABLE agent_heartbeats ADD COLUMN IF NOT EXISTS note_template TEXT"
+    )
+    cur.execute(
+        "ALTER TABLE agent_heartbeats ADD COLUMN IF NOT EXISTS note_template_prompt_hash TEXT"
+    )
+    cur.execute(
+        "ALTER TABLE agent_heartbeats ADD COLUMN IF NOT EXISTS last_application TEXT"
+    )
     # A UNIQUE index, not a plain column-level UNIQUE constraint: uniqueness
     # is scoped to the (user_id, agent_id, idempotency_key) triple, not to
     # idempotency_key alone -- two different users' (or one user's two
