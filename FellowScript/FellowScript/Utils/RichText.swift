@@ -33,11 +33,26 @@ private var kBaseAttrs: [NSAttributedString.Key: Any] {
     [.font: kBodyFont, .foregroundColor: kTextColor]
 }
 
+// ── Plain-text bodies ────────────────────────────────────────────────────────
+
+/// Scheduled devotion notes are stored as plain text with real newlines (no
+/// markup). The HTML importer collapses bare newlines to spaces, so when a body
+/// has no tags at all, convert line breaks to <br> before parsing. Bodies that
+/// already contain tags (editor output) are returned untouched.
+func plainTextBodyToHTMLIfNeeded(_ body: String) -> String {
+    guard !body.contains("<") else { return body }
+    return body
+        .replacingOccurrences(of: "\r\n", with: "<br>")
+        .replacingOccurrences(of: "\n", with: "<br>")
+        .replacingOccurrences(of: "\r", with: "<br>")
+}
+
 // ── HTML ↔ NSAttributedString ─────────────────────────────────────────────────
 
 /// Parse HTML (from the web note editor) into a themed NSAttributedString.
-func htmlToAttributedString(_ html: String) -> NSAttributedString {
-    guard !html.isEmpty else { return NSAttributedString() }
+func htmlToAttributedString(_ rawHTML: String) -> NSAttributedString {
+    guard !rawHTML.isEmpty else { return NSAttributedString() }
+    let html = plainTextBodyToHTMLIfNeeded(rawHTML)
 
     // Inject a <style> block so the parsed HTML starts with theme-appropriate
     // base appearance before we overlay our own attributes below.
@@ -61,7 +76,7 @@ func htmlToAttributedString(_ html: String) -> NSAttributedString {
                       .characterEncoding: String.Encoding.utf8.rawValue],
             documentAttributes: nil
           )
-    else { return NSAttributedString(string: html, attributes: kBaseAttrs) }
+    else { return NSAttributedString(string: rawHTML, attributes: kBaseAttrs) }
 
     // Re-apply theme colours so the parsed HTML looks consistent on dark bg.
     let full = NSRange(location: 0, length: attr.length)
@@ -521,8 +536,9 @@ struct NoteHTMLView: View {
     }
 }
 
-private func buildAttributedString(_ html: String) -> AttributedString {
-    guard !html.isEmpty else { return AttributedString(html) }
+private func buildAttributedString(_ rawHTML: String) -> AttributedString {
+    guard !rawHTML.isEmpty else { return AttributedString(rawHTML) }
+    let html = plainTextBodyToHTMLIfNeeded(rawHTML)
 
     let styled = """
     <html><head><meta charset="UTF-8">
@@ -541,7 +557,7 @@ private func buildAttributedString(_ html: String) -> AttributedString {
             options: [.documentType: NSAttributedString.DocumentType.html,
                       .characterEncoding: String.Encoding.utf8.rawValue],
             documentAttributes: nil)
-    else { return AttributedString(html) }
+    else { return AttributedString(rawHTML) }
 
     // Remap HTML's default black text to the app's parchment colour.
     let full = NSRange(location: 0, length: nsAttr.length)
