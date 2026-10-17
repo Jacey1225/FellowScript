@@ -652,7 +652,10 @@ final class CallSessionAccessibilityPinTests: XCTestCase {
         let s = try callSource("FellowScript/Chat/ChimeCallView+Session.swift")
         XCTAssertTrue(s.contains(".accessibilityLabel(item.accessibilityText)"))
         XCTAssertTrue(s.contains(".accessibilityLabel(\"Close discussion prompts\")"))
-        XCTAssertTrue(s.contains(".accessibilityLabel(\"Shared screen\")"))
+        // Share label moved to CallShareTile/CallFocusLogic ("Shared screen from <Name>").
+        let focusViews = try callSource("FellowScript/Chat/CallFocusViews.swift")
+        XCTAssertTrue(focusViews.contains(".accessibilityLabel(CallFocusLogic.shareLabel(sharerName: sharerName))"))
+        XCTAssertTrue(try callSource("FellowScript/Chat/CallFocusState.swift").contains("\"Shared screen\""))
         XCTAssertTrue(s.contains(".accessibilityLabel(\"Prompt \\(index + 1): \\(text)\")"))
         let field = try callSource("FellowScript/Chat/ChimeCallView+RemoteField.swift")
         XCTAssertTrue(field.contains(".accessibilityLabel(\"\\(nameForTile(id) ?? \"Participant\"), video on\")"))
@@ -687,7 +690,9 @@ final class CallSessionAccessibilityPinTests: XCTestCase {
         XCTAssertTrue(s.contains(".accessibilityLabel(kind == .prompts ? \"Discussion prompts\" : \"\")"))
         XCTAssertTrue(s.contains(".accessibilityLabel(\"Close discussion prompts\")"))
         XCTAssertTrue(s.contains(".frame(width: 44, height: 44)"))
-        XCTAssertTrue(s.contains("\"You are sharing\""), "share header kept")
+        XCTAssertFalse(s.contains("\"You are sharing\""), "share heading removed (task 20261016-call-maximize-tiles)")
+        let own = try callSource("FellowScript/Chat/ChimeCallView+ScreenShare.swift")
+        XCTAssertTrue(own.contains("\"You are sharing your screen\""), "own-share panel body copy kept")
     }
 
     func test_submenu_isCompactPopover() throws {
