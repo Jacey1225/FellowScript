@@ -30,7 +30,7 @@ from pydantic import BaseModel, ConfigDict, StrictBool
 
 from backend.auth.dependencies import require_match
 from backend.interactions import flags, listings
-from backend.interactions import join_request_notifier
+from backend.interactions import join_request_notifier, member_joined_notifier
 from backend.interactions.join_requests import JoinRequestError, JoinRequestsManager, canon, clean_note
 from backend.interactions.join_requests_config import get_join_requests_config
 from backend.moderation.content_filter import ContentRejected, check_clean, rejection_message
@@ -169,6 +169,7 @@ def approve_request(
     result = _run(user_id, lambda m: m.approve(group_id, request_id))
     if result.pop("applied"):
         background.add_task(join_request_notifier.notify_requester_approved, canon(request_id))
+        background.add_task(member_joined_notifier.notify_members_of_approved_request, canon(request_id))
     return result
 
 

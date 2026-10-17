@@ -25,10 +25,11 @@ the same uniform 404 as an invalid token.
 """
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, Response
 from pydantic import BaseModel, Field
 
 from backend.auth.dependencies import require_match
+from backend.interactions import member_joined_notifier
 from backend.interactions.invites import InviteError, InvitesManager
 from backend.interactions.invites_config import get_invites_config
 from backend.rate_limiting import get_client_ip, limiter
@@ -99,7 +100,7 @@ async def preview_invite(request: Request, response: Response, body: TokenBody) 
 @limiter.limit(_rate("redeem"))
 @limiter.limit(_rate("redeem_per_user"), key_func=_user_key)
 async def redeem_invite(
-    request: Request, response: Response, user_id: str, body: TokenBody,
+    request: Request, response: Response, background: BackgroundTasks, user_id: str, body: TokenBody,
     _: str = Depends(require_match("user_id")),
 ) -> dict:
     """Join via a token. Idempotent for an existing member.
@@ -118,7 +119,11 @@ async def redeem_invite(
     _require_enabled()
     manager = InvitesManager(user_id)
     try:
-        return manager.redeem(body.token, ip=get_client_ip(request))
+        result = manager.redeem(body.token, ip=get_client_ip(request))
+        if result.get("kind") == "group" and result.get("joined") is True:  # essential push
+            background.add_task(member_joined_notifier.notify_members_of_new_members,
+                                result["target_id"], [user_id])
+        return result
     except InviteError as e:
         raise _http(e)
     finally:

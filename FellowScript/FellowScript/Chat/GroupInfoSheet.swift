@@ -411,6 +411,7 @@ struct GroupInfoSheet: View {
         .preferredColorScheme(.dark)
         .presentationDetents([.large])
         .presentationDragIndicator(.visible)
+        .opensHostToolsForJoinRequests(isOwner: isOwner, showHostTools: $showHostTools)
         .task { await vm.loadInfo() }
         .task { await vm.loadGalleryFirstPage() }
         .onChange(of: vm.removedFromGroup) { _, gone in

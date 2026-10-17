@@ -69,13 +69,15 @@ extension NetworkService {
     // GET /groups/{userId}/{groupId}?limit=N  or  GET /friends/{userId}/{friendId}?limit=N
     func fetchMessageHistory(userId: String, contactId: String, isGroup: Bool, limit: Int?) async throws -> FSMessageHistory {
         guard let limit else {
-            let legacy = isGroup
-                ? try await fetchGroupMessages(userId: userId, groupId: contactId)
-                : try await fetchFriendMessages(userId: userId, friendId: contactId)
-            return .legacy(legacy)
+            if isGroup {
+                // Chat-thread history only: opts in to system lines (see +SystemLines).
+                let data = try await get("/groups/\(userId)/\(contactId)?\(Self.includeSystemQuery)")
+                return .legacy(legacyGroupMessages(from: data))
+            }
+            return .legacy(try await fetchFriendMessages(userId: userId, friendId: contactId))
         }
         let base = isGroup ? "/groups/\(userId)/\(contactId)" : "/friends/\(userId)/\(contactId)"
-        let data = try await get("\(base)?limit=\(limit)")
+        let data = try await get("\(base)?limit=\(limit)\(isGroup ? "&" + Self.includeSystemQuery : "")")
         if let page = parsePage(data: data) {
             return .paged(page)
         }
@@ -92,6 +94,7 @@ extension NetworkService {
         var query = "limit=\(limit)&cursor_timestamp=\(encodeURIComponent(cursor.timestamp))"
         if let seq = cursor.seq { query += "&cursor_seq=\(seq)" }
         query += "&cursor_id=\(encodeURIComponent(cursor.id))"
+        if isGroup { query += "&" + Self.includeSystemQuery }
         let data = try await get("\(base)?\(query)")
         guard let page = parsePage(data: data) else {
             throw AppError.networkError("Couldn't load earlier messages.")
@@ -128,7 +131,7 @@ extension NetworkService {
         return Self.legacyMerge(host: resp.host_msgs, other: resp.other_msgs)
     }
 
-    private func legacyGroupMessages(from data: Data) -> [FSMessage] {
+    func legacyGroupMessages(from data: Data) -> [FSMessage] {
         guard let resp = decode(RawGroupResponse.self, from: data) else { return [] }
         return Self.legacyMerge(host: resp.host_msgs, other: resp.other_msgs)
     }

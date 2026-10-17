@@ -1325,6 +1325,18 @@ def start_scheduler() -> None:
     scheduler.add_job(fire_due_announcement_pushes, "interval",
                       seconds=ANNOUNCEMENT_PUSH_POLL_INTERVAL_SECONDS,
                       id="announcement_push_fire", replace_existing=True)
+    # One-hour-before reminder for scheduled announcements and the opt-in daily
+    # prayer / check-in / deep-question reminders (task 20261016). Both claim an
+    # atomic dedup marker before sending, so the poll rate never causes repeats.
+    from backend.interactions.announcement_reminder import (
+        ANNOUNCEMENT_REMINDER_POLL_INTERVAL_SECONDS, fire_due_announcement_reminders,
+    )
+    from backend.interactions.user_reminders import fire_due_user_reminders
+    scheduler.add_job(fire_due_announcement_reminders, "interval",
+                      seconds=ANNOUNCEMENT_REMINDER_POLL_INTERVAL_SECONDS,
+                      id="announcement_reminder_fire", replace_existing=True)
+    scheduler.add_job(fire_due_user_reminders, "cron", minute="*/5",
+                      id="user_reminders_fire", replace_existing=True)
     # Non-recurring session auto-delete (task 20260921-session-auto-delete-
     # window): 1-hour grace period past time_end (SESSION_AUTO_DELETE_GRACE_
     # SECONDS), then a fail-closed Chime-presence gate before the actual

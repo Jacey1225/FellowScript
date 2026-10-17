@@ -73,7 +73,7 @@ struct GroupInfoExtraSectionsView: View {
     var body: some View {
         let sections = GroupInfoExtraSections.visible(placement: placement, capabilities: capabilities, context: context)
         ForEach(sections, id: \.id) { section in
-            section.makeView(capabilities, context)
+            section.makeView(capabilities, context).id(section.id)
         }
     }
 }

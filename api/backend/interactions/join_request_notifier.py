@@ -16,9 +16,12 @@ Two pushes only:
 - ``notify_requester_approved(request_id)``: the applicant hears the request was
   approved. Denial, expiry and withdrawal are never pushed.
 
-Both are gated by ``flags.is_enabled('join_request_push', owner_id)``: the flag
-is evaluated for the OWNER, and the claim is taken only after every eligibility
-check passed so a flag-off or no-token run never burns the window.
+The owner push is essential since task 20261016-push-notifications-and-ui: it
+consults neither the (removed) ``join_requests`` preference nor the
+``join_request_push`` flag; the throttle, mute and claim semantics are
+unchanged. The approval notice to the requester is still gated by
+``flags.is_enabled('join_request_push', owner_id)``. The claim is taken only
+after every eligibility check passed so a no-token run never burns the window.
 
 Privacy (analysis ``reading_and_privacy_rules``): alert text is generic and
 names no applicant, note or request id; the owner's alert title is the group's
@@ -38,7 +41,6 @@ import logging
 from backend.interactions import flags
 from backend.interactions.join_requests import canon
 from backend.interactions.join_requests_config import get_join_requests_config
-from backend.interactions.push_preferences import is_push_enabled
 from db import DBManager
 
 logger = logging.getLogger(__name__)
@@ -102,10 +104,8 @@ def _prepare_owner_push(request_id: str) -> dict | None:
         if row is None or row[1] is None:
             return None
         group_id, owner_id, title = row
-        if not flags.is_enabled("join_request_push", owner_id):
-            return None
-        if not is_push_enabled(owner_id, "join_requests"):  # task 20261012-notification-settings
-            return None
+        # Task 20261016-push-notifications-and-ui: the owner push is ESSENTIAL
+        # (always sent): no preference lookup and no ``join_request_push`` flag.
         if not _owner_present(db, group_id, owner_id):
             db.conn.rollback()
             return None

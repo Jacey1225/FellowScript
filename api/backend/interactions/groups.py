@@ -12,7 +12,7 @@ from backend.content_config import get_content_config
 from backend.errors import SaveFailedError
 from backend.interactions.attachments import generate_download_url
 from backend.interactions.html_text import clean_shared_note_meta
-from backend.interactions import lifecycle, paging
+from backend.interactions import lifecycle, member_joined_line, paging
 from backend.interactions.message_pins import attach_pins
 from backend.interactions.message_reactions import attach_reactions
 from backend.interactions.message_replies import attach_replies
@@ -33,6 +33,11 @@ GALLERY_PAGE_SIZE = 24
 # reply_to_id is stripped here and re-added (flag-gated, with the read-time label) by
 # ``message_replies.attach_replies``.
 _INTERNAL_MESSAGE_COLUMNS = ("seq", "deleted_at", "deleted_by", "reply_to_id", "system_kind")
+
+# Task 20261016 G2: the "member joined" system line is hidden from every group
+# history reader unless the caller opts in (``include_system``), so clients that
+# predate it never see the row and the contact-list unread load is unaffected.
+MEMBER_JOINED_KIND = member_joined_line.SYSTEM_KIND
 
 # Gallery ``kind`` filter values; anything else is rejected, never coerced.
 GALLERY_KINDS = frozenset({"image", "video", "gif", "file"})
@@ -214,6 +219,15 @@ class GroupsManager(DBManager):
             verses_map.setdefault(str(row[0]), []).append([row[2], row[3], row[4]])
         return verses_map
 
+    include_system = False  # set by the route from ``?include_system=1``
+
+    def _system_filter(self) -> str:
+        """SQL suffix hiding the member-joined line unless the caller opted in.
+        Constant text only (no user input)."""
+        if self.include_system:
+            return ""
+        return f" AND system_kind IS DISTINCT FROM '{MEMBER_JOINED_KIND}' "
+
     def is_member(self) -> bool:
         """True if ``self.user_id`` belongs to ``self.group_id``'s member list."""
         group = self.lookup("groups", {"_id": self.group_id})
@@ -256,8 +270,11 @@ class GroupsManager(DBManager):
             # Ordering/soft-delete columns are internal: the legacy shape is
             # unchanged except for the additive ``id`` (string UUID), added
             # last so key order is otherwise identical.
+            joined_kind = data.get("system_kind") == MEMBER_JOINED_KIND
             for internal in _INTERNAL_MESSAGE_COLUMNS:
                 data.pop(internal, None)
+            if joined_kind:  # only present when the caller opted in (see _system_filter)
+                data["system_kind"] = MEMBER_JOINED_KIND
             data["id"] = str(message_id)
             result.append(data)
         attach_reactions(self, result, self.user_id)
@@ -338,9 +355,9 @@ class GroupsManager(DBManager):
         authors = author_set(self.cur, self.group_id, self.user_id)
         sql_text = (
             "SELECT _id, from_user, text, timestamp, attachment_kind, attachment_key, "
-            "attachment_meta, COALESCE(seq, 0) AS seq "
+            "attachment_meta, COALESCE(seq, 0) AS seq, system_kind "
             "FROM messages WHERE group_id = %s::uuid AND deleted_at IS NULL "
-            "AND from_user = ANY(%s::uuid[]) "
+            "AND from_user = ANY(%s::uuid[]) " + self._system_filter()
         )
         params: list = [self.group_id, authors]
         if cursor is not None:
@@ -370,7 +387,7 @@ class GroupsManager(DBManager):
             self.conn.rollback()
         me = str(self.user_id).lower()
         messages = []
-        for _id, from_user, text, ts, kind, key, meta, _seq in reversed(rows):
+        for _id, from_user, text, ts, kind, key, meta, _seq, sys_kind in reversed(rows):
             from_uid = str(from_user) if from_user else ""
             messages.append({
                 "id": str(_id),
@@ -381,6 +398,7 @@ class GroupsManager(DBManager):
                 "attachment_kind": kind,
                 "attachment_meta": clean_shared_note_meta(kind, meta),
                 "attachment_url": generate_download_url(key) if key else None,
+                **({"system_kind": MEMBER_JOINED_KIND} if sys_kind == MEMBER_JOINED_KIND else {}),
             })
         attach_reactions(self, messages, self.user_id)
         attach_pins(self, messages, self.user_id)
@@ -422,7 +440,7 @@ class GroupsManager(DBManager):
             if unblocked_ids and not paged:
                 self.cur.execute(
                     "SELECT * FROM messages WHERE from_user = ANY(%s::uuid[]) AND group_id = %s "
-                    "AND deleted_at IS NULL",
+                    "AND deleted_at IS NULL" + self._system_filter(),
                     (unblocked_ids, self.group_id),
                 )
                 cols = [desc[0] for desc in self.cur.description]
@@ -435,7 +453,8 @@ class GroupsManager(DBManager):
             # Raw SELECT (not lookup) so soft-deleted rows can be excluded;
             # same columns and keying as lookup() returned.
             self.cur.execute(
-                "SELECT * FROM messages WHERE from_user = %s AND group_id = %s AND deleted_at IS NULL",
+                "SELECT * FROM messages WHERE from_user = %s AND group_id = %s AND deleted_at IS NULL"
+                + self._system_filter(),
                 (self.user_id, self.group_id),
             )
             cols = [desc[0] for desc in self.cur.description]
@@ -911,6 +930,7 @@ class GroupsManager(DBManager):
         Args:
             group: Replacement ``Group`` instance with updated title and users.
         """
+        self.last_added_member_ids: list[str] = []
         if not self.group_id:
             return
         existing = self.lookup("groups", {"_id": self.group_id})
@@ -951,6 +971,8 @@ class GroupsManager(DBManager):
             revoke_member_group_invites(
                 self.cur, self.group_id, set(current) - set(cleaned))
             self.conn.commit()
+            # Read by the route to queue the essential "new member joined" push.
+            self.last_added_member_ids = [m for m in cleaned if m not in set(current)]
         except (GroupFullError, InvalidMemberError, ListedGroupOwnerOnlyError):
             raise
         except SaveFailedError:

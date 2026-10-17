@@ -199,7 +199,7 @@ extension NetworkService {
             throw AppError.networkError("Notification settings unavailable.")
         }
         var out: [String: Bool] = [:]
-        for t in NotificationPushType.all {
+        for t in NotificationPushType.allKeys {
             guard let v = obj[t.key] as? Bool else {
                 throw AppError.networkError("Notification settings unavailable.")
             }

@@ -46,6 +46,11 @@ final class AppState: ObservableObject {
     /// Task 20261001-message-threads: set by a thread push tap; the group's
     /// chat view consumes it once mounted (opens the group chat, then the thread).
     @Published var pendingThreadOpen: PendingThreadOpen? = nil
+    /// Task 20261016-push-notifications-and-ui: friend-request push tap -> Account tab,
+    /// Friend Requests section (AccountView consumes and clears it).
+    @Published var pendingFriendRequestsOpen = false
+    /// Join-request push tap: group id whose info sheet the chat opens once mounted.
+    @Published var pendingGroupInfoOpen: String? = nil
     // Set when the account predates a material Terms of Service change (e.g.
     // the Guideline 1.2 zero-tolerance rewrite) — the UI should block on a
     // re-consent screen until acceptTerms() is called.

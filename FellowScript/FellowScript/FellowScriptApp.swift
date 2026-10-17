@@ -109,6 +109,8 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
         } else if action == "friend_highlight", let target = FriendHighlightPushTarget(userInfo: data) {
             // Identifiers only in the payload; opens the verse in the Bible tab.
             NotificationCenter.default.post(name: .friendHighlightPushTapped, object: target)
+        } else if SocialPushRouting.route(userInfo: data) {
+            // Task 20261016-push-notifications-and-ui: friend_request, join_request, member_joined.
         } else if data["devotion_id"] != nil, let groupId, !groupId.isEmpty {
             NotificationCenter.default.post(name: .sessionPushTapped, object: groupId)
         }
@@ -243,6 +245,12 @@ struct FellowScriptApp: App {
                     if let t = note.object as? FriendHighlightPushTarget {
                         appState.pendingBibleNav = BibleNavTarget(book: t.book, chapter: t.chapter, verse: t.verse)
                     }
+                }
+                .onReceive(NotificationCenter.default.publisher(for: .friendRequestPushTapped)) { _ in
+                    appState.pendingFriendRequestsOpen = true
+                }
+                .onReceive(NotificationCenter.default.publisher(for: .groupMembershipPushTapped)) { note in
+                    if let t = note.object as? GroupMembershipPushTarget { appState.handleGroupMembershipPush(t) }
                 }
                 .onReceive(NotificationCenter.default.publisher(for: .threadPushTapped)) { note in
                     if let target = note.object as? ThreadPushTarget {

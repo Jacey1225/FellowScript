@@ -77,7 +77,7 @@ async def register_voip_device_token(user_id: str, body: dict, _: str = Depends(
 #
 # Per-user opt-out per push type (keys: backend.interactions.push_preferences.PUSH_TYPES;
 # grouping and the essential, non-toggleable pushes are documented there). Default
-# ON: a missing row or column value means on. The path user is matched against
+# ON (except the opt-in reminders, default OFF): a missing row or column value means the default. The path user is matched against
 # the session by require_match, so a caller can only read or write their own
 # settings. Not flag-gated (stored values are harmless while a push flag is
 # off); clients hide a type via /app/capabilities. GET returns every known key
@@ -96,6 +96,16 @@ class PushPreferences(BaseModel):
     session_reminders: StrictBool | None = None
     reminders: StrictBool | None = None
     friend_activity: StrictBool | None = None
+    announcement_reminder: StrictBool | None = None
+    prayer_reminder: StrictBool | None = None
+    check_in_reminder: StrictBool | None = None
+    deep_question_reminder: StrictBool | None = None
+    # Local wall-clock time of day, "HH:MM" (interpreted in the user's timezone).
+    prayer_reminder_time: str | None = None
+    check_in_reminder_time: str | None = None
+    deep_question_reminder_time: str | None = None
+    # Legacy (task 20261016): join-request pushes to owners are now always on.
+    # Still accepted so the shipped client's PUT keeps working; ignored.
     join_requests: StrictBool | None = None
 
     @model_validator(mode="after")
@@ -104,6 +114,9 @@ class PushPreferences(BaseModel):
             raise ValueError("at least one preference is required")
         if any(getattr(self, f) is None for f in self.model_fields_set):
             raise ValueError("preference values must be booleans")
+        for f in push_prefs.TIME_KEYS:
+            if f in self.model_fields_set and not push_prefs.is_valid_time(getattr(self, f)):
+                raise ValueError("reminder times must be HH:MM")
         return self
 
 

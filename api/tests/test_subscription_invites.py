@@ -126,6 +126,7 @@ def cleanup(uids, sids):
     for u in uids:
         q("DELETE FROM blocked_users WHERE blocker_id = %s OR blocked_id = %s", (u, u))
         q("DELETE FROM subscriptions WHERE user_id = %s", (u,))
+        q("DELETE FROM messages WHERE from_user = %s", (u,))  # G2: member-joined system lines
         q("DELETE FROM users WHERE _id = %s", (u,))
 
 

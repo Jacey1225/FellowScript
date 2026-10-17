@@ -1135,6 +1135,8 @@ struct ChatThreadView: View {
     // The overrides carry server-confirmed rename/photo changes so the header
     // updates immediately; `contact` itself is an immutable `let`.
     @State private var showGroupInfo: Bool = false
+    /// join_request push: Group Info should land on the Join requests section.
+    @State private var focusJoinRequests = false
     @State private var groupTitleOverride: String? = nil
     @State private var groupPhotoOverride: String?? = nil
     @State private var showSession: Bool   = false
@@ -1756,6 +1758,7 @@ struct ChatThreadView: View {
             // Task 20261001-message-threads: a thread push tap opened this
             // group chat first; now open the thread inside it.
             await consumePendingThreadOpen()
+            consumePendingGroupInfoOpen()
         }
         // Task 20261012-share-verses-notes-in-chat: "Send in chat" picked this
         // already-open chat (the .task above covers a freshly opened one).
@@ -1800,7 +1803,7 @@ struct ChatThreadView: View {
                 vm.handleAppForegrounded()
             }
         }
-        .sheet(isPresented: embedded ? .constant(false) : $showGroupInfo) {
+        .sheet(isPresented: embedded ? .constant(false) : $showGroupInfo, onDismiss: { focusJoinRequests = false }) {
             groupInfoView(inline: false)
         }
         .animation(reduceMotion ? nil : .spring(response: 0.28, dampingFraction: 0.85), value: showGroupInfo)
@@ -1916,6 +1919,15 @@ struct ChatThreadView: View {
     private func openThread(_ summary: FSThreadSummary) {
         let uid = appState.currentUser?.user_id ?? ""
         Task { await vm.openThread(summary, service: appState.service, contact: contact, userId: uid) }
+    }
+
+    /// Opens this group's info sheet for a join-request push tap.
+    private func consumePendingGroupInfoOpen() {
+        guard readyForInitialScroll, contact.type == .group,
+              appState.pendingGroupInfoOpen == contact.id else { return }
+        appState.pendingGroupInfoOpen = nil
+        focusJoinRequests = true
+        showGroupInfo = true
     }
 
     /// Opens a pushed thread inside this group's chat once the chat is loaded.
@@ -2329,9 +2341,10 @@ struct ChatThreadView: View {
             onTitleChanged: { groupTitleOverride = $0 },
             onPhotoChanged: { groupPhotoOverride = .some($0) },
             onAddMembers: { showAddMembers = true },
-            onClose: inline ? { showGroupInfo = false } : nil,
+            onClose: inline ? { showGroupInfo = false; focusJoinRequests = false } : nil,
             onGroupGone: { goBack() }
         )
+        .environment(\.fsFocusJoinRequests, focusJoinRequests)
         // Task 20261001-message-threads: the Threads section opens a thread
         // through this closure (it closes the panel and switches this view
         // model into thread mode on its one socket).
@@ -2409,6 +2422,8 @@ struct ChatThreadView: View {
                 .accessibilityLabel("View and schedule study sessions")
             }
         }
+        // Join-request push tap (task 20261016-push-notifications-and-ui).
+        .onChange(of: appState.pendingGroupInfoOpen) { _, _ in consumePendingGroupInfoOpen() }
         .padding(.horizontal, Theme.spacingMD)
         .padding(.top, Theme.spacingSM)
         .padding(.bottom, Theme.spacingSM)

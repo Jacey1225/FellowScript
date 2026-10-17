@@ -190,6 +190,12 @@ struct ContentView: View {
         .onChange(of: appState.pendingBibleNav) { _, target in
             if target != nil { selectedTab = .bible }
         }
+        .onChange(of: appState.pendingFriendRequestsOpen) { _, wanted in
+            if wanted { selectedTab = .account }
+        }
+        // Cold start: the tap may have set the flag before this view existed.
+        // AccountView consumes and clears it when it appears.
+        .onAppear { if appState.pendingFriendRequestsOpen { selectedTab = .account } }
         .onChange(of: appState.pendingChatContact) { _, target in
             if target != nil { selectedTab = .chat }
         }

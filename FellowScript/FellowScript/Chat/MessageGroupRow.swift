@@ -236,8 +236,10 @@ struct MessageGroupRow: View {
     private func systemLine(_ message: FSMessage) -> some View {
         let text = Self.systemLineText(for: message, senderName: group.senderName)
         HStack(spacing: 6) {
-            Image(systemName: "pin.fill")
-                .font(.system(size: 10, weight: .semibold))
+            if let icon = Self.systemLineIcon(for: message.systemKind) {
+                Image(systemName: icon)
+                    .font(.system(size: 10, weight: .semibold))
+            }
             Text(text)
                 .font(.inter(Theme.fontXXS))
                 .multilineTextAlignment(.center)
@@ -256,6 +258,8 @@ struct MessageGroupRow: View {
     static func systemLineText(for message: FSMessage, senderName: String) -> String {
         let who = message.mine ? "You" : (senderName.isEmpty ? "Someone" : senderName)
         if message.systemKind == "pin" { return "\(who) pinned a message" }
+        // Text is built client-side (never from server text), as for pins.
+        if message.systemKind == "member_joined" { return "\(who) joined the group" }
         return message.text.isEmpty ? who : "\(who) \(message.text)"
     }
 

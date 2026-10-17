@@ -149,6 +149,7 @@ struct AccountView: View {
 
                         // ── Friend requests ────────────────────────────────────
                         friendRequestsSection
+                            .id("friendRequestsSection")
 
                         // ── Agents ──────────────────────────────────────────────
                         agentsSection
@@ -197,6 +198,10 @@ struct AccountView: View {
                 }
                 .onAppear {
                     if upgradeCenter.scrollToSubscription { scrollToSubscriptionSection(scrollProxy) }
+                    consumePendingFriendRequestsOpen(scrollProxy)
+                }
+                .onChange(of: appState.pendingFriendRequestsOpen) { _, wanted in
+                    if wanted { consumePendingFriendRequestsOpen(scrollProxy) }
                 }
                 }
             }

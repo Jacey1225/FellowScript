@@ -88,6 +88,7 @@ struct GroupHostToolsView: View {
     var onGroupGone: () -> Void
 
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.fsFocusJoinRequests) private var focusJoinRequests
 
     var body: some View {
         VStack(spacing: 0) {
@@ -107,6 +108,7 @@ struct GroupHostToolsView: View {
             }
             .padding(.horizontal, Theme.spacingMD)
             .padding(.top, Theme.spacingSM)
+            ScrollViewReader { proxy in
             ScrollView {
                 VStack(alignment: .leading, spacing: Theme.spacingLG) {
                     InviteLinkSection(
@@ -117,6 +119,8 @@ struct GroupHostToolsView: View {
                 }
                 .padding(.horizontal, Theme.spacingMD)
                 .padding(.bottom, Theme.spacingXL)
+            }
+            .scrollsToJoinRequestsIfRequested(proxy, focus: focusJoinRequests)
             }
         }
         .warmBloomBackground()

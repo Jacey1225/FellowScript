@@ -190,4 +190,16 @@ extension AccountView {
         mfaEnabled = freshUser.mfa_enabled
         await vm.loadSubscription(userId: user.user_id)
     }
+
+    /// Friend-request push tap (task 20261016-push-notifications-and-ui): jump to the
+    /// Friend Requests section (no animation under Reduce Motion) and reload the list.
+    func consumePendingFriendRequestsOpen(_ proxy: ScrollViewProxy) {
+        guard appState.pendingFriendRequestsOpen else { return }
+        appState.pendingFriendRequestsOpen = false
+        DispatchQueue.main.async {
+            if reduceMotion { proxy.scrollTo("friendRequestsSection", anchor: .top) }
+            else { withAnimation(.easeInOut(duration: 0.35)) { proxy.scrollTo("friendRequestsSection", anchor: .top) } }
+        }
+        Task { await refreshAccountData() }
+    }
 }

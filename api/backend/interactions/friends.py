@@ -111,6 +111,7 @@ class FriendsManager(DBManager):
     def __init__(self, user_id: str) -> None:
         super().__init__()
         self.user_id = user_id
+        self.new_request_recipient_id: str | None = None
         result = self.lookup("users", {"_id": user_id})
         if result:
             uid, data = list(result.items())[0]
@@ -127,7 +128,10 @@ class FriendsManager(DBManager):
         Returns:
             dict | None: ``{"error": str}`` if the user is not found or the
                 user attempts to add themselves; ``None`` on success.
+                On success ``self.new_request_recipient_id`` is the recipient's
+                id for a newly created request (else ``None``).
         """
+        self.new_request_recipient_id = None
         result = self.lookup("users", {"username": friend_username})
         if not result:
             return {"error": "User not found"}
@@ -140,11 +144,21 @@ class FriendsManager(DBManager):
                 return {"error": "Cannot send request"}
         finally:
             blocks.close()
+        self.cur.execute(
+            "SELECT 1 FROM friend_requests WHERE to_user_id = %s AND from_user_id = %s",
+            (friend_id, self.user_id),
+        )
+        already_requested = self.cur.fetchone() is not None
+        self.conn.rollback()
         if not self.insertion("friend_requests", {
             "to_user_id":   friend_id,
             "from_user_id": self.user_id,
         }):
             raise SaveFailedError()
+        # Set only for a NEW request, so a repeated tap never re-pushes the
+        # recipient. Routes read it to queue the (essential) friend-request push.
+        if not already_requested:
+            self.new_request_recipient_id = str(friend_id)
         return None
 
     def add_friend(self, friend_username: str) -> dict | None:

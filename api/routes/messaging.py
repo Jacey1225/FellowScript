@@ -1,8 +1,8 @@
-from fastapi import APIRouter, HTTPException, Request, WebSocket, WebSocketDisconnect, Depends, Query
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Request, WebSocket, WebSocketDisconnect, Depends, Query
 from backend.interactions.websockets import ConnectionManager
 from backend.interactions.thread_send import send_thread_message
 from backend.interactions.friends import FriendsManager
-from backend.interactions import flags
+from backend.interactions import flags, friend_request_notifier
 from backend.interactions.chat_config import get_pagination_config
 from backend.interactions.devotion import DevotionManager
 from backend.interactions.attachments import generate_upload_policy, AttachmentConfigError
@@ -338,10 +338,16 @@ async def gif_search(
 
 
 @ws_router.post("/friend-request")
-async def send_request(user_id: str, friend_user: str, _: str = Depends(require_match("user_id"))) -> None:
+async def send_request(
+    user_id: str, friend_user: str, background: BackgroundTasks,
+    _: str = Depends(require_match("user_id")),
+) -> None:
     friend_manager = FriendsManager(user_id)
     try:
         friend_manager.send_add_request(friend_user)
+        if friend_manager.new_request_recipient_id:  # essential push, never fails the request
+            background.add_task(friend_request_notifier.notify_friend_request,
+                                friend_manager.new_request_recipient_id, user_id)
     finally:
         friend_manager.close()
 

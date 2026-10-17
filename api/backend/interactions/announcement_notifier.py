@@ -144,7 +144,8 @@ def _over_cap(db: DBManager, group_id: str) -> bool:
     return db.cur.fetchone()[0] > ANNOUNCEMENT_PUSH_GROUP_HOURLY_CAP
 
 
-def _recipients(db: DBManager, group_id: str, creator_id: str | None) -> tuple[str, list[tuple[str, str]]]:
+def _recipients(db: DBManager, group_id: str, creator_id: str | None,
+                push_type: str = "announcements") -> tuple[str, list[tuple[str, str]]]:
     """``(group_title, [(user_id, device_token), ...])`` after mute/block/
     no-token filtering. Raises on member or token lookup failure."""
     db.cur.execute("SELECT title, users FROM groups WHERE _id = %s", (group_id,))
@@ -173,8 +174,9 @@ def _recipients(db: DBManager, group_id: str, creator_id: str | None) -> tuple[s
         )
         excluded |= {str(r[0]) for r in db.cur.fetchall()}
 
-    # Task 20261012-notification-settings: "announcements" opt-out (fails open).
-    opted_out = disabled_user_ids(users, "announcements")
+    # Task 20261012-notification-settings: opt-out for ``push_type`` (fails open;
+    # the one-hour reminder passes "announcement_reminder", task 20261016).
+    opted_out = disabled_user_ids(users, push_type)
     excluded |= {u for u in users if u.lower() in opted_out}
     eligible = [u for u in users if u not in excluded]
     if not eligible:

@@ -66,7 +66,15 @@ from backend.rate_limiting import limiter  # noqa: E402
 from db import DBManager  # noqa: E402
 
 TYPES = ["messages", "pins", "reactions", "friend_highlight", "announcements",
-         "session_reminders", "reminders", "friend_activity", "join_requests"]
+         "session_reminders", "reminders", "friend_activity", "announcement_reminder",
+         "prayer_reminder", "check_in_reminder", "deep_question_reminder"]
+DEFAULT_OFF = ["prayer_reminder", "check_in_reminder", "deep_question_reminder"]
+TIME_KEYS = ["prayer_reminder_time", "check_in_reminder_time", "deep_question_reminder_time"]
+# Exactly what GET returns for a user with no row. join_requests is the legacy
+# key kept (always true) so the shipped iOS parser, which requires it, still decodes.
+DEFAULTS = {**{t: t not in DEFAULT_OFF for t in TYPES},
+            "prayer_reminder_time": "08:00", "check_in_reminder_time": "18:00",
+            "deep_question_reminder_time": "20:00", "join_requests": True}
 
 SENT: list[dict] = []
 
@@ -119,10 +127,24 @@ def test_ddl():
     cols = sql("SELECT column_name, column_default, is_nullable FROM information_schema.columns "
                "WHERE table_name='push_preferences'")
     by = {r[0]: r for r in cols}
-    check("all 9 type columns exist", all(t in by for t in TYPES), sorted(by))
-    check("every type column defaults TRUE and is NOT NULL",
-          all(by[t][1] == "true" and by[t][2] == "NO" for t in TYPES), [(t, by[t][1:]) for t in TYPES if t in by])
-    check("PUSH_TYPES constant matches the expected 9 types", list(pp.PUSH_TYPES) == TYPES, pp.PUSH_TYPES)
+    check("all 12 type columns exist", all(t in by for t in TYPES), sorted(by))
+    check("legacy join_requests column still exists (rows kept, value ignored)", "join_requests" in by)
+    check("every default-ON type column defaults TRUE and is NOT NULL",
+          all(by[t][1] == "true" and by[t][2] == "NO" for t in TYPES if t not in DEFAULT_OFF),
+          [(t, by[t][1:]) for t in TYPES if t in by])
+    check("prayer/check-in/deep-question columns default FALSE and are NOT NULL",
+          all(by[t][1] == "false" and by[t][2] == "NO" for t in DEFAULT_OFF), [(t, by[t][1:]) for t in DEFAULT_OFF])
+    check("time columns exist with the 08:00/18:00/20:00 defaults",
+          all(k in by for k in TIME_KEYS) and "08:00" in by["prayer_reminder_time"][1]
+          and "18:00" in by["check_in_reminder_time"][1] and "20:00" in by["deep_question_reminder_time"][1],
+          [(k, by.get(k)) for k in TIME_KEYS])
+    check("per-type *_sent_date dedup columns exist",
+          all(f"{t}_sent_date" in by for t in DEFAULT_OFF), sorted(by))
+    ann = sql("SELECT column_name FROM information_schema.columns WHERE table_name='group_announcements' "
+              "AND column_name='reminder_push_sent_at'")
+    check("group_announcements.reminder_push_sent_at exists", len(ann) == 1)
+    check("PUSH_TYPES constant matches the expected 12 types", list(pp.PUSH_TYPES) == TYPES, pp.PUSH_TYPES)
+    check("DEFAULT_OFF_TYPES is exactly the three reminders", set(pp.DEFAULT_OFF_TYPES) == set(DEFAULT_OFF))
 
 
 # ------------------------------------------------------------------ B. API
@@ -132,10 +154,10 @@ def test_api(client):
     a, b = make_user("np_a"), make_user("np_b")
     ck_a, ck_b = cookie(a), cookie(b)
     url = f"/notification/{a}/push-preferences"
-    all_on = {t: True for t in TYPES}
+    all_on = dict(DEFAULTS)
 
     r = client.get(url, headers=ck_a)
-    check("GET defaults: 200, all 9 keys true (no row)", r.status_code == 200 and r.json() == all_on, r.text)
+    check("GET defaults: 200, on-types true, 3 reminders false, times, legacy join_requests (no row)", r.status_code == 200 and r.json() == all_on, r.text)
     check("GET does not create a row", sql("SELECT COUNT(*) FROM push_preferences WHERE user_id=%s", (a,))[0][0] == 0)
 
     r = client.put(url, json={"pins": False}, headers=ck_a)
@@ -158,7 +180,38 @@ def test_api(client):
               and sql(f"SELECT {t} FROM push_preferences WHERE user_id=%s", (a,))[0][0] is False, r.text)
         client.put(url, json={t: True}, headers=ck_a)
     r = client.put(url, json={t: True for t in TYPES}, headers=ck_a)
-    check("PUT all 9 keys at once", r.status_code == 200 and r.json() == all_on, r.text)
+    check("PUT all 12 keys at once", r.status_code == 200 and r.json() == {**DEFAULTS, **{t: True for t in TYPES}}, r.text)
+    for t in DEFAULT_OFF:
+        client.put(url, json={t: False}, headers=ck_a)
+    check("reminders back to default off", client.get(url, headers=ck_a).json() == all_on)
+
+    # legacy join_requests: accepted, ignored, always reported true
+    r = client.put(url, json={"join_requests": False}, headers=ck_a)
+    check("PUT join_requests=false accepted (200) but ignored", r.status_code == 200 and r.json()["join_requests"] is True, r.text)
+    check("legacy-only PUT wrote nothing", sql("SELECT join_requests FROM push_preferences WHERE user_id=%s", (a,))[0][0] is True)
+    r = client.put(url, json={"join_requests": False, "pins": False}, headers=ck_a)
+    check("join_requests mixed with a real key: real key applied, join_requests stays true",
+          r.status_code == 200 and r.json()["pins"] is False and r.json()["join_requests"] is True, r.text)
+    client.put(url, json={"pins": True}, headers=ck_a)
+    check("non-bool join_requests -> 422", client.put(url, json={"join_requests": "no"}, headers=ck_a).status_code == 422)
+
+    # reminder times
+    r = client.put(url, json={"prayer_reminder": True, "prayer_reminder_time": "06:45"}, headers=ck_a)
+    check("PUT reminder + time stored and returned as HH:MM",
+          r.status_code == 200 and r.json()["prayer_reminder"] is True and r.json()["prayer_reminder_time"] == "06:45", r.text)
+    check("time-only PUT works", client.put(url, json={"check_in_reminder_time": "23:59"}, headers=ck_a).json()["check_in_reminder_time"] == "23:59")
+    check("midnight 00:00 valid", client.put(url, json={"deep_question_reminder_time": "00:00"}, headers=ck_a).json()["deep_question_reminder_time"] == "00:00")
+    for bad in ("24:00", "7:30", "12:60", "ab:cd", "08:00:00", "", "8am", 800, None, True, "12:5"):
+        r = client.put(url, json={"prayer_reminder_time": bad}, headers=ck_a)
+        check(f"bad time {bad!r} -> 422", r.status_code == 422, r.status_code)
+    check("rejected times left stored time intact", client.get(url, headers=ck_a).json()["prayer_reminder_time"] == "06:45")
+    for bad in ("true", 1, None):
+        check(f"non-boolean prayer_reminder {bad!r} -> 422",
+              client.put(url, json={"prayer_reminder": bad}, headers=ck_a).status_code == 422)
+    for t in DEFAULT_OFF:
+        client.put(url, json={t: False}, headers=ck_a)
+    client.put(url, json={"prayer_reminder_time": "08:00", "check_in_reminder_time": "18:00",
+                          "deep_question_reminder_time": "20:00"}, headers=ck_a)
 
     # backward compat with the shipped iOS client (reads obj["friend_highlight"], sends only that key)
     r = client.put(url, json={"friend_highlight": False}, headers=ck_a)
@@ -188,7 +241,7 @@ def test_api(client):
     check("other user PUT refused", r.status_code in (401, 403), r.status_code)
     check("other user PUT wrote nothing", client.get(url, headers=ck_a).json()["pins"] is True)
     other = f"/notification/{b}/push-preferences"
-    check("user B has own default map, unaffected by A", client.get(other, headers=ck_b).json() == all_on)
+    check("user B has own default map, unaffected by A", client.get(other, headers=ck_b).json() == DEFAULTS)
     check("non-uuid user id in path refused", client.get("/notification/not-a-uuid/push-preferences", headers=ck_a).status_code in (401, 403, 404, 422))
 
     # server error is generic, no leak
@@ -236,12 +289,67 @@ def test_helper():
     except ValueError:
         ok = True
     check("set_preferences rejects unknown key at the module level", ok)
+    n0 = sql("SELECT COUNT(*) FROM push_preferences")[0][0]
+    res = pp.set_preferences(make_user("np_h5"), {})
+    res2 = pp.set_preferences(make_user("np_h6"), {"join_requests": False})
+    check("set_preferences with nothing real to write returns the map and writes no row (the API still 422s an empty body)",
+          res == pp.defaults() and res2 == pp.defaults() and sql("SELECT COUNT(*) FROM push_preferences")[0][0] == n0)
+    for bad in ({"prayer_reminder_time": "25:00"}, {"prayer_reminder": "true"}, {"prayer_reminder_time": 5}):
+        try:
+            pp.set_preferences(u1, bad)
+            ok = False
+        except ValueError:
+            ok = True
+        check(f"set_preferences rejects {bad}", ok)
+
+    # default-OFF types: missing row = disabled, only explicit TRUE enables; fail CLOSED
+    d1, d2, d3 = make_user("np_d1"), make_user("np_d2"), make_user("np_d3")
+    opt_out(d2, "prayer_reminder", True)
+    opt_out(d3, "pins", False)  # row exists but reminder column left at its FALSE default
+    ids = [d1, d2, d3]
+    for t in DEFAULT_OFF:
+        check(f"{t}: user with no row is disabled", d1 in pp.disabled_user_ids(ids, t))
+    check("prayer_reminder: only the explicit opt-in is enabled", pp.disabled_user_ids(ids, "prayer_reminder") == {d1, d3})
+    check("check_in_reminder not enabled by enabling prayer_reminder", pp.disabled_user_ids(ids, "check_in_reminder") == set(ids))
+    check("is_push_enabled default-off: no row False, opted-in True",
+          pp.is_push_enabled(d1, "prayer_reminder") is False and pp.is_push_enabled(d2, "prayer_reminder") is True)
+    check("default-off with malformed id is not enabled; default-on malformed id still enabled",
+          pp.is_push_enabled("nope", "prayer_reminder") is False and pp.is_push_enabled("nope", "pins") is True)
+    check("announcement_reminder defaults ON (no row)", pp.is_push_enabled(d1, "announcement_reminder") is True)
+    opt_out(d2, "announcement_reminder", False)
+    check("announcement_reminder opt-out respected", pp.disabled_user_ids(ids, "announcement_reminder") == {d2})
+
+    real = pp.DBManager
+    class Boom2:
+        def __init__(self, *a, **k):
+            raise RuntimeError("db down")
+    pp.DBManager = Boom2
     try:
-        pp.set_preferences(u1, {})
-        ok = False
-    except ValueError:
-        ok = True
-    check("set_preferences rejects empty update", ok)
+        closed = pp.disabled_user_ids([d2], "prayer_reminder")
+        enabled = pp.is_push_enabled(d2, "prayer_reminder")
+        open_ = pp.disabled_user_ids([d2], "pins")
+    finally:
+        pp.DBManager = real
+    check("default-off type FAILS CLOSED on DB connect error (opted-in user not pushed on error)",
+          closed == {d2} and enabled is False)
+    check("default-on type still fails open on the same error", open_ == set())
+
+    class BadCur:
+        def __init__(self):
+            self._db = real()
+            self.conn = self._db.conn
+            class Cur:
+                def execute(self_, *a, **k):
+                    raise RuntimeError("x")
+            self.cur = Cur()
+        def close(self):
+            self._db.close()
+    pp.DBManager = BadCur
+    try:
+        closed = pp.disabled_user_ids([d2], "deep_question_reminder")
+    finally:
+        pp.DBManager = real
+    check("default-off type FAILS CLOSED on query error", closed == {d2})
 
     # fail open + PII-free log
     cap = LogCapture()
@@ -565,11 +673,10 @@ def test_friend_activity(client):
 
 
 def test_join_requests():
-    print("D9. join_requests (owner push toggleable; approval push essential)")
+    print("D9. join_requests (owner push now ESSENTIAL; approval push essential)")
     owner, applicant = make_user("np_jo"), make_user("np_ja")
     gid = make_group([owner], creator=owner)
     t_owner, t_app = token_for(owner), token_for(applicant)
-    set_flag("join_request_push", "on", owner)
     from backend.interactions import join_requests_config as jrc
     jrc.reset_for_tests()
 
@@ -578,14 +685,18 @@ def test_join_requests():
         return sql("INSERT INTO group_join_requests (group_id, user_id, status) VALUES (%s,%s,%s) RETURNING id::text",
                    (gid, applicant, status))[0][0]
 
-    rid = new_request()
-    opt_out(owner, "join_requests")
-    check("opted-out owner: no owner push prepared", jrn._prepare_owner_push(rid) is None)
-    check("opted-out owner: claim not consumed (owner_notified_at still NULL)",
-          sql("SELECT owner_notified_at FROM group_join_requests WHERE id=%s", (rid,))[0][0] is None)
-    opt_out(owner, "join_requests", True)
-    res = jrn._prepare_owner_push(rid)
-    check("re-enabled owner: push prepared to owner token", res is not None and res["token"] == t_owner, res)
+    # essential: owner push ignores preferences (stored legacy opt-out AND every type off) and the flag
+    for flag_state in ("off", "on"):
+        set_flag("join_request_push", flag_state, owner)
+        for t in TYPES:
+            opt_out(owner, t, False)
+        opt_out(owner, "join_requests", False)
+        rid = new_request()
+        res = jrn._prepare_owner_push(rid)
+        check(f"owner push still prepared with join_request_push flag {flag_state} and every preference off",
+              res is not None and res["token"] == t_owner, res)
+    check("owner push prepare never consults preferences or the flag",
+          not ({"is_push_enabled", "disabled_user_ids"} & set(jrn._prepare_owner_push.__code__.co_names)))
 
     # essential: approval to the requester ignores preferences, even if every type is off for them
     for t in TYPES:
@@ -594,8 +705,6 @@ def test_join_requests():
     res = jrn._prepare_approved_push(rid2)
     check("approval push to requester is essential: still sent when every type is opted out",
           res is not None and res["token"] == t_app, res)
-    # owner opting out of join_requests must not affect their own approval-class pushes
-    opt_out(owner, "join_requests")
     check("approved push path never consults preferences",
           "is_push_enabled" not in jrn._prepare_approved_push.__code__.co_names)
     set_flag("join_request_push", "off", owner)

@@ -64,7 +64,7 @@ final class ChatPaginationNetworkServiceTests: XCTestCase {
         XCTAssertEqual(page.messages[1].sender, "", "own message carries no sender label")
         XCTAssertTrue(page.hasMore)
         XCTAssertEqual(page.cursor, FSMessageCursor(timestamp: "2026-10-01T10:00:00+00:00", seq: 7, id: "m1"))
-        XCTAssertTrue(PagingStubURLProtocol.urls.last!.hasSuffix("/groups/u1/g1?limit=2"))
+        XCTAssertTrue(PagingStubURLProtocol.urls.last!.hasSuffix("/groups/u1/g1?limit=2&include_system=1"))
     }
 
     func test_paged_hasMoreFalse_hasNoCursor() async throws {

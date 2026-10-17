@@ -14,9 +14,9 @@ Properties proved (each would catch a regression of the behaviour it names):
      work runs; no psycopg2/DBManager in the async body), is registered with ONE
      add_job in the scheduler, logs INFO with counts or one WARNING on failure,
      never an ERROR-trap line, never ids/notes.
-  3. Notifier: owner push only when join_request_push is on for the OWNER, one per
+  3. Notifier: owner push always sent (essential; join_request_push flag and the join_requests preference no longer gate it), one per
      group per window with an atomic claim (concurrent requests -> one push), no
-     token / flag off never burns the window, generic copy with no applicant data,
+     token never burns the window, generic copy with no applicant data,
      data = action + group_id only, approved push only after an approval that
      appended the member, never on deny/withdraw/expiry, failures isolated and
      logged as WARNING without ERROR.
@@ -330,17 +330,20 @@ def test_notifier(cli, cap):
         owner = make_user("ow")
         gid, pid = make_listing(owner, title="Quokka Prayer Circle")
         sql("INSERT INTO device_tokens (user_id, token) VALUES (%s, %s)", (owner, "tok-owner"))
-        # push flag OFF: nothing, and the window is not burned
+        # push flag OFF: the owner push is ESSENTIAL (task 20261016), the flag no longer gates it
         J.set_flags(owner, push="off")
         a, ra = pending(cli, pid)
-        time.sleep(0.3)
-        check("join_request_push off: no push", fake.sent == [], fake.sent)
-        check("a flag-off run never burns the window (owner_notified_at stays NULL)",
-              sql("SELECT owner_notified_at FROM group_join_requests WHERE id = %s", (ra,))[0][0] is None)
-        # on, but owner has no token
+        time.sleep(0.4)
+        check("join_request_push off: owner is STILL pushed (essential push, flag no longer gates it)",
+              len(fake.sent) == 1 and fake.sent[0][0] == "tok-owner" and fake.sent[0][3]["action"] == "join_request", fake.sent)
+        check("the flag-off push claims the window (owner_notified_at set)",
+              sql("SELECT owner_notified_at FROM group_join_requests WHERE id = %s", (ra,))[0][0] is not None)
+        sql("UPDATE group_join_requests SET owner_notified_at = NULL WHERE group_id = %s", (gid,))
+        fake.sent.clear()
+        # owner has no token (flag state irrelevant now)
         no_tok = make_user("ow")
         g2, p2 = make_listing(no_tok)
-        J.set_flags(no_tok, push="on")
+        J.set_flags(no_tok, push="off")
         b, rb = pending(cli, p2)
         time.sleep(0.3)
         check("no device token: no push and the window is not burned",

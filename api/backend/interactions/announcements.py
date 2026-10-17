@@ -437,6 +437,11 @@ class AnnouncementsManager(GroupsManager):
             if row[7] <= datetime.now(timezone.utc):
                 raise ValueError("A published announcement's publish time can't be changed")
             sets["publish_at"] = fields["publish_at"]
+            # One-hour-before reminder (task 20261016): a new time under an hour
+            # away gets no reminder; otherwise re-arm it for the new time.
+            sets["reminder_push_sent_at"] = (
+                datetime.now(timezone.utc)
+                if fields["publish_at"] - datetime.now(timezone.utc) < timedelta(hours=1) else None)
         if not sets:
             raise ValueError("No changes supplied")
         sets["updated_at"] = datetime.now(timezone.utc)

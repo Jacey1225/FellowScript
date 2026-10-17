@@ -1,14 +1,14 @@
 import re
 import uuid
 
-from fastapi import APIRouter, HTTPException, Depends, Query, Request
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Depends, Query, Request
 from backend.interactions.groups import (
     GroupFullError, GroupsManager, InvalidMemberError, ListedGroupOwnerOnlyError, normalize_group_title,
 )
 from backend.interactions.friends import  FriendsManager, is_nudge_enabled
 from backend.interactions.push import send_push
 from backend.interactions.push_preferences import async_is_push_enabled
-from backend.interactions import flags, paging
+from backend.interactions import flags, friend_request_notifier, member_joined_notifier, paging
 from backend.interactions.chat_config import get_pagination_config
 from backend.auth.dependencies import require_match
 from backend.moderation.content_filter import check_clean, ContentRejected, rejection_message
@@ -72,6 +72,7 @@ async def fetch_group(
     user_id: str,
     group_id: str,
     limit: str | None = Query(default=None, description="Opt in to paging: page size for the newest page of history. Ignored while chat pagination is off for the caller."),
+    include_system: bool = Query(default=False, description="Opt in to in-chat 'member joined' system lines (system_kind=member_joined). Omit for the contact-list/unread load."),
     _: str = Depends(require_match("user_id")),
 ) -> dict:
     """Fetch full group data including members and message history.
@@ -98,6 +99,7 @@ async def fetch_group(
         HTTPException 422: Invalid ``limit`` (flag on).
     """
     manager = GroupsManager(user_id, group_id)
+    manager.include_system = include_system
     try:
         if not manager.is_member():
             raise HTTPException(status_code=403, detail="Not a member of this group")
@@ -128,6 +130,7 @@ def fetch_group_messages(
     cursor_timestamp: str | None = Query(default=None, description="ISO 8601 timestamp of the oldest row of the previous page (the page's next_cursor_timestamp)."),
     cursor_seq: str | None = Query(default=None, description="next_cursor_seq of the previous page (integer >= 0, optional)."),
     cursor_id: str | None = Query(default=None, description="next_cursor_id of the previous page."),
+    include_system: bool = Query(default=False, description="Opt in to in-chat 'member joined' system lines (system_kind=member_joined)."),
     _: str = Depends(require_match("user_id")),
 ) -> dict:
     """One older page of group history, oldest-first within the page.
@@ -153,6 +156,7 @@ def fetch_group_messages(
         # ERROR for an expected denial (a malformed id never names a group).
         raise HTTPException(status_code=403, detail="Not a member of this group")
     manager = GroupsManager(user_id, group_id)
+    manager.include_system = include_system
     try:
         if not manager.is_member():
             raise HTTPException(status_code=403, detail="Not a member of this group")
@@ -294,7 +298,10 @@ async def fetch_group_highlights(user_id: str, group_id: str, _: str = Depends(r
 
 
 @group_router.put("/{user_id}/{group_id}")
-async def update_group(user_id: str, group_id: str, group: Group, _: str = Depends(require_match("user_id"))) -> None:
+async def update_group(
+    user_id: str, group_id: str, group: Group, background: BackgroundTasks,
+    _: str = Depends(require_match("user_id")),
+) -> None:
     """Update a group's title and/or member list.
 
     Args:
@@ -322,6 +329,9 @@ async def update_group(user_id: str, group_id: str, group: Group, _: str = Depen
             raise HTTPException(status_code=422, detail=str(e))
         try:
             manager.update_group(group)
+            if manager.last_added_member_ids:  # essential push, never fails the edit
+                background.add_task(member_joined_notifier.notify_members_of_new_members,
+                                    group_id, list(manager.last_added_member_ids))
         except GroupFullError:
             raise HTTPException(
                 status_code=409, detail={"code": "group_full", "message": "This group is full."})
@@ -543,7 +553,10 @@ def fetch_friend_messages(
 
 
 @friend_router.post("/{user_id}/request")
-async def send_friend_request(user_id: str, friend_username: str, _: str = Depends(require_match("user_id"))) -> None:
+async def send_friend_request(
+    user_id: str, friend_username: str, background: BackgroundTasks,
+    _: str = Depends(require_match("user_id")),
+) -> None:
     """Send a friend request to a user identified by username.
 
     Args:
@@ -559,6 +572,9 @@ async def send_friend_request(user_id: str, friend_username: str, _: str = Depen
         result = manager.send_add_request(friend_username)
         if result and "error" in result:
             raise HTTPException(status_code=404, detail=result["error"])
+        if manager.new_request_recipient_id:  # essential push, never fails the request
+            background.add_task(friend_request_notifier.notify_friend_request,
+                                manager.new_request_recipient_id, user_id)
     finally:
         manager.close()
 
