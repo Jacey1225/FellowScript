@@ -2852,6 +2852,30 @@ body {
 .reply-bar-cancel:hover { color: var(--parchment); }
 .reply-bar-cancel:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; border-radius: var(--radius-sm); }
 
+/* ── @mentions (task 20261017-chat-mentions) ──
+   Existing tokens only. Bold is weight only (inherits colour and font). The
+   picker floats above the composer (zero-height anchor sits between the message
+   list and the staged chip / reply bar / input bar), 5 rows then scroll. */
+.msg-mention { font-weight: 700; }
+.mention-picker-anchor { position: relative; height: 0; flex-shrink: 0; z-index: 6; }
+.mention-picker {
+  position: absolute; bottom: 0; left: calc(0.8rem + 44px + 0.4rem); width: min(320px, calc(100% - 1.6rem - 44px - 0.4rem));
+  background: var(--pill-bg); border: 1px solid var(--card-border-strong); border-radius: var(--radius-sm);
+  box-shadow: 0 8px 28px rgba(0,0,0,0.45); overflow: hidden;
+  animation: msgActionMenuFade 0.15s ease-out;
+}
+.mention-picker-list { max-height: 220px; overflow-y: auto; background: var(--card-bg-2); }
+.mention-picker-row {
+  display: flex; align-items: center; gap: 0.6rem; min-height: 44px; box-sizing: border-box; padding: 0 0.7rem;
+  border-left: 2px solid transparent; cursor: pointer; font-family: 'Inter', sans-serif; font-size: 0.82rem; color: var(--parchment);
+}
+.mention-picker-row-active, .mention-picker-row:hover { background: rgba(255,255,255,0.06); border-left-color: var(--gold-dim); }
+.mention-picker-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mention-picker-empty { padding: 0.75rem 0.9rem; font-family: 'Inter', sans-serif; font-size: 0.74rem; color: rgba(242,242,242,0.55); }
+@media (prefers-reduced-motion: reduce) {
+  .mention-picker { animation: msgActionMenuFade 0.12s linear; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .msg-bubble-jump { animation: none; }
   .msg-reaction-picker { animation: msgActionMenuFade 0.12s linear; }

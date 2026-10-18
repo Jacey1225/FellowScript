@@ -10,6 +10,7 @@ import {
 } from '../lib/chatPaging.js';
 import { parseReactions, toggled, setting, updatingCount, addReaction, removeReaction } from '../lib/reactions.js';
 import { replyFromWire } from '../lib/replies.js';
+import { MENTION_FEATURE, mentionFields, toWireMentions, verifyMentions } from '../lib/mentions.js';
 import {
   PIN_FEATURE, PIN_PAGE_LIMIT, PIN_LIST_ERROR, PinError, pinFields,
   fetchPins, pinMessageRequest, unpinMessageRequest, withoutPin,
@@ -113,6 +114,14 @@ export function useMessaging({ user }) {
   // read it (see that handler's comment for why).
   const currentContactRef = useRef(currentContact);
   useEffect(() => { currentContactRef.current = currentContact; }, [currentContact]);
+
+  // Verified mentions for a send, or null (flag off, none, or any range stale).
+  const outgoingMentions = useCallback((text, mentionsArg) => {
+    if (!Array.isArray(mentionsArg) || mentionsArg.length === 0) return null;
+    if (capsRef.current?.isEnabled?.(MENTION_FEATURE) !== true) return null;
+    const ok = verifyMentions(text, mentionsArg);
+    return ok.length > 0 ? ok : null;
+  }, []);
 
   // ── Failed sends (task 20261003-web-reader-ios-parity, C6/C7) ──────────────
   // A rejected main-chat send used to leave the optimistic bubble looking
@@ -326,6 +335,8 @@ export function useMessaging({ user }) {
             // for me; absent otherwise (plain message).
             ...(replyFromWire(data) ? { reply: replyFromWire(data) } : {}),
             ...pinFields(data),
+            // Task 20261017-chat-mentions: absent unless the server sent valid ranges.
+            ...mentionFields(data, data.text || ''),
           }));
         }
       } catch (err) {
@@ -591,9 +602,10 @@ export function useMessaging({ user }) {
 
   // Thread messages go over the existing socket as a thread_message frame; the
   // server derives the group and recipients from thread_id.
-  const sendThreadMessage = useCallback((text, attachment = null) => {
+  const sendThreadMessage = useCallback((text, attachment = null, _reply = null, mentionsArg = null) => {
     const tv = threadViewRef.current;
     if (!user || !tv || !wsRef.current || wsRef.current.readyState !== 1) return;
+    const mentions = outgoingMentions(text, mentionsArg);
     const clientRef = newClientRef();
     const payload = {
       type: 'thread_message',
@@ -607,6 +619,7 @@ export function useMessaging({ user }) {
       payload.attachment_meta = attachment.meta || {};
       if (attachment.objectKey) payload.attachment_key = attachment.objectKey;
     }
+    if (mentions) payload.mentions = toWireMentions(mentions);
     wsRef.current.send(JSON.stringify(payload));
     setThreadMessages(prev => [...prev, {
       key: `c:${clientRef}`, clientRef, pending: true,
@@ -614,8 +627,9 @@ export function useMessaging({ user }) {
       attachmentKind: attachment ? attachment.kind : null,
       attachmentMeta: attachment ? (attachment.meta || null) : null,
       attachmentUrl: (attachment && attachment.kind === 'gif') ? null : (attachment?.localUrl || null),
+      ...(mentions ? { mentions } : {}),
     }]);
-  }, [user]);
+  }, [user, outgoingMentions]);
 
   // Delete (author only, group chat) with the server's undo window. The row
   // leaves the list immediately and is put back if the call fails. Resolves to
@@ -796,6 +810,7 @@ export function useMessaging({ user }) {
           ...(parseReactions(m.reactions) ? { reactions: parseReactions(m.reactions) } : {}),
           ...(replyFromWire(m) ? { reply: replyFromWire(m) } : {}),
           ...pinFields(m),
+          ...mentionFields(m, m.text),
         })));
       }
     } catch (err) {
@@ -889,8 +904,11 @@ export function useMessaging({ user }) {
   // preview_url/width/height for gif; width/height for image/video), and
   // `objectKey` is the S3 object key from a completed upload (image/video/
   // file only — always absent for gif, which never uploads bytes of ours).
-  const sendMessage = useCallback((text, attachment = null, replyArg = null) => {
+  const sendMessage = useCallback((text, attachment = null, replyArg = null, mentionsArg = null) => {
     if (!user || !currentContact) return;
+    // Task 20261017-chat-mentions: structured mentions ride along only with the
+    // flag on, only when every range still matches the text (fail closed).
+    const mentions = outgoingMentions(text, mentionsArg);
     // Replies exist only in the main conversation and only with chat_replies on
     // (fail closed: no flag, no reply_to, no quote).
     const reply = (replyArg && typeof replyArg.id === 'string' && replyArg.id
@@ -905,6 +923,7 @@ export function useMessaging({ user }) {
         attachmentMeta: attachment ? (attachment.meta || null) : null,
         attachmentUrl: (attachment && attachment.kind === 'gif') ? null : (attachment?.localUrl || null),
         ...(reply ? { reply } : {}),
+        ...(mentions ? { mentions } : {}),
       }]);
       return;
     }
@@ -921,6 +940,7 @@ export function useMessaging({ user }) {
       if (attachment.objectKey) payload.attachment_key = attachment.objectKey;
     }
     if (reply) payload.reply_to = reply.id;
+    if (mentions) payload.mentions = toWireMentions(mentions);
     // client_ref only on a thread that was opened paged (capability on), so a
     // server without pagination never sees the extra field and no ack is
     // awaited that cannot come.
@@ -941,14 +961,15 @@ export function useMessaging({ user }) {
       // as a real delivered/loaded message (design gate §4).
       attachmentUrl: (attachment && attachment.kind === 'gif') ? null : (attachment?.localUrl || null),
       ...(reply ? { reply } : {}),
+      ...(mentions ? { mentions } : {}),
     }]);
-  }, [user, currentContact, scheduleAckFallback]);
+  }, [user, currentContact, scheduleAckFallback, outgoingMentions]);
 
   // Retry a failed bubble: drop it and send the same text/attachment again.
   const retryFailedMessage = useCallback((m) => {
     if (!m || !m.failed) return;
     setMessages(prev => prev.filter(x => x !== m));
-    sendMessage(m.text, m.retryAttachment || null, m.reply || null);
+    sendMessage(m.text, m.retryAttachment || null, m.reply || null, m.mentions || null);
   }, [sendMessage]);
 
   // ── Reactions (task 20261011-desktop-chat-replies-reactions) ───────────────

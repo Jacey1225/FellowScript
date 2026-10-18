@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useLayoutEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { Button, Avatar, Typography, Input, Popover, Modal, Spin, message as antMessage } from 'antd';
 import {
@@ -25,6 +25,12 @@ import { systemLineText, PIN_NOT_FOUND_COPY } from '../lib/pins.js';
 import {
   REPLY_UNAVAILABLE_LABEL, replyPreviewText, replyAuthorName, replyAuthorLabel, replySnippet,
 } from '../lib/replies.js';
+import MentionText from './MentionText.jsx';
+import MentionPicker, { MENTION_LISTBOX_ID, mentionOptionId } from './MentionPicker.jsx';
+import {
+  MENTION_FEATURE, MAX_MENTIONS, applyEdit, deleteAcrossMentions, fetchMentionMembers,
+  filterMembers, findTrigger, insertMention, prepareSend,
+} from '../lib/mentions.js';
 
 const { Text } = Typography;
 
@@ -656,6 +662,10 @@ export default function ChatThread({
   // Fails closed: needs the capability, the hook's own flag read, and a main
   // chat (no pin UI inside a thread).
   const pinsOn = !inThread && features.message_pins === true && !!pins && pins.enabled === true;
+  // Task 20261017-chat-mentions. Fails closed: needs the capability and a DM or
+  // group chat (never agent chats or shared-object compose).
+  const mentionsOn = features[MENTION_FEATURE] === true
+    && (contact?.type === 'group' || contact?.type === 'friend');
   const [showPins, setShowPins] = useState(false);
   const pinsBtnRef = useRef(null);
   const [pendingJump, setPendingJump] = useState(null);
@@ -669,6 +679,18 @@ export default function ChatThread({
   const threadHeadingRef = useRef(null);
   const [undoToasts, setUndoToasts] = useState([]);
   const [text, setText]               = useState('');
+  // Task 20261017-chat-mentions. `mentions` are the picked people recorded in
+  // the draft: { userId, username, start, length }, UTF-16 offsets into `text`.
+  const [mentions, setMentions]       = useState([]);
+  const [caret, setCaret]             = useState(0);
+  const [mentionActive, setMentionActive] = useState(0);
+  const [mentionDismissed, setMentionDismissed] = useState(null); // { start, query }
+  const [groupMentionMembers, setGroupMentionMembers] = useState(null);
+  const pendingCaretRef = useRef(null);
+  const textRef = useRef('');
+  textRef.current = text;
+  const mentionsRef = useRef([]);
+  mentionsRef.current = mentions;
   // Task 20260929-group-info-panel: replaces the old inline showMembers strip;
   // the member list is hosted inside GroupInfoPanel.
   const [showGroupInfo, setShowGroupInfo] = useState(false);
@@ -888,7 +910,8 @@ export default function ChatThread({
 
   const handleSend = () => {
     if (!canSend) return;
-    const trimmed = text.trim();
+    const prepared = mentionsOn ? prepareSend(text, mentions) : { text: text.trim(), mentions: [] };
+    const trimmed = prepared.text;
     if (!trimmed && !staged) return;
     const reply = (repliesOn && replyTarget && replyTarget.id) ? {
       id: replyTarget.id,
@@ -905,7 +928,14 @@ export default function ChatThread({
         objectKey: staged.objectKey,
         localUrl: (staged.kind === 'image' || staged.kind === 'video') ? staged.previewUrl : null,
       } : null;
-      onSend(trimmed, attachment, reply);
+      onSend(trimmed, attachment, reply, ...(prepared.mentions.length ? [prepared.mentions] : []));
+    } else if (staged && prepared.mentions.length) {
+      onSend(trimmed, {
+        kind: staged.kind,
+        meta: staged.meta,
+        objectKey: staged.objectKey,
+        localUrl: (staged.kind === 'image' || staged.kind === 'video') ? staged.previewUrl : null,
+      }, null, prepared.mentions);
     } else if (staged) {
       const attachment = {
         kind: staged.kind,
@@ -914,6 +944,8 @@ export default function ChatThread({
         localUrl: (staged.kind === 'image' || staged.kind === 'video') ? staged.previewUrl : null,
       };
       onSend(trimmed, attachment);
+    } else if (prepared.mentions.length) {
+      onSend(trimmed, null, null, prepared.mentions);
     } else {
       // No second argument for a plain text-only send — keeps `onSend`'s
       // call shape identical to before this feature for the common case
@@ -922,9 +954,134 @@ export default function ChatThread({
       onSend(trimmed);
     }
     setText('');
+    setMentions([]);
+    setMentionDismissed(null);
     setStaged(null);
     setAttachmentError(null);
     setReplyTarget(null);
+  };
+
+  // ── @mentions (task 20261017-chat-mentions) ──────────────────────────────
+  // The composer stays a plain text input: a mention is the literal "@Name" in
+  // the text plus a recorded { userId, username, start, length } range (UTF-16).
+  // Ranges are kept in step with every edit and re-verified before sending.
+  const isGroupChat = contact?.type === 'group';
+  const mentionGroupId = isGroupChat ? (contact.group_id || contact.id) : null;
+  const mentionFriendId = contact?.type === 'friend' ? (contact.toUsers?.[0] || contact.id) : null;
+  useEffect(() => {
+    setGroupMentionMembers(null);
+    if (!mentionsOn || !mentionGroupId || !user?.user_id) return undefined;
+    let cancelled = false;
+    // Any failure leaves the list null: no picker, never a stale or invented list.
+    fetchMentionMembers(user.user_id, mentionGroupId)
+      .then((list) => { if (!cancelled) setGroupMentionMembers(list); })
+      .catch(() => { if (!cancelled) setGroupMentionMembers(null); });
+    return () => { cancelled = true; };
+  }, [mentionsOn, mentionGroupId, user?.user_id]);
+
+  const mentionMembers = useMemo(() => {
+    if (!mentionsOn) return null;
+    if (isGroupChat) return groupMentionMembers;
+    if (mentionFriendId && contact?.name) return [{ user_id: String(mentionFriendId).toLowerCase(), username: contact.name }];
+    return null;
+  }, [mentionsOn, isGroupChat, groupMentionMembers, mentionFriendId, contact?.name]);
+
+  // A draft's mentions never outlive their conversation or the server flag.
+  useEffect(() => { setMentions([]); setMentionDismissed(null); }, [contact?.id, mentionsOn]);
+
+  const mentionTrigger = useMemo(() => (
+    mentionsOn && mentionMembers && mentionMembers.length > 0 && mentions.length < MAX_MENTIONS
+      ? findTrigger(text, caret, mentions) : null
+  ), [mentionsOn, mentionMembers, mentions, text, caret]);
+  const mentionClosed = !!(mentionTrigger && mentionDismissed
+    && mentionDismissed.start === mentionTrigger.start && mentionDismissed.query === mentionTrigger.query);
+  const pickerOpen = !!mentionTrigger && !mentionClosed;
+  const mentionCandidates = useMemo(() => (
+    pickerOpen ? filterMembers(mentionMembers, mentionTrigger.query, mentions.map(m => m.userId)) : []
+  ), [pickerOpen, mentionMembers, mentionTrigger, mentions]);
+  const mentionIndex = Math.min(mentionActive, Math.max(mentionCandidates.length - 1, 0));
+  const activeMember = mentionCandidates[mentionIndex] || null;
+
+  const triggerKey = mentionTrigger ? `${mentionTrigger.start}:${mentionTrigger.query}` : '';
+  useEffect(() => { setMentionActive(0); }, [triggerKey]);
+  useEffect(() => {
+    if (!pickerOpen) return;
+    const n = mentionCandidates.length;
+    setAnnouncement(n === 0 ? 'No one matches' : `${n} member${n === 1 ? '' : 's'} match`);
+  }, [pickerOpen, mentionCandidates.length]);
+  useEffect(() => {
+    if (!activeMember) return;
+    document.getElementById(mentionOptionId(activeMember.user_id))?.scrollIntoView?.({ block: 'nearest' });
+  }, [activeMember]);
+
+  // Put the caret where an insert or whole-mention delete says, once the new
+  // value is in the input.
+  useLayoutEffect(() => {
+    const c = pendingCaretRef.current;
+    if (c === null) return;
+    pendingCaretRef.current = null;
+    const el = messageInputRef.current?.input;
+    if (el && el.setSelectionRange) el.setSelectionRange(c, c);
+  }, [text, mentions]);
+
+  const applyDraft = useCallback((next) => {
+    pendingCaretRef.current = next.caret;
+    setText(next.text);
+    setMentions(next.mentions);
+    setCaret(next.caret);
+  }, []);
+
+  const syncCaret = useCallback((e) => {
+    const c = e.target && e.target.selectionStart;
+    if (Number.isInteger(c)) setCaret(c);
+  }, []);
+
+  const handleComposerChange = (e) => {
+    const next = e.target.value;
+    if (mentionsRef.current.length) setMentions(applyEdit(textRef.current, next, mentionsRef.current));
+    setText(next);
+    const c = e.target.selectionStart;
+    setCaret(Number.isInteger(c) ? c : next.length);
+  };
+
+  const pickMention = useCallback((member) => {
+    if (!mentionTrigger || !member) return;
+    applyDraft(insertMention(textRef.current, mentionTrigger, member, mentionsRef.current));
+    setMentionDismissed(null);
+    setAnnouncement(`Mentioned ${member.username}`);
+    messageInputRef.current?.focus?.();
+  }, [mentionTrigger, applyDraft]);
+
+  const handleComposerKeyDown = (e) => {
+    if (e.nativeEvent && e.nativeEvent.isComposing) return;
+    if (pickerOpen) {
+      const n = mentionCandidates.length;
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        e.stopPropagation();
+        setMentionDismissed({ start: mentionTrigger.start, query: mentionTrigger.query });
+        return;
+      }
+      if (n > 0) {
+        if (e.key === 'ArrowDown') { e.preventDefault(); setMentionActive((mentionIndex + 1) % n); return; }
+        if (e.key === 'ArrowUp') { e.preventDefault(); setMentionActive((mentionIndex - 1 + n) % n); return; }
+        if (e.key === 'Home') { e.preventDefault(); setMentionActive(0); return; }
+        if (e.key === 'End') { e.preventDefault(); setMentionActive(n - 1); return; }
+        if (e.key === 'Enter' || e.key === 'Tab') { e.preventDefault(); pickMention(activeMember); return; }
+      }
+    }
+    if ((e.key === 'Backspace' || e.key === 'Delete') && mentionsOn && mentionsRef.current.length) {
+      const el = e.target;
+      const r = deleteAcrossMentions(textRef.current, mentionsRef.current, el.selectionStart, el.selectionEnd, e.key);
+      if (r) { e.preventDefault(); applyDraft(r); return; }
+    }
+    if (e.key === 'Escape' && replyTarget) { e.stopPropagation(); cancelReply(); }
+  };
+
+  const handleComposerEnter = () => {
+    // The open picker owns Enter while it has a row to insert.
+    if (pickerOpen && mentionCandidates.length > 0) return;
+    handleSend();
   };
 
   const startReply = useCallback((m) => {
@@ -1361,9 +1518,9 @@ export default function ChatThread({
                 ? <SharedVerseWidget message={m} onNavigateVerse={onNavigateVerse} />
                 : m.attachmentKind === KIND_NOTE
                   ? <SharedNoteCard message={m} onOpen={setOpenNote} />
-                  : m.attachmentKind ? <AttachmentContent message={m} /> : m.text}
+                  : m.attachmentKind ? <AttachmentContent message={m} /> : <MentionText text={m.text} mentions={m.mentions} />}
               {m.attachmentKind && m.text && !isShared && (
-                <div className={isMedia ? 'attachment-caption' : undefined}>{m.text}</div>
+                <div className={isMedia ? 'attachment-caption' : undefined}><MentionText text={m.text} mentions={m.mentions} /></div>
               )}
               {m.failed ? (
                 <button
@@ -1416,6 +1573,18 @@ export default function ChatThread({
       )}
       {undoToasts.length > 0 && <UndoToasts toasts={undoToasts} onUndo={handleUndo} onExpire={dismissToast} />}
       </div>
+
+      {pickerOpen && (
+        <MentionPicker
+          members={mentionCandidates}
+          activeIndex={mentionIndex}
+          onPick={pickMention}
+          photoFor={(m) => {
+            const g = (groupMembers || []).find(x => String(x.user_id).toLowerCase() === m.user_id);
+            return (g && g.photoUrl) || undefined;
+          }}
+        />
+      )}
 
       {/* Staged attachment + inline error */}
       {staged && (
@@ -1491,9 +1660,19 @@ export default function ChatThread({
         <Input
           ref={messageInputRef}
           value={text}
-          onChange={e => setText(e.target.value)}
-          onPressEnter={handleSend}
-          onKeyDown={(e) => { if (e.key === 'Escape' && replyTarget) { e.stopPropagation(); cancelReply(); } }}
+          onChange={handleComposerChange}
+          onPressEnter={handleComposerEnter}
+          onKeyDown={handleComposerKeyDown}
+          onSelect={syncCaret}
+          onClick={syncCaret}
+          onKeyUp={syncCaret}
+          {...(mentionsOn ? {
+            role: 'combobox',
+            'aria-expanded': pickerOpen,
+            'aria-autocomplete': 'list',
+            'aria-controls': pickerOpen ? MENTION_LISTBOX_ID : undefined,
+            'aria-activedescendant': pickerOpen && activeMember ? mentionOptionId(activeMember.user_id) : undefined,
+          } : {})}
           placeholder="Message…"
           className="chat-composer-input"
           style={{ flex: 1, borderRadius: 20, fontSize: '0.82rem' }}

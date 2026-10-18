@@ -15,6 +15,7 @@
 import { parseReactions } from './reactions.js';
 import { replyFromWire } from './replies.js';
 import { pinFields } from './pins.js';
+import { mentionFields, mentionsFromWire } from './mentions.js';
 
 export const INITIAL_PAGE_LIMIT = 30;
 export const OLDER_PAGE_LIMIT = 30;
@@ -57,6 +58,9 @@ export function toMessage(row, mine) {
   if (reply) msg.reply = reply;
   // Task 20261012-message-pins: `pinned` / `system_kind` only while the flag is on.
   Object.assign(msg, pinFields(row));
+  // Task 20261017-chat-mentions: `mentions` only while the flag is on for the
+  // viewer; an invalid range set is dropped (message renders plain).
+  Object.assign(msg, mentionFields(row, row.text));
   return msg;
 }
 
@@ -120,12 +124,15 @@ export function reconcileAck(current, ack) {
   // The ack carries the reply label keys (flag on); keep the optimistic quote
   // when it carries none.
   const reply = replyFromWire(ack) || ack.reply || current[idx].reply;
+  // The ack may carry the server's view of the mentions (with usernames).
+  const mentions = mentionsFromWire(ack.mentions, current[idx].text) || current[idx].mentions;
   next[idx] = {
     ...current[idx],
     id: ack.id,
     timestamp: ack.timestamp || current[idx].timestamp,
     pending: false,
     ...(reply ? { reply } : {}),
+    ...(mentions ? { mentions } : {}),
   };
   return next;
 }

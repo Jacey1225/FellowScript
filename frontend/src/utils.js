@@ -2,6 +2,8 @@
 // (frontend/js/utils.js) on purpose -- same name, same "safe for innerHTML"
 // contract, both surfaces. If you widen/narrow this escaping, make the
 // matching edit there too (readability #H15, 20260904-frontend-arch-sweep).
+import { mentionFields } from './lib/mentions.js';
+
 export function escHtml(str) {
   return String(str ?? '')
     .replace(/&/g, '&amp;')
@@ -41,6 +43,7 @@ export function threadFrameToRow(frame) {
     attachmentKind: frame.attachment_kind || null,
     attachmentMeta: frame.attachment_meta || null,
     attachmentUrl: frame.attachment_url || null,
+    ...mentionFields(frame, typeof frame.body === 'string' ? frame.body : ''),
   };
 }
 
