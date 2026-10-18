@@ -6,6 +6,7 @@ import { compareTimestamps } from '../utils.js';
 import {
   AgentChatHttpError, createChatErrorMessage, pickInitialChatId, readLastChat, writeLastChat,
 } from '../lib/agentChats.js';
+import { probeSession, markSessionEnded } from '../lib/sessionEnd.js';
 
 // Deferred-summary retry: server presence goes stale after 45 s, so retry ~50 s apart.
 const SUMMARIZE_DEFER_RETRY_MS = 50_000;
@@ -212,7 +213,16 @@ export function useAgentChat({ user, onNoteSaved, multiChat = false }) {
         console.error('Failed to parse incoming agent WS message:', err);
       }
     };
-    ws.onclose = () => setPending(key, false);
+    ws.onclose = () => {
+      setPending(key, false);
+      // No reconnect here. If the socket was not closed on purpose (the ref
+      // still points at it), check whether the session ended so the user sees
+      // the global "Your session ended" banner instead of a silent dead chat.
+      if (agentWsRef.current !== ws) return;
+      probeSession(user.user_id).then((state) => {
+        if (state === 'ended') markSessionEnded();
+      });
+    };
   }, [user, setPending]);
 
   const disconnectAgentWS = useCallback(() => {

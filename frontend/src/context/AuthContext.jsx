@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useCallback } from 'react';
 import { API } from '../config.js';
+import { resetSessionEnded } from '../lib/sessionEnd.js';
 import { clearPendingInvite, clearPendingExplore } from '../lib/pendingInvite.js';
 
 const AuthContext = createContext(null);
@@ -20,6 +21,7 @@ export function AuthProvider({ children }) {
   const signIn = useCallback((userData) => {
     sessionStorage.setItem('user', JSON.stringify(userData));
     localStorage.setItem('fs_user', JSON.stringify(userData));
+    resetSessionEnded();
     setUser(userData);
   }, []);
 
@@ -33,6 +35,7 @@ export function AuthProvider({ children }) {
     localStorage.removeItem('last_page');
     clearPendingInvite();
     clearPendingExplore();
+    resetSessionEnded();
     setUser(null);
   }, []);
 

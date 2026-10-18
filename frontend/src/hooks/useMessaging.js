@@ -18,6 +18,9 @@ import {
   createThread, deleteGroupMessage, restoreGroupMessage, fetchThreadMessagesUrl,
   insertRestored, DEFAULT_UNDO_SECONDS,
 } from '../lib/threadsApi.js';
+import {
+  probeSession, backoffDelay, isSessionEnded, markSessionEnded,
+} from '../lib/sessionEnd.js';
 
 // WS reconnect backoff: 3s -> 30s cap, doubling each failed attempt.
 const WS_RECONNECT_MIN_MS = 3000;
@@ -35,7 +38,7 @@ export function useMessaging({ user }) {
   const [currentContact, setCurrentContact] = useState(null);
   const [messages,       setMessages]       = useState([]);
   const [groupMembers,   setGroupMembers]   = useState([]);
-  const [wsStatus,       setWsStatus]       = useState('connecting'); // 'connecting' | 'connected' | 'reconnecting' | 'offline'
+  const [wsStatus,       setWsStatus]       = useState('connecting'); // 'connecting' | 'connected' | 'reconnecting' | 'offline' | 'session-ended'
   const [olderPage,      setOlderPage]      = useState(PAGING_IDLE);
   // Task 20261001-message-threads. One open thread at a time, one level deep:
   // threadView = { thread } while a thread is open over the group chat.
@@ -161,9 +164,22 @@ export function useMessaging({ user }) {
 
   // ── WebSocket ──────────────────────────────────────────────────────────────
 
+  // Stop reconnecting after a 401. Local messages stay in state (readable);
+  // the global SessionEndedBanner shows the sign-in prompt.
+  const stopForSessionEnded = useCallback(() => {
+    clearTimeout(reconnectTimeoutRef.current);
+    reconnectAttemptsRef.current = 0;
+    message.destroy('fs-ws-status');
+    if (wsRef.current) { wsRef.current.onclose = null; wsRef.current.close(); wsRef.current = null; }
+    setWsStatus('session-ended');
+  }, []);
+
   const connectWS = useCallback(() => {
     if (!user) return;
     clearTimeout(reconnectTimeoutRef.current);
+    // A 401 already proved the session is gone: don't open a socket that will
+    // only be rejected. Sign-in resets the latch and Reader reconnects.
+    if (isSessionEnded()) { setWsStatus('session-ended'); return; }
     wsRef.current = new WebSocket(`${WS_BASE}/message/ws/${user.user_id}`);
     const SESSION_TYPES = new Set(['offer', 'answer', 'ice-candidate', 'session-created', 'session-joined', 'session-left', 'talking']);
     wsRef.current.onopen = () => {
@@ -323,9 +339,10 @@ export function useMessaging({ user }) {
       // Reconnect with exponential backoff (3s -> 30s cap) unless this was an
       // intentional disconnect (disconnectWS nulls onclose before closing).
       if (!wsRef.current) return;
+      if (isSessionEnded()) { stopForSessionEnded(); return; }
       const attempt = reconnectAttemptsRef.current + 1;
       reconnectAttemptsRef.current = attempt;
-      const delay = Math.min(WS_RECONNECT_MIN_MS * 2 ** (attempt - 1), WS_RECONNECT_MAX_MS);
+      const delay = backoffDelay(attempt, WS_RECONNECT_MIN_MS, WS_RECONNECT_MAX_MS);
       const offline = attempt >= WS_OFFLINE_AFTER_ATTEMPTS;
       setWsStatus(offline ? 'offline' : 'reconnecting');
       message.warning({
@@ -334,8 +351,16 @@ export function useMessaging({ user }) {
         duration: 0,
       });
       reconnectTimeoutRef.current = setTimeout(connectWS, delay);
+      // A browser WebSocket can't expose a 401 handshake, so ask the server:
+      // only a definite 401 ends the loop; network errors keep the backoff.
+      // Runs alongside the timer (well inside the 3s minimum delay).
+      probeSession(user.user_id).then((state) => {
+        if (state !== 'ended' || !wsRef.current) return; // wsRef null = intentional disconnect
+        markSessionEnded();
+        stopForSessionEnded();
+      });
     };
-  }, [user]);
+  }, [user, stopForSessionEnded]);
 
   const disconnectWS = useCallback(() => {
     clearTimeout(reconnectTimeoutRef.current);

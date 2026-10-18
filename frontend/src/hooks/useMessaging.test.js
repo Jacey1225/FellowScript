@@ -142,3 +142,46 @@ describe('useMessaging.openChat — surfaces a visible error on fetch failure (d
     expect(message.error).toHaveBeenCalled();
   });
 });
+
+describe('useMessaging WS close — session-ended probe (task 20261017-chat-ws-reconnect-stuck)', () => {
+  const flush = async () => { await act(async () => { await Promise.resolve(); await Promise.resolve(); }); };
+
+  test('probe 401 stops reconnecting and reports session-ended', async () => {
+    const { markSessionEnded: _m, resetSessionEnded } = await import('../lib/sessionEnd.js');
+    resetSessionEnded();
+    global.fetch = vi.fn(async () => ({ status: 401 }));
+    const { result } = renderHook(() => useMessaging({ user: USER }));
+    act(() => { result.current.connectWS(); });
+    act(() => { MockWebSocket.instances[0]._closeUnexpectedly(); });
+    await flush();
+    act(() => { vi.advanceTimersByTime(60_000); });
+    expect(MockWebSocket.instances).toHaveLength(1);
+    expect(result.current.wsStatus).toBe('session-ended');
+    resetSessionEnded();
+  });
+
+  test('probe network failure keeps the capped-backoff reconnect', async () => {
+    const { resetSessionEnded } = await import('../lib/sessionEnd.js');
+    resetSessionEnded();
+    global.fetch = vi.fn(async () => { throw new TypeError('Failed to fetch'); });
+    const { result } = renderHook(() => useMessaging({ user: USER }));
+    act(() => { result.current.connectWS(); });
+    act(() => { MockWebSocket.instances[0]._closeUnexpectedly(); });
+    await flush();
+    act(() => { vi.advanceTimersByTime(3000); });
+    expect(MockWebSocket.instances).toHaveLength(2);
+    expect(result.current.wsStatus).not.toBe('session-ended');
+  });
+
+  test('probe success keeps reconnecting', async () => {
+    const { resetSessionEnded } = await import('../lib/sessionEnd.js');
+    resetSessionEnded();
+    global.fetch = vi.fn(async () => ({ status: 200 }));
+    const { result } = renderHook(() => useMessaging({ user: USER }));
+    act(() => { result.current.connectWS(); });
+    act(() => { MockWebSocket.instances[0]._closeUnexpectedly(); });
+    await flush();
+    act(() => { vi.advanceTimersByTime(3000); });
+    expect(MockWebSocket.instances).toHaveLength(2);
+  });
+});

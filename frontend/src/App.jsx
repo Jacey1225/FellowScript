@@ -33,6 +33,7 @@ import InviteFriends from './pages/InviteFriends.jsx';
 import Affiliates from './pages/Affiliates.jsx';
 import UpgradeModal from './components/UpgradeModal.jsx';
 import TermsGate from './components/TermsGate.jsx';
+import SessionEndedBanner from './components/SessionEndedBanner.jsx';
 
 export default function App() {
   return (
@@ -119,6 +120,8 @@ export default function App() {
       <TermsGate />
       {/* Task 20261002-free-plan-limits-ui: shared Free-plan upgrade modal. */}
       <UpgradeModal />
+      {/* Task 20261017-chat-ws-reconnect-stuck: 401 -> "Your session ended" banner. */}
+      <SessionEndedBanner />
       {/* Restricts the Tauri desktop shell to lib/desktopScope.js's
           DESKTOP_ALLOWED_ROUTES (task 20260906-desktop-scope-lockdown); a
           no-op in the ordinary web frontend. See DesktopRouteGuard.jsx. */}

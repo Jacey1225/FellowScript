@@ -9,6 +9,10 @@ import './styles/global.css';
 import 'dockview-react/dist/styles/dockview.css';
 import './styles/reader-dock.css';
 import { captureCodeFromUrl } from './lib/promoCode.js';
+import { installSessionGuard } from './lib/sessionEnd.js';
+
+// One central place for the global 401 path (authenticated calls use bare fetch).
+installSessionGuard();
 
 // Shared friend/creator link (/?code=XYZ): remember the code so the purchase
 // flow can prefill it after sign-in. The server still validates it at checkout.
