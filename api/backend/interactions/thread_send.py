@@ -339,12 +339,14 @@ async def _deliver(manager, sender_id, sender, group_id, thread_id, recipients, 
 
     for uid in targets:
         ws = manager.active_connections.get(uid)
+        delivered_live = False
         if ws is not None:
             try:
                 out = frame
                 if mention_list and message_mentions_enabled(uid):
                     out = {**frame, "mentions": mention_list}
                 await ws.send_json(out)
+                delivered_live = True
                 if uid not in mention_ids:
                     continue
             except Exception as e:  # noqa: BLE001 - stale socket: evict, fall through to push
@@ -353,9 +355,13 @@ async def _deliver(manager, sender_id, sender, group_id, thread_id, recipients, 
         token = tokens.get(uid)
         if uid in mention_ids:
             # Mention push replaces the ordinary one; bypasses mute, online and follower rules.
-            await _mention_push(manager, uid, token if uid in mentioned else None, sender_name,
-                                body, group_id, thread_id, msg["message_id"])
-            continue
+            if await _mention_push(manager, uid, token if uid in mentioned else None, sender_name,
+                                   body, group_id, thread_id, msg["message_id"], sender_id):
+                continue
+            # Rate limited: only the mention push is suppressed; the ordinary rules apply
+            # (online users get none, offline followers who are not muted still get one).
+            if delivered_live:
+                continue
         if uid in followers and token and uid not in muted:
             try:
                 await send_push(token, sender_name, body, data=push_data)
@@ -367,19 +373,24 @@ def message_mentions_enabled(uid: str) -> bool:
     return flags.is_enabled(message_mentions.FLAG, uid)
 
 
-async def _mention_push(manager, uid, token, sender_name, body, group_id, thread_id, message_id) -> None:
+async def _mention_push(manager, uid, token, sender_name, body, group_id, thread_id, message_id, sender_id) -> bool:
     """Mention push for one thread recipient. ``token`` is None when the user has no device
-    token or opted out of message pushes. Skips a message deleted meanwhile. Never raises."""
+    token or opted out of message pushes. Skips a message deleted meanwhile. Returns False only
+    when the mention push limiter suppressed it (caller applies the ordinary rules). Never raises."""
     try:
         if not token:
             logger.info("thread mention push skipped (no token or opted out) recipient=%s", uid)
-            return
+            return True
         manager._execute(
             "SELECT 1 FROM thread_messages WHERE _id = %s::uuid AND deleted_at IS NULL", (message_id,))
         if manager.cur.fetchone() is None:
             logger.info("thread mention push skipped (message deleted) message=%s", message_id)
-            return
+            return True
+        if not message_mentions.push_limiter.allow(sender_id, uid):
+            logger.info("thread mention push rate limited sender=%s recipient=%s message=%s", sender_id, uid, message_id)
+            return False
         await send_push(token, mention_title(sender_name), body, data={
             "action": "thread_message", "group_id": group_id, "thread_id": thread_id, "mention": True})
     except Exception as e:  # noqa: BLE001
         logger.error("Thread mention push to %s failed: %s", uid, type(e).__name__)
+    return True

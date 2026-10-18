@@ -47,6 +47,23 @@ A mentioned user gets one push titled `<sender> mentioned you` (body: the usual 
 the thread. The global "messages" notification preference, blocks, a missing device token and a message deleted before
 sending still suppress it.
 
+### Mention push rate limit
+
+Only the extra mention push is limited, never the message. A message that mentions someone is always validated,
+stored and delivered over the websocket. The limits (code constants in `message_mentions.py`, applied on the main
+chat, DM and thread paths, additive to and independent of the thread send limit):
+
+- per sender to recipient pair: at most 1 mention push per 10 seconds (`PAIR_MAX_PUSHES`, `PAIR_WINDOW_SECONDS`)
+- per sender across all recipients: at most 20 mention pushes per 60 seconds (`SENDER_MAX_PUSHES`, `SENDER_WINDOW_SECONDS`)
+
+When a mention push is suppressed by the limit (logged with ids only), the recipient is handled as for an ordinary
+message, not as a mention: a user who muted the group gets no push, an online user gets only the websocket frame,
+and in a thread only an offline follower who has not muted the group gets the ordinary push (title is the sender
+name, no `mention` key). Suppressed attempts are not counted, so they do not extend the window. The limiter is an
+in-memory sliding window per backend process (one container today); it resets on restart and is not shared between
+processes. Memory is bounded: each key holds at most its limit in timestamps and expired keys are swept out
+periodically.
+
 ## Rollout
 
 1. Deploy the backend with the flag off. `create_tables` runs at startup and adds

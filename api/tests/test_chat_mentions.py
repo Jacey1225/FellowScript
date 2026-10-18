@@ -122,6 +122,7 @@ class Env:
         self.ws = {u: FakeWS() for u in online}
         self.manager.active_connections.update(self.ws)
         self.pushed = []
+        self.keep_limit = False  # tests of the push limiter itself set this
 
         async def fake_push(token, title, body, data=None):
             self.pushed.append({"token": token, "title": title, "body": body, "data": data})
@@ -139,12 +140,16 @@ class Env:
         self.manager.active_connections.pop(uid, None)
 
     def send(self, sender, gid, text, to=None, **extra):
+        if not self.keep_limit:
+            mm.push_limiter.reset()
         p = {"from_user": sender, "to_users": to or [sender], "text": text, "group_id": gid,
              "timestamp": datetime.now(timezone.utc).isoformat()}
         p.update(extra)
         asyncio.run(self.manager.send_msg(p))
 
     def send_thread(self, sender, tid, text, **extra):
+        if not self.keep_limit:
+            mm.push_limiter.reset()
         asyncio.run(thread_send.send_thread_message(
             self.manager, {"from_user": sender, "type": "thread_message", "thread_id": tid, "text": text, **extra}))
 
@@ -779,10 +784,148 @@ def test_push_thread(client):
         mid = sql("SELECT _id::text FROM thread_messages WHERE text=%s", (t,))[0][0]
         env.clear()
         sql("UPDATE thread_messages SET deleted_at=NOW() WHERE _id=%s", (mid,))
-        asyncio.run(thread_send._mention_push(env.manager, b, "tok-" + b[:8], name_of(a), "x", gid, tid, mid))
+        asyncio.run(thread_send._mention_push(env.manager, b, "tok-" + b[:8], name_of(a), "x", gid, tid, mid, a))
         check("thread: message deleted before the push => skipped", env.pushed == [])
     finally:
         env.close()
+        for f in ("threads", FLAG):
+            set_flag(f, "off", a)
+
+
+# ---------------------------------------------------------------- 5b mention push limiter
+
+class Clock:
+    def __init__(self):
+        self.t = 1000.0
+
+    def __call__(self):
+        return self.t
+
+
+def test_push_limiter(client):
+    print("mention push limiter")
+    check("constants: 1 per 10s per pair, 20 per 60s per sender",
+          (mm.PAIR_MAX_PUSHES, mm.PAIR_WINDOW_SECONDS, mm.SENDER_MAX_PUSHES, mm.SENDER_WINDOW_SECONDS) == (1, 10.0, 20, 60.0))
+    clk = Clock()
+    lim = mm.MentionPushLimiter(clock=clk)
+    s1, s2, r1, r2 = (str(uuid.uuid4()) for _ in range(4))
+    check("first mention push allowed", lim.allow(s1, r1))
+    check("second within 10s to the same recipient suppressed", not lim.allow(s1, r1))
+    check("same recipient, different case of ids, still the same pair", not lim.allow(s1.upper(), r1.upper()))
+    check("different recipient allowed (pair limit is per pair)", lim.allow(s1, r2))
+    check("a different sender to the same recipient is unaffected", lim.allow(s2, r1))
+    clk.t += 9.9
+    check("still suppressed just before the window ends", not lim.allow(s1, r1))
+    clk.t += 0.2
+    check("allowed again after 10s (window expiry)", lim.allow(s1, r1))
+    # sender cap: 20 per 60s across recipients
+    lim = mm.MentionPushLimiter(clock=clk)
+    rs = [str(uuid.uuid4()) for _ in range(25)]
+    got = [lim.allow(s1, r) for r in rs]
+    check("sender cap: 20 allowed, the rest suppressed", got == [True] * 20 + [False] * 5, str(got))
+    check("sender cap does not touch another sender", lim.allow(s2, rs[0]))
+    clk.t += 30
+    check("sender cap still applies inside 60s", not lim.allow(s1, rs[0]))
+    clk.t += 31
+    check("sender cap clears after 60s", lim.allow(s1, rs[20]))
+    # suppressed pushes are not recorded (do not extend the window)
+    lim = mm.MentionPushLimiter(clock=clk)
+    lim.allow(s1, r1)
+    clk.t += 6
+    lim.allow(s1, r1)
+    clk.t += 5
+    check("a suppressed attempt does not extend the window", lim.allow(s1, r1))
+    # memory bounded: many one-off keys are evicted by the periodic sweep
+    lim = mm.MentionPushLimiter(clock=clk)
+    for i in range(1000):
+        lim.allow(f"s{i}", f"r{i}")
+    big = lim.size()
+    clk.t += 120
+    for i in range(mm._SWEEP_EVERY):
+        lim.allow("sx", f"rx{i % 2}")
+    check("expired keys are evicted (memory bounded)", big == 2000 and lim.size() <= 6, f"{big} -> {lim.size()}")
+
+    # integration: the message always delivers, only the mention push is suppressed
+    print("mention push limiter: send paths")
+    a, b, c, d = (make_user("ml") for _ in range(4))
+    gid = make_group([a, b, c, d])
+    for u in (b, c, d):
+        token_for(u)
+    mute(b, gid)
+    env = Env(a)
+    env.keep_limit = True
+    mm.push_limiter.reset()
+    try:
+        set_flag(FLAG, "on", a)
+        t1 = f"one @{name_of(b)} @{name_of(c)}"
+        env.send(a, gid, t1, mentions=[ment(b, t1), ment(c, t1)])
+        check("first mention pushes (muted b and offline c)", len(env.pushes_to(b)) == 1 and len(env.pushes_to(c)) == 1
+              and env.pushes_to(b)[0]["data"].get("mention") is True)
+        env.clear()
+        t2 = f"two @{name_of(b)} @{name_of(c)}"
+        env.send(a, gid, t2, mentions=[ment(b, t2), ment(c, t2)])
+        check("second within 10s: message still stored", stored(t2) is not None and stored(t2)[1] is not None and not env.errors(a))
+        check("limited + muted recipient: no push at all (ordinary mute applies)", env.pushes_to(b) == [])
+        pc = env.pushes_to(c)
+        check("limited + unmuted offline recipient: ordinary push (not a mention)",
+              len(pc) == 1 and pc[0]["title"] == name_of(a) and "mention" not in pc[0]["data"], str(pc))
+        env.add_online(b)
+        env.clear()
+        t3 = f"three @{name_of(b)}"
+        env.send(a, gid, t3, mentions=[ment(b, t3)])
+        fr = [f for f in env.frames(b) if f.get("text") == t3]
+        check("limited + online recipient: frame delivered with mentions, no push",
+              len(fr) == 1 and fr[0].get("mentions") and env.pushes_to(b) == [], str(env.pushed))
+        env.set_offline(b)
+        # a different sender is unaffected
+        mm.push_limiter.reset()
+        env.send(a, gid, f"x @{name_of(b)}", mentions=[ment(b, f"x @{name_of(b)}")])
+        env.clear()
+        env.send(d, gid, f"from d @{name_of(b)}", mentions=[ment(b, f"from d @{name_of(b)}")])
+        check("a different sender's mention push still goes out", len(env.pushes_to(b)) == 1)
+        # DM path
+        befriend(a, c)
+        mm.push_limiter.reset()
+        env.clear()
+        td = f"dm1 @{name_of(c)}"
+        env.send(a, None, td, to=[c], mentions=[ment(c, td)])
+        td2 = f"dm2 @{name_of(c)}"
+        env.send(a, None, td2, to=[c], mentions=[ment(c, td2)])
+        pcs = env.pushes_to(c)
+        check("DM: first is a mention push, second (limited) is delivered and pushed as ordinary",
+              saved_count(td2) == 1 and len(pcs) == 2 and pcs[0]["data"].get("mention") is True
+              and "mention" not in pcs[1]["data"], str(pcs))
+
+        # thread path (additive to the existing thread send rate limit)
+        root = make_msg(a, gid, "root")
+        tid = make_thread(gid, root, a)
+        set_flag("threads", "on", a)
+        sql("INSERT INTO thread_followers (thread_id, user_id) VALUES (%s,%s) ON CONFLICT DO NOTHING", (tid, c))
+        limiter.reset()
+        mm.push_limiter.reset()
+        env.clear()
+        tt1 = f"t1 @{name_of(b)} @{name_of(c)}"
+        env.send_thread(a, tid, tt1, mentions=[ment(b, tt1), ment(c, tt1)])
+        check("thread: first mention pushes (muted non-follower b and follower c)",
+              len(env.pushes_to(b)) == 1 and len(env.pushes_to(c)) == 1)
+        env.clear()
+        tt2 = f"t2 @{name_of(b)} @{name_of(c)}"
+        env.send_thread(a, tid, tt2, mentions=[ment(b, tt2), ment(c, tt2)])
+        check("thread: limited message still stored",
+              sql("SELECT mentions IS NOT NULL FROM thread_messages WHERE text=%s", (tt2,))[0][0] is True)
+        check("thread: limited non-follower gets no push", env.pushes_to(b) == [])
+        pc = env.pushes_to(c)
+        check("thread: limited follower gets the ordinary push", len(pc) == 1 and pc[0]["title"] == name_of(a)
+              and "mention" not in pc[0]["data"], str(pc))
+        env.clear()
+        env.add_online(c)
+        tt3 = f"t3 @{name_of(c)}"
+        env.send_thread(a, tid, tt3, mentions=[ment(c, tt3)])
+        check("thread: limited online recipient gets the frame and no push",
+              any(f.get("body") == tt3 for f in env.frames(c, "thread_message")) and env.pushes_to(c) == [])
+    finally:
+        env.close()
+        mm.push_limiter.reset()
         for f in ("threads", FLAG):
             set_flag(f, "off", a)
 
@@ -888,6 +1031,7 @@ def main():
         test_push_group(client)
         test_push_dm(client)
         test_push_thread(client)
+        test_push_limiter(client)
         test_mention_members(client)
         test_purge_restore(client)
     finally:

@@ -881,10 +881,12 @@ class ConnectionManager(DBManager):
                 # Mention push REPLACES the ordinary push for this user and bypasses the chat
                 # mute and the online rule. Global "messages"
                 # preference, no token and a message deleted meanwhile still suppress it.
-                await self._send_mention_push(
-                    uid, device_tokens.get(uid), pref_off, sender_name, text, attachment_kind,
-                    group_id, from_user_id, message_id)
-                continue
+                if await self._send_mention_push(
+                        uid, device_tokens.get(uid), pref_off, sender_name, text, attachment_kind,
+                        group_id, from_user_id, message_id):
+                    continue
+                # Rate limited: only the mention push is suppressed; the ordinary push rules
+                # (mute, online suppression, preference) now apply as for a normal message.
             if not ws and uid != from_user_id:
                 # Recipient is offline (or was just evicted above, whether by
                 # a live send failure or the heartbeat eviction in
@@ -956,19 +958,24 @@ class ConnectionManager(DBManager):
                     logger.error("Push to %s failed: %s", uid, e)
 
     async def _send_mention_push(self, uid, token, pref_off, sender_name, text, attachment_kind,
-                                 group_id, from_user_id, message_id) -> None:
+                                 group_id, from_user_id, message_id) -> bool:
         """One mention push for a validated, unblocked mentioned recipient.
+        Returns False only when the mention push limiter suppressed it (the caller then
+        applies the ordinary push rules); True when handled (sent or deliberately skipped).
         Ids only in logs. Never raises."""
         try:
             if not token:
                 logger.info("mention push skipped (no device token) recipient=%s", uid)
-                return
+                return True
             if str(uid).lower() in pref_off:
-                return  # global "messages" opt-out
+                return True  # global "messages" opt-out
             self._execute("SELECT 1 FROM messages WHERE _id = %s::uuid AND deleted_at IS NULL", (message_id,))
             if self.cur.fetchone() is None:
                 logger.info("mention push skipped (message deleted) message=%s", message_id)
-                return
+                return True
+            if not message_mentions.push_limiter.allow(from_user_id, uid):
+                logger.info("mention push rate limited sender=%s recipient=%s message=%s", from_user_id, uid, message_id)
+                return False
             if group_id:
                 push_data = {"group_id": group_id, "action": "message", "mention": True}
             else:
@@ -977,6 +984,7 @@ class ConnectionManager(DBManager):
             await send_push(token, mention_title(sender_name), push_body(text, attachment_kind), data=push_data)
         except Exception as e:
             logger.error("Mention push to %s failed: %s", uid, type(e).__name__)
+        return True
 
     async def send_sig(self, payload: dict) -> None:
         """Relay a WebRTC signaling frame without persisting it.

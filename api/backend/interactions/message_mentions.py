@@ -19,7 +19,10 @@ Rules:
 """
 from __future__ import annotations
 
+import collections
 import logging
+import threading
+import time
 import uuid
 
 from backend.interactions import flags
@@ -34,6 +37,76 @@ MAX_MENTIONS = 10
 _SHARED_KINDS = frozenset({"shared_verse", "shared_note"})
 _ENTRY_KEYS = frozenset({"user_id", "start", "length"})
 _TABLES = ("messages", "thread_messages")
+
+
+# Mention PUSH limiter (never limits message delivery). In-memory sliding window,
+# per process (single backend container). Both limits must pass; a suppressed push is
+# not recorded. A suppressed mention push falls back to the ordinary push rules for that
+# recipient (mute, online suppression, follower rule still apply).
+PAIR_WINDOW_SECONDS = 10.0
+PAIR_MAX_PUSHES = 1            # per sender -> recipient pair
+SENDER_WINDOW_SECONDS = 60.0
+SENDER_MAX_PUSHES = 20         # per sender across all recipients
+_SWEEP_EVERY = 256             # calls between full sweeps of expired keys
+
+
+class MentionPushLimiter:
+    """Sliding-window limiter with an injectable clock. Memory is bounded: a key
+    holds at most its limit in timestamps, expired timestamps are dropped on every
+    touch, and a periodic sweep deletes keys whose window has fully passed."""
+
+    def __init__(self, clock=time.monotonic) -> None:
+        self._clock = clock
+        self._lock = threading.Lock()
+        self._pairs: dict[tuple[str, str], collections.deque] = {}
+        self._senders: dict[str, collections.deque] = {}
+        self._calls = 0
+
+    @staticmethod
+    def _prune(dq, now: float, window: float) -> None:
+        while dq and now - dq[0] >= window:
+            dq.popleft()
+
+    def allow(self, sender: str, recipient: str) -> bool:
+        """True (and records the push) when both limits have room."""
+        sender, recipient = str(sender).lower(), str(recipient).lower()
+        with self._lock:
+            now = self._clock()
+            self._calls += 1
+            if self._calls % _SWEEP_EVERY == 0:
+                self._sweep(now)
+            pair = self._pairs.setdefault((sender, recipient), collections.deque())
+            snd = self._senders.setdefault(sender, collections.deque())
+            self._prune(pair, now, PAIR_WINDOW_SECONDS)
+            self._prune(snd, now, SENDER_WINDOW_SECONDS)
+            ok = len(pair) < PAIR_MAX_PUSHES and len(snd) < SENDER_MAX_PUSHES
+            if ok:
+                pair.append(now)
+                snd.append(now)
+            else:
+                if not pair:
+                    del self._pairs[(sender, recipient)]
+                if not snd:
+                    del self._senders[sender]
+            return ok
+
+    def _sweep(self, now: float) -> None:
+        for key in [k for k, dq in self._pairs.items() if not dq or now - dq[-1] >= PAIR_WINDOW_SECONDS]:
+            del self._pairs[key]
+        for key in [k for k, dq in self._senders.items() if not dq or now - dq[-1] >= SENDER_WINDOW_SECONDS]:
+            del self._senders[key]
+
+    def size(self) -> int:
+        with self._lock:
+            return len(self._pairs) + len(self._senders)
+
+    def reset(self) -> None:
+        with self._lock:
+            self._pairs.clear()
+            self._senders.clear()
+
+
+push_limiter = MentionPushLimiter()
 
 
 class MentionInvalid(Exception):
