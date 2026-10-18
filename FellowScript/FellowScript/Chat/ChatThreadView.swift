@@ -344,7 +344,8 @@ final class ChatThreadViewModel: ObservableObject {
             timestamp: message.timestamp, attachmentKind: message.attachmentKind,
             attachmentURL: message.attachmentURL, attachmentMeta: message.attachmentMeta,
             reactions: message.reactions, reply: message.reply,
-            pinned: message.pinned, systemKind: message.systemKind
+            pinned: message.pinned, systemKind: message.systemKind,
+            mentions: message.mentions
         )
     }
 
@@ -366,7 +367,7 @@ final class ChatThreadViewModel: ObservableObject {
     /// `StagedAttachment` — the composer is responsible for driving the
     /// upload to completion (and disabling send until it is) before calling
     /// this, per design gate §3.
-    func sendMessage(text: String, attachment: StagedAttachment?, contact: FSContact, userId: String, reply: FSReplyRef? = nil, shared: SharedPayload? = nil) {
+    func sendMessage(text: String, attachment: StagedAttachment?, contact: FSContact, userId: String, reply: FSReplyRef? = nil, shared: SharedPayload? = nil, mentions: [FSMention] = []) {
         let iso = ISO8601DateFormatter().string(from: Date())
         let messageId = UUID().uuidString
         var body: [String: Any] = ["from_user": userId, "timestamp": iso, "text": text]
@@ -393,6 +394,13 @@ final class ChatThreadViewModel: ObservableObject {
                 body["to_users"] = [contact.id]
                 body["group_id"] = ""
             }
+        }
+
+        // Task 20261017-chat-mentions: structured mentions (UTF-16 offsets into
+        // `text`, verified by the composer). Never on a shared-object send.
+        let sentMentions = shared == nil ? mentions : []
+        if !sentMentions.isEmpty {
+            body["mentions"] = sentMentions.map { $0.outgoingJSON }
         }
 
         var attachmentKind: String? = nil
@@ -446,7 +454,8 @@ final class ChatThreadViewModel: ObservableObject {
         messages.append(FSMessage(
             id: messageId, text: text, mine: true, sender: "", timestamp: iso,
             attachmentKind: attachmentKind, attachmentURL: nil, attachmentMeta: attachmentMeta,
-            reply: activeThread == nil ? reply : nil
+            reply: activeThread == nil ? reply : nil,
+            mentions: sentMentions.isEmpty ? nil : sentMentions
         ))
         if let localPreview {
             localAttachmentPreviews[messageId] = localPreview
@@ -480,7 +489,7 @@ final class ChatThreadViewModel: ObservableObject {
         localAttachmentPreviews.removeValue(forKey: messageId)
         pendingAttachmentByMessageId.removeValue(forKey: messageId)
         let shared = pendingSharedByMessageId.removeValue(forKey: messageId)
-        sendMessage(text: failed.text, attachment: attachment, contact: contact, userId: userId, reply: failed.reply, shared: shared)
+        sendMessage(text: failed.text, attachment: attachment, contact: contact, userId: userId, reply: failed.reply, shared: shared, mentions: failed.mentions ?? [])
     }
 
     /// Correlates an inbound `{"type":"error",...}` frame to the oldest
@@ -529,16 +538,16 @@ final class ChatThreadViewModel: ObservableObject {
     /// only the open thread's list (and only if that thread is still open); an
     /// ack without it belongs to the main chat, which is the stash while a
     /// thread is open.
-    private func handleAck(clientRef: String, id: String, timestamp: String?, threadId: String?, reply: FSReplyRef? = nil) {
+    private func handleAck(clientRef: String, id: String, timestamp: String?, threadId: String?, reply: FSReplyRef? = nil, mentions: [FSMention]? = nil) {
         if let threadId {
             guard activeThread?.id == threadId else { return }
-            if Self.reconcile(&messages, clientRef: clientRef, id: id, timestamp: timestamp, reply: reply) { afterAck(clientRef: clientRef, id: id) }
+            if Self.reconcile(&messages, clientRef: clientRef, id: id, timestamp: timestamp, reply: reply, mentions: mentions) { afterAck(clientRef: clientRef, id: id) }
             return
         }
         if activeThread == nil {
-            if Self.reconcile(&messages, clientRef: clientRef, id: id, timestamp: timestamp, reply: reply) { afterAck(clientRef: clientRef, id: id) }
+            if Self.reconcile(&messages, clientRef: clientRef, id: id, timestamp: timestamp, reply: reply, mentions: mentions) { afterAck(clientRef: clientRef, id: id) }
         } else if var st = mainStash {
-            if Self.reconcile(&st.messages, clientRef: clientRef, id: id, timestamp: timestamp, reply: reply) {
+            if Self.reconcile(&st.messages, clientRef: clientRef, id: id, timestamp: timestamp, reply: reply, mentions: mentions) {
                 st.pendingSendIds.removeAll { $0 == clientRef }
                 st.failedMessageIds.remove(clientRef)
                 mainStash = st
@@ -559,7 +568,7 @@ final class ChatThreadViewModel: ObservableObject {
 
     /// Pure list half of the ack rule. Returns true when `list` held the
     /// optimistic bubble.
-    private static func reconcile(_ list: inout [FSMessage], clientRef: String, id: String, timestamp: String?, reply: FSReplyRef? = nil) -> Bool {
+    private static func reconcile(_ list: inout [FSMessage], clientRef: String, id: String, timestamp: String?, reply: FSReplyRef? = nil, mentions: [FSMention]? = nil) -> Bool {
         guard let idx = list.firstIndex(where: { $0.id == clientRef }) else { return false }
         if list.contains(where: { $0.id == id }) {
             list.remove(at: idx)
@@ -569,7 +578,8 @@ final class ChatThreadViewModel: ObservableObject {
                 id: id, text: old.text, mine: old.mine, sender: old.sender,
                 timestamp: (timestamp?.isEmpty == false ? timestamp! : old.timestamp),
                 attachmentKind: old.attachmentKind, attachmentURL: old.attachmentURL, attachmentMeta: old.attachmentMeta,
-                reply: reply ?? old.reply
+                reply: reply ?? old.reply,
+                mentions: mentions ?? old.mentions
             )
         }
         return true
@@ -610,7 +620,8 @@ final class ChatThreadViewModel: ObservableObject {
                 // message sent with client_ref. Never a bubble, never an error.
                 if let ref = json["client_ref"] as? String, let ackId = json["id"] as? String {
                     handleAck(clientRef: ref, id: ackId, timestamp: json["timestamp"] as? String,
-                              threadId: json["thread_id"] as? String, reply: FSReplyRef(frame: json))
+                              threadId: json["thread_id"] as? String, reply: FSReplyRef(frame: json),
+                              mentions: FSMention.parse(json["mentions"]))
                 }
             case "error":
                 handleSendError(reason: json["reason"] as? String, detail: json["detail"] as? String)
@@ -662,7 +673,8 @@ final class ChatThreadViewModel: ObservableObject {
             attachmentURL:  json["attachment_url"] as? String,
             attachmentMeta: attachmentMeta,
             reply: FSReplyRef(frame: json),
-            systemKind: json["system_kind"] as? String
+            systemKind: json["system_kind"] as? String,
+            mentions: FSMention.parse(json["mentions"])
         )
         // Dedup by id (a live frame for a row a history fetch already
         // delivered must not render twice); a frame without an id always appends.
@@ -1171,6 +1183,12 @@ struct ChatThreadView: View {
     // Task 20261012-message-pins: Pinned list sheet + the message briefly
     // outlined after jumping to it.
     @State private var showPinned: Bool = false
+    // Task 20261017-chat-mentions: the composer's recorded mentions, the text
+    // they were last reconciled with, and the mentionable members (nil = not
+    // available, so no picker).
+    @State private var mentionDraft = MentionDraft()
+    @State private var mentionLastText: String = ""
+    @State private var mentionMembers: [FSMentionCandidate]? = nil
     @State private var highlightedMessageId: String? = nil
 
     // ── Sessions submenu (task 20260920-chat-sessions-submenu) ────────────────
@@ -2713,6 +2731,9 @@ struct ChatThreadView: View {
                     onPickGif:        { showAttachSheet = false; showGifSheet = true }
                 )
             }
+            if let picker = mentionPicker {
+                MentionPickerView(rows: picker.rows, onPick: { pickMention($0, trigger: picker.trigger) })
+            }
             if let target = replyTarget, repliesEnabled {
                 replyBar(target)
             }
@@ -2792,6 +2813,55 @@ struct ChatThreadView: View {
             showToast("That message can't be replied to. Tap yours to retry without the reply.", seconds: 4)
         }
         .onChange(of: vm.activeThread?.id) { _, newId in if newId != nil { replyTarget = nil } }
+        .modifier(MentionComposerSupport(text: $text, draft: $mentionDraft, lastText: $mentionLastText,
+                                         loadKey: mentionLoadKey, load: loadMentionMembers))
+    }
+
+    // ── @mentions (task 20261017-chat-mentions) ──────────────────────────────
+
+    private var mentionLoadKey: String {
+        "\(contact.id)|\(appState.capabilities.chatMentionsEnabled)"
+    }
+
+    /// DM: the other person (their name must be the real username, not the
+    /// id-prefix fallback fetchContacts uses when a profile fetch failed).
+    /// Group (main chat and threads): GET .../mention-members. Any failure or
+    /// the flag being off leaves the list nil: no picker, nothing invented.
+    private func loadMentionMembers() async {
+        mentionMembers = nil
+        guard appState.capabilities.chatMentionsEnabled else { return }
+        if contact.type == .group {
+            let uid = appState.currentUser?.user_id ?? ""
+            mentionMembers = try? await appState.service.fetchMentionMembers(userId: uid, groupId: contact.id)
+            return
+        }
+        guard !contact.name.isEmpty, contact.name != String(contact.id.prefix(8)) else { return }
+        mentionMembers = [FSMentionCandidate(userId: contact.id.lowercased(), username: contact.name)]
+    }
+
+    private struct MentionPickerModel {
+        let rows: [FSMentionCandidate]
+        let trigger: MentionDraft.Trigger
+    }
+
+    /// The picker shows while the end of the text is an "@query" token (the
+    /// caret position is not observable from a SwiftUI TextField, so the end of
+    /// the text is used), the capability is on and members are loaded.
+    private var mentionPicker: MentionPickerModel? {
+        guard appState.capabilities.chatMentionsEnabled,
+              let members = mentionMembers, !members.isEmpty,
+              mentionDraft.mentions.count < MentionDraft.maxMentions,
+              let trigger = MentionDraft.trigger(in: text, caret: text.utf16.count) else { return nil }
+        return MentionPickerModel(rows: mentionDraft.candidates(from: members, query: trigger.query), trigger: trigger)
+    }
+
+    private func pickMention(_ candidate: FSMentionCandidate, trigger: MentionDraft.Trigger) {
+        var draft = mentionDraft
+        guard let newText = draft.insert(candidate, trigger: trigger, into: text) else { return }
+        mentionDraft = draft
+        mentionLastText = newText
+        text = newText
+        UIAccessibility.post(notification: .announcement, argument: "Mentioned \(candidate.username)")
     }
 
     /// "Replying to <name>: <snippet>" with a cancel control.
@@ -2949,8 +3019,13 @@ struct ChatThreadView: View {
         let reply: FSReplyRef? = (replyTarget != nil && repliesEnabled)
             ? replyTarget.map { FSReplyRef(id: $0.id, text: $0.replyPreviewText, author: $0.replyAuthorName, authorId: $0.mine ? uid : vm.senderUserId(for: $0)) }
             : nil
-        vm.sendMessage(text: trimmed, attachment: stagedAttachment, contact: contact, userId: uid, reply: reply)
+        let outgoing = mentionDraft.outgoing(rawText: text)
+        let sentMentions = appState.capabilities.chatMentionsEnabled ? outgoing.mentions : []
+        vm.sendMessage(text: trimmed, attachment: stagedAttachment, contact: contact, userId: uid, reply: reply,
+                       mentions: sentMentions)
         replyTarget = nil
+        mentionDraft = MentionDraft()
+        mentionLastText = ""
         text = ""
         stagedAttachment = nil
         stagedUploadState = nil

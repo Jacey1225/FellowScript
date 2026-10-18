@@ -47,6 +47,9 @@ struct RawMsg: Decodable {
     // Task 20261012-message-pins: absent while the server flag is off.
     var pinned: Bool? = nil
     var system_kind: String? = nil
+    // Task 20261017-chat-mentions: lenient (never throws); absent while the
+    // server flag is off or the message has none. Unknown keys are ignored.
+    var mentions: FSMentionList? = nil
 
     var reply: FSReplyRef? {
         FSReplyRef(wireId: reply_to_id, text: reply_to_text, author: reply_to_author,

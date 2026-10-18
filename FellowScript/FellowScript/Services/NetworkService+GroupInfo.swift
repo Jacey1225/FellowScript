@@ -39,6 +39,20 @@ extension NetworkService {
         return info
     }
 
+    // GET /groups/{userId}/{groupId}/mention-members -> {members:[{user_id, username}]}
+    // Task 20261017-chat-mentions. Throws on any non-200 (404 while the flag is
+    // off, 403 non-member), transport error or undecodable body: the caller shows
+    // NO picker, it never keeps or invents a list after a failure.
+    func fetchMentionMembers(userId: String, groupId: String) async throws -> [FSMentionCandidate] {
+        let data = try await get("/groups/\(userId)/\(groupId)/mention-members")
+        guard let resp = decode(FSMentionMembersResponse.self, from: data, endpoint: "/groups/{id}/{id}/mention-members") else {
+            throw AppError.networkError("Couldn't load people to mention.")
+        }
+        return resp.members.compactMap { m in
+            m.user_id.isEmpty || m.username.isEmpty ? nil : FSMentionCandidate(userId: m.user_id.lowercased(), username: m.username)
+        }
+    }
+
     // PUT /groups/{userId}/{groupId}/title → {group_id, title}
     func renameGroup(userId: String, groupId: String, title: String) async throws -> String {
         let data = try await request("/groups/\(userId)/\(groupId)/title", method: "PUT", body: GroupTitleBody(title: title))

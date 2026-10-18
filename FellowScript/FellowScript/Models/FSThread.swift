@@ -88,7 +88,8 @@ extension FSMessage {
                   timestamp: (json["created_at"] as? String) ?? "",
                   attachmentKind: json["attachment_kind"] as? String,
                   attachmentURL: json["attachment_url"] as? String,
-                  attachmentMeta: Self.decodeMeta(json["attachment_meta"]))
+                  attachmentMeta: Self.decodeMeta(json["attachment_meta"]),
+                  mentions: FSMention.parse(json["mentions"]))
     }
 
     /// Live `{type:"message_restored"}` frame: everything needed to re-insert
@@ -102,7 +103,8 @@ extension FSMessage {
                   timestamp: (json["created_at"] as? String) ?? "",
                   attachmentKind: json["attachment_kind"] as? String,
                   attachmentURL: json["attachment_url"] as? String,
-                  attachmentMeta: Self.decodeMeta(json["attachment_meta"]))
+                  attachmentMeta: Self.decodeMeta(json["attachment_meta"]),
+                  mentions: FSMention.parse(json["mentions"]))
     }
 
     private static func decodeMeta(_ raw: Any?) -> FSAttachmentMeta? {

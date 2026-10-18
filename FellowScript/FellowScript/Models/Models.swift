@@ -726,6 +726,10 @@ struct FSMessage: Identifiable, Codable {
     // Optional so previously cached FSMessage JSON still decodes.
     var pinned: Bool? = nil
     var systemKind: String? = nil
+    // Task 20261017-chat-mentions: ranges (UTF-16 offsets into `text`) of the
+    // @Name runs rendered bold. nil when absent (old payloads, flag off, none).
+    // Optional so previously cached FSMessage JSON without the key decodes.
+    var mentions: [FSMention]? = nil
 
     // compile-errors #3 (20260904-frontend-arch-sweep): the wire value is a
     // plain String so it round-trips through Codable/JSON unchanged, but

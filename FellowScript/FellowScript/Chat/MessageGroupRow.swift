@@ -360,7 +360,7 @@ struct MessageGroupRow: View {
                     // A shared verse/note's `text` is only the old-client
                     // fallback line; the widget/card already shows everything.
                     if !message.text.isEmpty && !isShared {
-                        Text(message.text)
+                        MentionText(text: message.text, mentions: message.mentions)
                             .font(.inter(Theme.fontBody))
                             .foregroundColor(Theme.parchment)
                             .multilineTextAlignment(group.isOutgoing ? .trailing : .leading)
@@ -370,7 +370,7 @@ struct MessageGroupRow: View {
                     }
                 }
             } else {
-                Text(message.text)
+                MentionText(text: message.text, mentions: message.mentions)
                     .font(.inter(Theme.fontBody))
                     .foregroundColor(Theme.parchment)
                     .multilineTextAlignment(group.isOutgoing ? .trailing : .leading)

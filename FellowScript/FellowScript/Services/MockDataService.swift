@@ -296,6 +296,9 @@ protocol DataServiceProtocol {
     func confirmGroupPhoto(userId: String, groupId: String, objectKey: String) async throws -> String?
     func removeGroupPhoto(userId: String, groupId: String) async throws -> String?
     func fetchGroupGallery(userId: String, groupId: String, kind: String?, cursorTimestamp: String?, cursorId: String?) async throws -> FSGalleryPage
+    // Task 20261017-chat-mentions: GET /groups/{u}/{g}/mention-members. The
+    // default implementation (extension below) throws; NetworkService has the real one.
+    func fetchMentionMembers(userId: String, groupId: String) async throws -> [FSMentionCandidate]
 
     // Group invite links (task 20260929-group-invite-links) -- api/routes/invites.py.
     // Default implementations throw (never fabricate); NetworkService supplies the real ones.
@@ -392,6 +395,7 @@ extension DataServiceProtocol {
 extension DataServiceProtocol {
     private var groupInfoUnsupported: AppError { AppError.networkError("Group info isn't available right now.") }
     func fetchGroupInfo(userId: String, groupId: String) async throws -> FSGroupInfo { throw groupInfoUnsupported }
+    func fetchMentionMembers(userId: String, groupId: String) async throws -> [FSMentionCandidate] { throw groupInfoUnsupported }
     func renameGroup(userId: String, groupId: String, title: String) async throws -> String { throw groupInfoUnsupported }
     func setGroupMuted(userId: String, groupId: String, muted: Bool) async throws -> Bool { throw groupInfoUnsupported }
     func setGroupMaxMembers(userId: String, groupId: String, maxMembers: Int?) async throws -> Int? { throw groupInfoUnsupported }
