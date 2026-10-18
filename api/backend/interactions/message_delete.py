@@ -35,6 +35,7 @@ import uuid
 
 from db import DBManager
 from backend import content_store
+from backend.interactions import flags, message_mentions
 from backend.interactions.attachments import generate_download_url
 from backend.interactions.lifecycle import enqueue_s3_deletes
 from backend.interactions.send_guard import validate_attachment_key
@@ -74,7 +75,7 @@ _RESTORE_SQL = (
     "AND m.deleted_at > NOW() - make_interval(secs => %s) "
     "AND " + _AUTHOR_IS_MEMBER + " "
     "RETURNING m._id::text, u.username, m.text, m.timestamp, COALESCE(m.seq, 0), "
-    "m.attachment_kind, m.attachment_key, m.attachment_meta"
+    "m.attachment_kind, m.attachment_key, m.attachment_meta, m.mentions"
 )
 
 
@@ -136,10 +137,17 @@ class MessageDeleteManager(DBManager):
         if not row:
             return None
         meta = row[7] if isinstance(row[7], dict) else {}
+        mentions = None
+        if isinstance(row[8], list) and row[8]:
+            try:
+                mentions = message_mentions.resolve_public(self, {row[0]: row[8]})[row[0]]
+            finally:
+                self.conn.rollback()
         return {
             "id": row[0], "group_id": gid, "sender": row[1], "body": body,
             "created_at": row[3], "seq": int(row[4]),
             "attachment_kind": row[5], "attachment_key": row[6], "attachment_meta": meta,
+            "mentions": mentions,
         }
 
     def frame_recipients(self, group_id: str, author_id: str, *, skip_blocked: bool) -> list[str]:
@@ -184,18 +192,24 @@ def restored_frame(restored: dict) -> dict:
         "attachment_kind": restored["attachment_kind"],
         "attachment_meta": restored["attachment_meta"],
         "attachment_url": generate_download_url(key) if key else None,
+        # Omitted when none; ``fan_out`` also drops it for recipients whose flag is off.
+        **({"mentions": restored["mentions"]} if restored.get("mentions") else {}),
     }
 
 
 async def fan_out(manager, user_ids: list[str], frame: dict) -> None:
     """Send ``frame`` to every listed user with a live socket. Never raises: a
-    failed send is logged by type and left to the heartbeat to evict."""
+    failed send is logged by type and left to the heartbeat to evict. A
+    ``mentions`` key is sent only to recipients with ``chat_mentions`` on."""
     for uid in user_ids:
         ws = manager.active_connections.get(uid)
         if not ws:
             continue
+        out = frame
+        if "mentions" in frame and not flags.is_enabled(message_mentions.FLAG, uid):
+            out = {k: v for k, v in frame.items() if k != "mentions"}
         try:
-            await ws.send_json(frame)
+            await ws.send_json(out)
         except Exception as e:  # noqa: BLE001
             logger.warning("Frame send to %s failed: %s", uid, type(e).__name__)
 
@@ -262,7 +276,7 @@ def purge_once(batch_size: int | None = None) -> dict:
                         counts["key_kept"] += 1
                 db.cur.execute(
                     "UPDATE messages SET text = '', attachment_kind = NULL, attachment_key = NULL, "
-                    "attachment_meta = '{}'::jsonb WHERE _id = %s::uuid",
+                    "attachment_meta = '{}'::jsonb, mentions = NULL WHERE _id = %s::uuid",
                     (mid,),
                 )
                 # A thread keeps a short copy of its root's text; drop it too.

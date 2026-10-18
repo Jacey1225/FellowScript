@@ -156,6 +156,10 @@ register("friend_highlight_push")
 # Gates server acceptance of ``reply_to`` on send and the reply fields in payloads/frames; exposed in
 # capabilities for the iOS UI. Canary allowed. Ships OFF.
 register("chat_replies")
+# @mentions in chat (task 20261017-chat-mentions). Gates server acceptance of ``mentions`` on send,
+# the mention push, the ``mentions`` key in payloads/frames and GET .../mention-members; exposed in
+# capabilities for the clients' picker. Canary allowed. Ships OFF.
+register("chat_mentions")
 
 
 def _load_snapshot() -> dict[str, tuple[str, frozenset[str]]]:

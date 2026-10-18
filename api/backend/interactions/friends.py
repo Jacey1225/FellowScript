@@ -11,6 +11,7 @@ from backend.interactions.html_text import clean_shared_note_meta
 from backend.interactions import paging
 from backend.interactions.message_pins import attach_pins
 from backend.interactions.message_reactions import attach_reactions
+from backend.interactions.message_mentions import attach_mentions
 from backend.interactions.message_replies import attach_replies
 from backend.interactions.bible_text import parse_highlight_key, verse_text
 
@@ -346,6 +347,7 @@ class FriendsManager(DBManager):
         attach_reactions(self, messages, self.user_id)
         attach_pins(self, messages, self.user_id)
         attach_replies(self, messages, self.user_id)
+        attach_mentions(self, messages, self.user_id)
         return {"messages": messages, "has_more": has_more, "next_cursor": next_cursor}
 
     def dm_page_for_route(self, friend_id: str, limit: int, cursor: "paging.Cursor | None" = None) -> dict:
@@ -428,6 +430,8 @@ class FriendsManager(DBManager):
         attach_pins(self, other_msgs, self.user_id)
         attach_replies(self, host_msgs, self.user_id)
         attach_replies(self, other_msgs, self.user_id)
+        attach_mentions(self, host_msgs, self.user_id)
+        attach_mentions(self, other_msgs, self.user_id)
         # Same raw-key-never-leaves-the-server treatment as hash_pass just
         # below -- friend_data here is a raw `lookup()` row, so
         # profile_photo_key must be popped unconditionally and resolved to a

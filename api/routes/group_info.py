@@ -14,11 +14,13 @@ group before persisting it.
 """
 
 import logging
+import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, StrictInt
 
 from backend.auth.dependencies import require_match
+from backend.interactions import flags, message_mentions
 from backend.interactions.attachments import AttachmentConfigError, delete_object, generate_download_url
 from backend.interactions.group_photo import generate_group_photo_upload_policy, is_group_photo_key
 from backend.interactions.groups import GALLERY_PAGE_SIZE, GroupOwnerOnlyError, GroupsManager
@@ -101,6 +103,31 @@ async def fetch_group_info(user_id: str, group_id: str, _: str = Depends(require
             "is_owner": is_owner,
             "max_members_ceiling": get_invites_config().max_group_members_ceiling,
         }
+    finally:
+        manager.close()
+
+
+@group_info_router.get("/{user_id}/{group_id}/mention-members")
+async def fetch_mention_members(user_id: str, group_id: str, _: str = Depends(require_match("user_id"))) -> dict:
+    """People the caller may @mention in this group (flag ``chat_mentions``).
+
+    Returns:
+        dict: ``{"members": [{"user_id", "username"}, ...]}`` sorted by username.
+
+    Raises:
+        HTTPException 404: flag off for the caller (looks like no such route)
+        or the group does not exist. 403: caller is not a member.
+    """
+    if not flags.is_enabled(message_mentions.FLAG, user_id):
+        raise HTTPException(status_code=404, detail="Not Found")
+    try:
+        uuid.UUID(group_id)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Group not found")
+    manager = GroupsManager(user_id, group_id)
+    try:
+        _require_member(manager)
+        return {"members": manager.mention_members()}
     finally:
         manager.close()
 

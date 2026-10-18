@@ -30,6 +30,7 @@ import psycopg2.errors
 from backend import content_store
 from backend.config_loader import load_section
 from backend.interactions import flags, paging
+from backend.interactions import message_mentions as mentions_mod
 from backend.interactions.chat_config import CONFIG_PATH
 from backend.interactions.message_reactions import MessageReactionsManager, _canon
 
@@ -239,7 +240,7 @@ class MessagePinsManager(MessageReactionsManager):
             total = int(self.cur.fetchone()[0])
             self.cur.execute(
                 "SELECT p.message_id::text, p.pinned_by::text, p.pinned_at, pu.username, "
-                "m.from_user::text, au.username, m.text, m.timestamp, m.attachment_kind "
+                "m.from_user::text, au.username, m.text, m.timestamp, m.attachment_kind, m.mentions "
                 "FROM message_pins p JOIN messages m ON m._id = p.message_id "
                 "LEFT JOIN users pu ON pu._id = p.pinned_by LEFT JOIN users au ON au._id = m.from_user "
                 "WHERE " + clauses + " ORDER BY p.pinned_at DESC, p.message_id LIMIT %s OFFSET %s",
@@ -250,8 +251,19 @@ class MessagePinsManager(MessageReactionsManager):
             self.conn.rollback()  # read-only
         has_more = len(rows) > limit
         pins = []
-        for mid, by_id, pinned_at, by_name, author_id, author_name, text, ts, kind in rows[:limit]:
+        page = rows[:limit]
+        mention_names: dict[str, list[dict]] = {}
+        if flags.is_enabled(mentions_mod.FLAG, uid):
+            try:
+                mention_names = mentions_mod.resolve_public(
+                    self, {r[0]: r[9] for r in page if isinstance(r[9], list) and r[9]})
+            finally:
+                self.conn.rollback()
+        for mid, by_id, pinned_at, by_name, author_id, author_name, text, ts, kind, _mentions in page:
             clear = content_store.open_or_none(mid, content_store.F_MESSAGE_TEXT, text, label="pin") or ""
+            shown = clear if len(clear) <= PREVIEW_MAX else clear[: PREVIEW_MAX - 1] + "…"
+            pin_mentions = mentions_mod.clip_for_preview(
+                mention_names.get(mid, []), shown, ellipsis=len(clear) > PREVIEW_MAX) if mention_names.get(mid) else []
             pins.append({
                 "message_id": mid,
                 "pinned_by_id": (by_id or "").lower(),
@@ -261,9 +273,10 @@ class MessagePinsManager(MessageReactionsManager):
                     "id": mid,
                     "from_user_id": (author_id or "").lower(),
                     "from_user": author_name or "",
-                    "text": clear if len(clear) <= PREVIEW_MAX else clear[: PREVIEW_MAX - 1] + "…",
+                    "text": shown,
                     "timestamp": paging.format_timestamp(ts) if ts else None,
                     "attachment_kind": kind,
+                    **({"mentions": pin_mentions} if pin_mentions else {}),
                 },
             })
         return {"pins": pins, "has_more": has_more, "count": total}

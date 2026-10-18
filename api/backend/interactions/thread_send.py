@@ -47,7 +47,7 @@ from limits import parse as parse_rate
 
 from backend import content_store
 from backend.errors import SaveFailedError
-from backend.interactions import flags
+from backend.interactions import flags, message_mentions
 from backend.interactions.attachments import generate_download_url
 from backend.interactions.paging import format_timestamp
 from backend.interactions.push import send_push
@@ -55,7 +55,7 @@ from backend.interactions.push_preferences import async_disabled_user_ids
 from backend.interactions.send_guard import resolve_main_chat_recipients, validate_attachment_key
 from backend.interactions.threads import canon
 from backend.interactions.threads_config import get_threads_config
-from backend.interactions.websockets import _ATTACHMENT_PUSH_LABELS, _GuardCursor, valid_client_ref
+from backend.interactions.websockets import _GuardCursor, mention_title, push_body, valid_client_ref
 from backend.auth.terms import TERMS_REACCEPT_CODE, require_current_terms
 from backend.moderation.content_filter import ContentRejected, check_clean, rejection_message
 from backend.rate_limiting import limiter
@@ -67,8 +67,8 @@ _RATE_SCOPE = "thread-send"
 
 _INSERT_SQL = (
     "WITH ins AS ("
-    " INSERT INTO thread_messages (_id, thread_id, from_user, text, attachment_kind, attachment_key, attachment_meta) "
-    " VALUES (%s::uuid, %s::uuid, %s::uuid, %s, %s, %s, %s::jsonb) RETURNING _id, created_at, seq), "
+    " INSERT INTO thread_messages (_id, thread_id, from_user, text, attachment_kind, attachment_key, attachment_meta, mentions) "
+    " VALUES (%s::uuid, %s::uuid, %s::uuid, %s, %s, %s, %s::jsonb, %s::jsonb) RETURNING _id, created_at, seq), "
     "bump AS (UPDATE threads SET last_activity_at = (SELECT created_at FROM ins) WHERE _id = %s::uuid), "
     "fol AS (INSERT INTO thread_followers (thread_id, user_id) VALUES (%s::uuid, %s::uuid) ON CONFLICT DO NOTHING) "
     "SELECT _id::text, created_at, seq FROM ins"
@@ -199,12 +199,35 @@ async def send_thread_message(manager, payload: dict) -> None:
         await _reply(manager, sender, "send_failed", "Couldn't send your message. Please try again.")
         return
 
+    # @mentions (flag ``chat_mentions``, sender's state; the ``threads`` flag was checked first).
+    # Flag off: ignored. Flag on: any invalid entry rejects the send, nothing saved.
+    mentions_stored, mentions_public = None, []
+    if payload.get("mentions") is not None and flags.is_enabled(message_mentions.FLAG, sender):
+        try:
+            checked = message_mentions.validate(cur, sender_id, recipients, text, kind, payload.get("mentions"))
+            if checked:
+                mentions_stored, mentions_public = checked
+        except message_mentions.MentionsTooMany:
+            _deny(sender, thread_id, "mentions_too_many")
+            await _reply(manager, sender, "mentions_too_many", "You can mention up to 10 people in one message.")
+            return
+        except message_mentions.MentionInvalid:
+            _deny(sender, thread_id, "mention_invalid")
+            await _reply(manager, sender, "mention_invalid",
+                         "Couldn't send your message. Check the people you mentioned and try again.")
+            return
+        except Exception as e:  # noqa: BLE001 - fail closed, nothing saved
+            logger.warning("Thread mention validation failed closed: %s", type(e).__name__)
+            await _reply(manager, sender, "send_failed", "Couldn't send your message. Please try again.")
+            return
+
     new_mid = str(uuid.uuid4())  # chosen here: part of the encryption AAD
     try:
         manager._execute(
             _INSERT_SQL,
             (new_mid, thread_id, sender_id, content_store.seal(new_mid, content_store.F_THREAD_MESSAGE_TEXT, text),
-             kind, key, json.dumps(meta), thread_id, thread_id, sender_id),
+             kind, key, json.dumps(meta), json.dumps(mentions_stored) if mentions_stored else None,
+             thread_id, thread_id, sender_id),
         )
         saved = manager.cur.fetchone()
         if saved is None:
@@ -234,13 +257,14 @@ async def send_thread_message(manager, payload: dict) -> None:
                 await ws.send_json({
                     "type": "ack", "client_ref": client_ref, "id": message_id,
                     "group_id": group_id, "thread_id": thread_id, "timestamp": created_at,
+                    **({"mentions": mentions_public} if mentions_public else {}),
                 })
             except Exception as e:  # noqa: BLE001
                 logger.warning("Thread ack send to %s failed: %s", sender, type(e).__name__)
 
     await _deliver(manager, sender_id, sender, group_id, thread_id, recipients, blocked, {
         "message_id": message_id, "created_at": created_at, "seq": seq,
-        "text": text, "kind": kind, "key": key, "meta": meta,
+        "text": text, "kind": kind, "key": key, "meta": meta, "mentions": mentions_public,
     })
 
 
@@ -275,18 +299,21 @@ async def _deliver(manager, sender_id, sender, group_id, thread_id, recipients, 
     followers: set[str] = set()
     tokens: dict[str, str] = {}
     muted: set[str] = set()
-    offline_possible = any(manager.active_connections.get(u) is None for u in targets)
+    mention_list = msg.get("mentions") or []
+    mention_ids = {m["user_id"] for m in mention_list}
+    mentioned = {u for u in targets if u in mention_ids}
+    offline_possible = any(manager.active_connections.get(u) is None for u in targets) or bool(mentioned)
     if offline_possible:
         try:
             manager._execute("SELECT user_id::text FROM thread_followers WHERE thread_id = %s::uuid", (thread_id,))
             followers = {str(r[0]).lower() for r in manager.cur.fetchall()} & set(targets)
         except Exception as e:  # noqa: BLE001
             logger.warning("Thread follower lookup failed: %s", type(e).__name__)
-        if followers:
+        if followers or mentioned:
             try:
                 manager._execute(
                     "SELECT user_id::text, token FROM device_tokens WHERE user_id = ANY(%s::uuid[])",
-                    (list(followers),),
+                    (list(followers | mentioned),),
                 )
                 tokens = {str(r[0]).lower(): r[1] for r in manager.cur.fetchall()}
             except Exception as e:  # noqa: BLE001
@@ -300,28 +327,59 @@ async def _deliver(manager, sender_id, sender, group_id, thread_id, recipients, 
             except Exception as e:  # noqa: BLE001 - fails open (a muted follower may get a push)
                 logger.warning("Thread group-mute lookup failed: %s", type(e).__name__)
 
-    if followers:
-        # Task 20261012-notification-settings: "messages" opt-out (fails open).
-        followers -= await async_disabled_user_ids(followers, "messages")
+    if followers or mentioned:
+        # Task 20261012-notification-settings: "messages" opt-out (fails open). Also applies to
+        # mentioned users (the mention push bypasses mute, online and follower rules only).
+        disabled = await async_disabled_user_ids(followers | mentioned, "messages")
+        followers -= disabled
+        mentioned -= disabled
 
-    if msg["text"]:
-        body = msg["text"] if len(msg["text"]) <= 100 else msg["text"][:97] + "…"
-    else:
-        body = _ATTACHMENT_PUSH_LABELS.get(msg["kind"], "")
+    body = push_body(msg["text"], msg["kind"])
     push_data = {"action": "thread_message", "group_id": group_id, "thread_id": thread_id}
 
     for uid in targets:
         ws = manager.active_connections.get(uid)
         if ws is not None:
             try:
-                await ws.send_json(frame)
-                continue
+                out = frame
+                if mention_list and message_mentions_enabled(uid):
+                    out = {**frame, "mentions": mention_list}
+                await ws.send_json(out)
+                if uid not in mention_ids:
+                    continue
             except Exception as e:  # noqa: BLE001 - stale socket: evict, fall through to push
                 logger.warning("Thread frame to %s failed, evicting stale connection: %s", uid, type(e).__name__)
                 manager.active_connections.pop(uid, None)
         token = tokens.get(uid)
+        if uid in mention_ids:
+            # Mention push replaces the ordinary one; bypasses mute, online and follower rules.
+            await _mention_push(manager, uid, token if uid in mentioned else None, sender_name,
+                                body, group_id, thread_id, msg["message_id"])
+            continue
         if uid in followers and token and uid not in muted:
             try:
                 await send_push(token, sender_name, body, data=push_data)
             except Exception as e:  # noqa: BLE001
                 logger.error("Thread push to %s failed: %s", uid, type(e).__name__)
+
+
+def message_mentions_enabled(uid: str) -> bool:
+    return flags.is_enabled(message_mentions.FLAG, uid)
+
+
+async def _mention_push(manager, uid, token, sender_name, body, group_id, thread_id, message_id) -> None:
+    """Mention push for one thread recipient. ``token`` is None when the user has no device
+    token or opted out of message pushes. Skips a message deleted meanwhile. Never raises."""
+    try:
+        if not token:
+            logger.info("thread mention push skipped (no token or opted out) recipient=%s", uid)
+            return
+        manager._execute(
+            "SELECT 1 FROM thread_messages WHERE _id = %s::uuid AND deleted_at IS NULL", (message_id,))
+        if manager.cur.fetchone() is None:
+            logger.info("thread mention push skipped (message deleted) message=%s", message_id)
+            return
+        await send_push(token, mention_title(sender_name), body, data={
+            "action": "thread_message", "group_id": group_id, "thread_id": thread_id, "mention": True})
+    except Exception as e:  # noqa: BLE001
+        logger.error("Thread mention push to %s failed: %s", uid, type(e).__name__)

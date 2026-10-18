@@ -29,6 +29,7 @@ from backend import content_store
 from backend.interactions import paging
 from backend.interactions.attachments import generate_download_url
 from backend.interactions.groups import author_set
+from backend.interactions.message_mentions import attach_mentions
 from backend.interactions.send_guard import is_current_member
 from backend.interactions.threads_config import get_threads_config
 
@@ -351,6 +352,7 @@ class ThreadsManager(DBManager):
                 "attachment_meta": meta,
                 "attachment_url": generate_download_url(key) if key else None,
             })
+        attach_mentions(self, messages, self.user_id, table="thread_messages")
         return {"messages": messages, "has_more": has_more, "next_cursor": next_cursor}
 
     # ---- rename --------------------------------------------------------

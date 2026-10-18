@@ -15,7 +15,7 @@ from db import DBManager, _connect
 from backend import content_store
 from backend.errors import SaveFailedError
 from backend.interactions.attachments import generate_download_url
-from backend.interactions import flags, message_replies
+from backend.interactions import flags, message_mentions, message_replies
 from backend.interactions.chat_config import get_pagination_config
 from backend.interactions.paging import format_timestamp
 from backend.interactions.push import send_push
@@ -54,6 +54,18 @@ _ATTACHMENT_PUSH_LABELS = {
     "shared_verse": "Shared a verse",
     "shared_note":  "Shared a note",
 }
+
+
+def push_body(text: str, attachment_kind) -> str:
+    """Push preview: the text (100 chars max, ellipsis included), else the
+    per-kind attachment label. Shared by the ordinary and the mention push."""
+    if text:
+        return text if len(text) <= 100 else text[:97] + "…"
+    return _ATTACHMENT_PUSH_LABELS.get(attachment_kind, "")
+
+
+def mention_title(sender_name: str) -> str:
+    return f"{sender_name} mentioned you"
 
 
 # Optional client-chosen reference echoed back in the sender-only ``ack``
@@ -232,7 +244,7 @@ class ConnectionManager(DBManager):
                 self._reconnect()
                 self.cur.execute(query, params)
 
-    def save_message(self, msg: Message, reply: "dict | None" = None) -> "tuple[str, str] | None":
+    def save_message(self, msg: Message, reply: "dict | None" = None, mentions: "list[dict] | None" = None) -> "tuple[str, str] | None":
         """Persist the message and its recipient links.
 
         Returns:
@@ -242,6 +254,8 @@ class ConnectionManager(DBManager):
             The client timestamp is clamped first (``clamp_message_timestamp``).
             ``reply`` is an already-validated target from
             ``message_replies.resolve_reply`` (None for an ordinary message).
+            ``mentions`` is the validated canonical list from
+            ``message_mentions.validate`` (None stores NULL).
 
         Raises:
             SaveFailedError: If a ``message_recipients`` link fails to
@@ -266,14 +280,15 @@ class ConnectionManager(DBManager):
             self._execute(
                 "INSERT INTO messages "
                 "(_id, from_user, group_id, text, timestamp, attachment_kind, attachment_key, attachment_meta, "
-                "reply_to_id) "
-                "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING _id, timestamp",
+                "reply_to_id, mentions) "
+                "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb) RETURNING _id, timestamp",
                 (
                     new_id, msg.from_user, msg.group_id or None,
                     content_store.seal(new_id, content_store.F_MESSAGE_TEXT, msg.text),
                     clamp_message_timestamp(msg.timestamp),
                     msg.attachment_kind, msg.attachment_key, json.dumps(msg.attachment_meta or {}),
                     reply["reply_to_id"] if reply else None,
+                    json.dumps(mentions) if mentions else None,
                 )
             )
         except (psycopg2.InterfaceError, psycopg2.OperationalError) as e:
@@ -640,8 +655,45 @@ class ConnectionManager(DBManager):
                     })
                 return
 
+        # @mentions (flag ``chat_mentions``, sender's state). Flag off: the key is ignored
+        # (plain message). Flag on: any invalid entry rejects the whole send, nothing saved.
+        mentions_stored: list[dict] | None = None
+        mentions_public: list[dict] = []
+        if payload.get("mentions") is not None and flags.is_enabled(message_mentions.FLAG, from_user_id):
+            sender_ws = self.active_connections.get(from_user_id)
+            try:
+                checked = message_mentions.validate(
+                    _GuardCursor(self), from_user_id, to_users, payload.get("text", ""),
+                    attachment_kind, payload.get("mentions"))
+                if checked:
+                    mentions_stored, mentions_public = checked
+            except (message_mentions.MentionInvalid, message_mentions.MentionsTooMany) as e:
+                logger.info("mention rejected sender=%s kind=%s cause=%s", from_user_id,
+                            "group" if group_id else "dm", type(e).__name__)
+                if sender_ws:
+                    too_many = isinstance(e, message_mentions.MentionsTooMany)
+                    await sender_ws.send_json({
+                        "type": "error",
+                        "reason": "mentions_too_many" if too_many else "mention_invalid",
+                        "detail": ("You can mention up to 10 people in one message." if too_many else
+                                   "Couldn't send your message. Check the people you mentioned and try again."),
+                    })
+                return
+            except Exception as e:  # fail closed; infrastructure, retriable
+                logger.warning("mention validation failed closed: %s", type(e).__name__)
+                if sender_ws:
+                    await sender_ws.send_json({
+                        "type": "error",
+                        "reason": "send_failed",
+                        "detail": "Couldn't send your message. Please try again.",
+                    })
+                return
+
         try:
-            saved = self.save_message(Message(**payload), reply=reply) if reply else self.save_message(Message(**payload))
+            if mentions_stored:
+                saved = self.save_message(Message(**payload), reply=reply, mentions=mentions_stored)
+            else:
+                saved = self.save_message(Message(**payload), reply=reply) if reply else self.save_message(Message(**payload))
         except SaveFailedError as e:
             # Mirror the ContentRejected handling just above: no HTTP
             # response exists on this path, so tell the sender's own
@@ -690,6 +742,9 @@ class ConnectionManager(DBManager):
         # Reply label keys (derived, not stored) ride on frames to recipients who have
         # the flag on; a recipient blocked with the original's author gets
         # ``reply_to_deleted`` instead of that author's text. Fail closed on a lookup error.
+        if not saved:
+            mentions_public = []  # nothing stored: no mention rendering and no bypass push
+        mention_ids = {m["user_id"] for m in mentions_public}
         reply_fields = message_replies.public_fields(reply) if reply else None
         reply_blocked: set[str] = set()
         if reply_fields:
@@ -716,6 +771,7 @@ class ConnectionManager(DBManager):
                         "group_id": group_id or "",
                         "timestamp": saved[1],
                         **(reply_fields or {}),
+                        **({"mentions": mentions_public} if mentions_public else {}),
                     })
                 except Exception as e:
                     logger.warning("Ack send to %s failed: %s", from_user_id, type(e).__name__)
@@ -776,9 +832,12 @@ class ConnectionManager(DBManager):
 
         # Task 20261012-notification-settings: per-type opt-out ("messages").
         # Like mute, only the offline push is suppressed; fails open.
+        # A mentioned user is evaluated even when online: the global preference still
+        # suppresses the mention push (only the chat mute and online rule are bypassed).
         pref_off: set[str] = set()
         if device_tokens:
-            offline = [u for u in device_tokens if self.active_connections.get(u) is None]
+            offline = [u for u in device_tokens
+                       if self.active_connections.get(u) is None or str(u).lower() in mention_ids]
             if offline:
                 pref_off = await async_disabled_user_ids(offline, "messages")
 
@@ -810,12 +869,22 @@ class ConnectionManager(DBManager):
                 if reply_fields and flags.is_enabled(message_replies.FLAG, uid):
                     out_frame = {**frame, **(message_replies.deleted_fields(reply["reply_to_id"])
                                              if uid in reply_blocked else reply_fields)}
+                if mentions_public and flags.is_enabled(message_mentions.FLAG, uid):
+                    out_frame = {**out_frame, "mentions": mentions_public}
                 try:
                     await ws.send_json(out_frame)
                 except Exception as e:
                     logger.warning("Send to %s failed, evicting stale connection: %s", uid, e)
                     self.active_connections.pop(uid, None)
                     ws = None
+            if str(uid).lower() in mention_ids:
+                # Mention push REPLACES the ordinary push for this user and bypasses the chat
+                # mute and the online rule. Global "messages"
+                # preference, no token and a message deleted meanwhile still suppress it.
+                await self._send_mention_push(
+                    uid, device_tokens.get(uid), pref_off, sender_name, text, attachment_kind,
+                    group_id, from_user_id, message_id)
+                continue
             if not ws and uid != from_user_id:
                 # Recipient is offline (or was just evicted above, whether by
                 # a live send failure or the heartbeat eviction in
@@ -838,12 +907,9 @@ class ConnectionManager(DBManager):
                     if token and str(uid).lower() in pref_off:
                         token = None  # opted out of message pushes
                     if token:
-                        if text:
-                            body = text if len(text) <= 100 else text[:97] + "…"
-                        else:
-                            # Attachment-only message (empty text) — fall back
-                            # to a per-kind label so the push isn't blank.
-                            body = _ATTACHMENT_PUSH_LABELS.get(attachment_kind, "")
+                        # Attachment-only message (empty text) falls back to a
+                        # per-kind label so the push isn't blank.
+                        body = push_body(text, attachment_kind)
 
                         # Task 20260916-chat-push-deep-link: attach enough
                         # identifying data for the client's notification-tap
@@ -888,6 +954,29 @@ class ConnectionManager(DBManager):
                             await send_push(token, sender_name, body, data=push_data)
                 except Exception as e:
                     logger.error("Push to %s failed: %s", uid, e)
+
+    async def _send_mention_push(self, uid, token, pref_off, sender_name, text, attachment_kind,
+                                 group_id, from_user_id, message_id) -> None:
+        """One mention push for a validated, unblocked mentioned recipient.
+        Ids only in logs. Never raises."""
+        try:
+            if not token:
+                logger.info("mention push skipped (no device token) recipient=%s", uid)
+                return
+            if str(uid).lower() in pref_off:
+                return  # global "messages" opt-out
+            self._execute("SELECT 1 FROM messages WHERE _id = %s::uuid AND deleted_at IS NULL", (message_id,))
+            if self.cur.fetchone() is None:
+                logger.info("mention push skipped (message deleted) message=%s", message_id)
+                return
+            if group_id:
+                push_data = {"group_id": group_id, "action": "message", "mention": True}
+            else:
+                push_data = {"group_id": "|".join(sorted([uid, from_user_id])),
+                             "action": "message", "mention": True}
+            await send_push(token, mention_title(sender_name), push_body(text, attachment_kind), data=push_data)
+        except Exception as e:
+            logger.error("Mention push to %s failed: %s", uid, type(e).__name__)
 
     async def send_sig(self, payload: dict) -> None:
         """Relay a WebRTC signaling frame without persisting it.

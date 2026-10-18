@@ -15,6 +15,7 @@ from backend.interactions.html_text import clean_shared_note_meta
 from backend.interactions import lifecycle, member_joined_line, paging
 from backend.interactions.message_pins import attach_pins
 from backend.interactions.message_reactions import attach_reactions
+from backend.interactions.message_mentions import attach_mentions
 from backend.interactions.message_replies import attach_replies
 from backend.interactions.note_search import scan_matches
 
@@ -31,8 +32,9 @@ GALLERY_PAGE_SIZE = 24
 
 # messages columns added for paging / soft delete; never part of a response row.
 # reply_to_id is stripped here and re-added (flag-gated, with the read-time label) by
-# ``message_replies.attach_replies``.
-_INTERNAL_MESSAGE_COLUMNS = ("seq", "deleted_at", "deleted_by", "reply_to_id", "system_kind")
+# ``message_replies.attach_replies``. ``mentions`` (raw JSONB, no usernames, not flag gated)
+# must never leak; ``message_mentions.attach_mentions`` is the only emitter.
+_INTERNAL_MESSAGE_COLUMNS = ("seq", "deleted_at", "deleted_by", "reply_to_id", "system_kind", "mentions")
 
 # Task 20261016 G2: the "member joined" system line is hidden from every group
 # history reader unless the caller opts in (``include_system``), so clients that
@@ -228,6 +230,29 @@ class GroupsManager(DBManager):
             return ""
         return f" AND system_kind IS DISTINCT FROM '{MEMBER_JOINED_KIND}' "
 
+    def mention_members(self) -> list[dict]:
+        """``[{"user_id", "username"}]`` the caller may @mention in this group:
+        live members minus the caller, anyone in a block relationship with the
+        caller (either direction) and suspended users. Sorted by lowercase
+        username. Exactly the set ``message_mentions.validate`` accepts."""
+        me = _canonical_uuid(self.user_id)
+        if me is None:
+            return []
+        ids = [m for m in live_member_ids(self.cur, self.group_id) if m != me]
+        if not ids:
+            return []
+        self.cur.execute(
+            "SELECT u._id::text, u.username FROM users u WHERE u._id = ANY(%s::uuid[]) "
+            "AND u.suspended_at IS NULL AND NOT EXISTS (SELECT 1 FROM blocked_users b "
+            "WHERE (b.blocker_id = %s::uuid AND b.blocked_id = u._id) "
+            "OR (b.blocked_id = %s::uuid AND b.blocker_id = u._id)) "
+            "ORDER BY lower(u.username), u._id",
+            (ids, me, me),
+        )
+        rows = self.cur.fetchall()
+        self.conn.rollback()  # read-only; release the snapshot
+        return [{"user_id": str(r[0]).lower(), "username": r[1]} for r in rows]
+
     def is_member(self) -> bool:
         """True if ``self.user_id`` belongs to ``self.group_id``'s member list."""
         group = self.lookup("groups", {"_id": self.group_id})
@@ -280,6 +305,7 @@ class GroupsManager(DBManager):
         attach_reactions(self, result, self.user_id)
         attach_pins(self, result, self.user_id)
         attach_replies(self, result, self.user_id)
+        attach_mentions(self, result, self.user_id)
         return result
 
     def _validate_new_member_ids(self, ids) -> dict[str, str]:
@@ -403,6 +429,7 @@ class GroupsManager(DBManager):
         attach_reactions(self, messages, self.user_id)
         attach_pins(self, messages, self.user_id)
         attach_replies(self, messages, self.user_id)
+        attach_mentions(self, messages, self.user_id)
         return {"messages": messages, "has_more": has_more, "next_cursor": next_cursor}
 
     def fetch_group(self, paged: bool = False) -> dict:
