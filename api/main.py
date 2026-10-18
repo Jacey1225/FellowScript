@@ -68,7 +68,7 @@ from backend.auth.sessions import SessionManager
 from backend.auth.password_reset import PasswordResetManager
 from backend.auth.mfa import MFAManager
 from backend.auth.passwords import verify_password
-from backend.auth.dependencies import get_current_user, require_match, SESSION_COOKIE
+from backend.auth.dependencies import get_current_user, require_match, set_session_cookie, SESSION_COOKIE
 from backend.email.ses_client import send_email, EmailSendError
 from backend.email.templates import password_reset_email, mfa_code_email, mfa_setup_code_email
 
@@ -510,10 +510,7 @@ def issue_session(response: Response, user_id: str) -> None:
         token = db.create_session(user_id)
     finally:
         db.close()
-    response.set_cookie(
-        key=SESSION_COOKIE, value=token, httponly=True, secure=True,
-        max_age=60 * 60 * 24 * 30, samesite="lax",
-    )
+    set_session_cookie(response, token)
 
 
 def find_by_username(users: dict, username: str) -> tuple[str, dict] | None:

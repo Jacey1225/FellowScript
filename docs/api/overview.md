@@ -15,6 +15,8 @@ Base URL: `http://<ec2-host>:8000`
 | POST | `/auth/google` | Exchange a Google ID token for a session. Find-or-create user. With `email_verification.enabled`, an email-only match to an unverified account returns the configured conflict status (409) with no session. |
 | POST | `/auth/apple` | Verify an Apple identity JWT. Find-or-create user. Same unverified-account conflict rule as `/auth/google`. |
 
+**Session lifetime (task `20261017-chat-ws-reconnect-stuck`).** The `session` cookie is an opaque token backed by a `sessions` row. A session lasts 30 days (`SESSION_TTL_DAYS`) and slides: an authenticated REST request that would move the expiry forward by at least a day extends it to 30 days from now and re-issues `Set-Cookie` with the renewed remaining lifetime. A hard cap of 90 days (`SESSION_MAX_AGE_DAYS`) from sign-in (`sessions.created_at`) is never exceeded; after that the user signs in again. Renewal only happens after a successful resolve, so an expired session is never extended or revived (REST returns `401`, the chat websocket handshake is refused with `403`). The websocket does not renew (a handshake cannot refresh the cookie). `/logout` and password reset still delete the session(s). A daily scheduler job (`session_purge`, 04:31) deletes expired rows.
+
 All signup paths automatically create a `plan_type='free'` subscription row for the new user.
 
 ---

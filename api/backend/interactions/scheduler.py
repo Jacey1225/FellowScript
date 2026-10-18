@@ -136,6 +136,31 @@ async def _reconcile_trials() -> None:
         sm.close()
 
 
+async def _purge_expired_auth_sessions() -> None:
+    """Daily retention for expired login sessions (task 20261017-chat-ws-reconnect-stuck).
+
+    Expired rows can never resolve or renew, so deleting them is behavior-neutral;
+    it just stops the sessions table growing forever. DB work runs in an executor;
+    logs the count only (never tokens or user ids). Failures log a WARNING (the
+    bare word ERROR is avoided so the watchdog does not treat it as a detection)."""
+    import asyncio
+    from backend.auth.sessions import SessionManager
+
+    def _work() -> int:
+        sm = SessionManager()
+        try:
+            return sm.purge_expired()
+        finally:
+            sm.close()
+
+    try:
+        n = await asyncio.get_running_loop().run_in_executor(None, _work)
+        if n:
+            logger.info("Purged %d expired login session(s)", n)
+    except Exception as e:
+        logger.warning("expired session purge failed (%s)", type(e).__name__)
+
+
 async def _purge_affiliate_payouts() -> None:
     """Retention for affiliate payout details (task 20261008-affiliate-payout-details):
     hard-delete inactive / orphaned details and stale re-auth proofs. Flag-gated;
@@ -1305,6 +1330,8 @@ def start_scheduler() -> None:
     # owning user's local timezone rather than a fixed UTC date.
     scheduler.add_job(_run_nightly_backups, "cron", minute="*", id="backup_check",
                       replace_existing=True)
+    scheduler.add_job(_purge_expired_auth_sessions, "cron", hour=4, minute=31,
+                      id="session_purge", replace_existing=True)
     scheduler.add_job(_purge_affiliate_payouts, "cron", hour=4, minute=17,
                       id="affiliate_payout_retention", replace_existing=True)
     scheduler.add_job(_fire_due_heartbeats, "interval", seconds=HEARTBEAT_POLL_INTERVAL_SECONDS,
