@@ -167,6 +167,7 @@ final class NetworkService: DataServiceProtocol {
     /// blanket call. Still invisible outside this app target.
     func throwIfError(_ response: URLResponse, _ data: Data) throws {
         guard let http = response as? HTTPURLResponse, http.statusCode >= 400 else { return }
+        reportIfSessionEnded(http)
         let body = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
         // The gate dict is normally under `detail`; a bare body with
         // `allowed: false` is accepted too (task 20261002-free-plan-limits-ui).
@@ -189,6 +190,17 @@ final class NetworkService: DataServiceProtocol {
         }
         let detail = body?["detail"] as? String
         throw AppError.networkError(detail ?? "Server error \(http.statusCode)")
+    }
+
+    /// Global 401 path (task 20261017-chat-ws-reconnect-stuck): every status
+    /// check funnels through throwIfError, so this is the single place an
+    /// authenticated request's 401 marks the session ended. Pre-login endpoints
+    /// are excluded by SessionEndPolicy. It only posts a notification; AppState
+    /// de-duplicates and keeps cached data readable (no sign-out, no fake data).
+    /// The request still throws as before.
+    func reportIfSessionEnded(_ http: HTTPURLResponse) {
+        guard SessionEndPolicy.shouldMarkSessionEnded(status: http.statusCode, path: http.url?.path) else { return }
+        NotificationCenter.default.post(name: .sessionEndedByServer, object: nil)
     }
 
     /// Decodes `data` as `T`. Callers keep their existing "nil on failure →

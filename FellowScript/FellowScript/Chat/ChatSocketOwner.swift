@@ -24,6 +24,10 @@ final class ChatSocketOwner {
     /// true when a connection attempt starts, false when a drop schedules a
     /// reconnect (drives the "Reconnecting…" pill).
     var onConnectionChange: ((Bool) -> Void)?
+    /// true when the server rejected the handshake as unauthenticated (401/403)
+    /// and the reconnect loop has stopped; false when a fresh attempt begins
+    /// (task 20261017-chat-ws-reconnect-stuck).
+    var onSessionEndedChange: ((Bool) -> Void)?
 
     private var task: URLSessionWebSocketTask?
     private(set) var wsBase: String = ""
@@ -33,6 +37,9 @@ final class ChatSocketOwner {
     // Set by disconnect() (view going away / app backgrounded) so the
     // `.failure` from that intentional cancel does not start a reconnect loop.
     private var isDisconnecting = false
+    /// Set when the handshake was rejected for auth reasons. The loop is
+    /// stopped until retry() / a fresh connect().
+    private(set) var sessionEnded = false
 
     var isOpen: Bool { task != nil }
 
@@ -40,6 +47,7 @@ final class ChatSocketOwner {
         self.wsBase = wsBase
         self.userId = userId
         guard let url = URL(string: "\(wsBase)/message/ws/\(userId)") else { return }
+        setSessionEnded(false)
         let t = URLSession.shared.webSocketTask(with: url)
         task = t
         t.resume()
@@ -54,6 +62,33 @@ final class ChatSocketOwner {
     /// Fire-and-forget send on the current socket (no-op when closed).
     func send(_ text: String) {
         task?.send(.string(text)) { _ in }
+    }
+
+    /// Manual retry from the "session ended" banner (also usable after a
+    /// transient stall): one fresh attempt with the backoff reset.
+    func retry() {
+        guard !wsBase.isEmpty else { return }
+        reconnectTask?.cancel()
+        task?.cancel(with: .goingAway, reason: nil)
+        task = nil
+        isDisconnecting = false
+        reconnectAttempt = 0
+        connect(wsBase: wsBase, userId: userId)
+    }
+
+    /// The global 401 path (AppState.sessionEnded) says the session is gone:
+    /// stop reconnecting without waiting for a handshake rejection.
+    func stopForSessionEnded() {
+        reconnectTask?.cancel()
+        task?.cancel(with: .goingAway, reason: nil)
+        task = nil
+        setSessionEnded(true)
+    }
+
+    private func setSessionEnded(_ ended: Bool) {
+        guard sessionEnded != ended else { return }
+        sessionEnded = ended
+        onSessionEndedChange?(ended)
     }
 
     /// Intentional close (view teardown). Does not reconnect.
@@ -74,7 +109,7 @@ final class ChatSocketOwner {
     /// Resumes a connection this owner itself closed via handleAppBackgrounded().
     /// Does nothing when it never connected or was torn down for good.
     func handleAppForegrounded() {
-        guard isDisconnecting, !wsBase.isEmpty else { return }
+        guard isDisconnecting, !wsBase.isEmpty, !sessionEnded else { return }
         isDisconnecting = false
         reconnectAttempt = 0
         connect(wsBase: wsBase, userId: userId)
@@ -98,18 +133,36 @@ final class ChatSocketOwner {
                     // Keep listening whether or not this frame parsed.
                     self.receive(on: t)
                 case .failure:
-                    self.scheduleReconnect()
+                    let status = (t.response as? HTTPURLResponse)?.statusCode
+                    self.handleFailure(handshakeStatus: status)
                 }
             }
         }
     }
 
-    private func scheduleReconnect() {
+    private func handleFailure(handshakeStatus: Int?) {
+        switch SessionEndPolicy.decide(handshakeStatus: handshakeStatus,
+                                       isDisconnecting: isDisconnecting,
+                                       nextAttempt: reconnectAttempt + 1) {
+        case .ignore:
+            return
+        case .stopSessionEnded:
+            // Auth rejection: retrying with the same dead cookie can never
+            // succeed. Stop, say so, and let the user sign in again.
+            reconnectTask?.cancel()
+            task = nil
+            onConnectionChange?(false)
+            setSessionEnded(true)
+        case .retry(let delay):
+            scheduleReconnect(after: delay)
+        }
+    }
+
+    private func scheduleReconnect(after delaySeconds: TimeInterval) {
         guard !isDisconnecting else { return }
         onConnectionChange?(false)
         task = nil
         reconnectAttempt += 1
-        let delaySeconds = min(pow(2.0, Double(reconnectAttempt - 1)), 30.0) // 1s, 2s, 4s, ..., capped at 30s
         reconnectTask?.cancel()
         reconnectTask = Task { [weak self] in
             try? await Task.sleep(nanoseconds: UInt64(delaySeconds * 1_000_000_000))

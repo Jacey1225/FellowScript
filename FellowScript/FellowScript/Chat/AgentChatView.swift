@@ -76,6 +76,9 @@ final class AgentChatViewModel: ObservableObject {
     // lifetime with no reconnect attempt or visible error state (backend
     // step 11 finding #3).
     @Published var isConnected: Bool = true
+    // Task 20261017-chat-ws-reconnect-stuck: handshake rejected as
+    // unauthenticated (401/403); reconnect loop stopped, banner shown.
+    @Published var sessionEnded: Bool = false
     // Set when a send fails outright (wsTask?.send's completion handler) so
     // the input bar can show the message wasn't delivered instead of just
     // silently clearing isThinking after the 30s timeout.
@@ -226,6 +229,7 @@ final class AgentChatViewModel: ObservableObject {
         self.wsBase  = wsBase
         self.agentId = agentId
         self.userId  = userId
+        sessionEnded = false   // a fresh attempt; a rejection flips it back
         var urlString = "\(wsBase)/agent/ws/\(agentId)/\(userId)"
         if let chat = activeChatId,
            let q = chat.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) {
@@ -247,7 +251,8 @@ final class AgentChatViewModel: ObservableObject {
     }
 
     private func receiveLoop() {
-        wsTask?.receive { [weak self] result in
+        let t = wsTask
+        t?.receive { [weak self] result in
             guard let self else { return }
             switch result {
             case .success(let msg):
@@ -277,8 +282,10 @@ final class AgentChatViewModel: ObservableObject {
             case .failure:
                 // The task itself failed. This used to just return, silently
                 // ending the chat for the rest of the view's lifetime.
-                // Reconnect with capped exponential backoff instead.
-                Task { @MainActor in self.scheduleReconnect() }
+                // Reconnect with capped exponential backoff instead, unless
+                // the handshake was rejected as unauthenticated.
+                let status = (t?.response as? HTTPURLResponse)?.statusCode
+                Task { @MainActor in self.handleSocketFailure(task: t, handshakeStatus: status) }
             }
         }
     }
@@ -297,12 +304,48 @@ final class AgentChatViewModel: ObservableObject {
         refreshThinking()
     }
 
-    private func scheduleReconnect() {
+    private func handleSocketFailure(task t: URLSessionWebSocketTask?, handshakeStatus: Int?) {
+        // A failure from a socket that was since replaced/cancelled (manual
+        // retry, session-ended stop) must not start a second connection.
+        guard wsTask === t else { return }
+        switch SessionEndPolicy.decide(handshakeStatus: handshakeStatus,
+                                       isDisconnecting: isDisconnecting,
+                                       nextAttempt: reconnectAttempt + 1) {
+        case .ignore: return
+        case .stopSessionEnded:
+            reconnectTask?.cancel()
+            wsTask = nil
+            isConnected = false
+            sessionEnded = true
+        case .retry(let delay): scheduleReconnect(after: delay)
+        }
+    }
+
+    /// Manual Retry from the session-ended banner.
+    func retryConnection() {
+        guard !wsBase.isEmpty else { return }
+        reconnectTask?.cancel()
+        wsTask?.cancel(with: .goingAway, reason: nil)
+        isDisconnecting = false
+        reconnectAttempt = 0
+        sessionEnded = false
+        connectWebSocket(wsBase: wsBase, agentId: agentId, userId: userId)
+    }
+
+    /// AppState's global 401 path fired: stop reconnecting now.
+    func noteSessionEnded() {
+        reconnectTask?.cancel()
+        wsTask?.cancel(with: .goingAway, reason: nil)
+        wsTask = nil
+        isConnected = false
+        sessionEnded = true
+    }
+
+    private func scheduleReconnect(after delaySeconds: TimeInterval) {
         guard !isDisconnecting else { return }
         isConnected = false
         wsTask = nil
         reconnectAttempt += 1
-        let delaySeconds = min(pow(2.0, Double(reconnectAttempt - 1)), 30.0) // 1s, 2s, 4s, …, capped at 30s
         reconnectTask?.cancel()
         reconnectTask = Task { [weak self] in
             try? await Task.sleep(nanoseconds: UInt64(delaySeconds * 1_000_000_000))
@@ -399,7 +442,15 @@ struct AgentChatView: View {
                 header
 
                 // ── Reconnecting banner (dropped-socket lifecycle state) ───
-                if !vm.isConnected {
+                if vm.sessionEnded {
+                    SessionEndedBanner(
+                        onSignIn: { appState.signOut() },
+                        onRetry: {
+                            appState.clearSessionEnded()
+                            vm.retryConnection()
+                        }
+                    )
+                } else if !vm.isConnected {
                     HStack(spacing: 6) {
                         ProgressView().tint(Theme.gold).scaleEffect(0.75)
                         Text("Reconnecting…")
@@ -528,8 +579,11 @@ struct AgentChatView: View {
             // flips the flag; see its declaration above for why the actual
             // `scrollTo` isn't called imperatively right here.
             readyForInitialScroll = true
+            if appState.sessionEnded { vm.noteSessionEnded() }
         }
         .onDisappear { vm.disconnect() }
+        .onChange(of: appState.sessionEnded) { _, ended in if ended { vm.noteSessionEnded() } }
+        .onChange(of: vm.sessionEnded) { _, ended in if ended { appState.markSessionEnded() } }
         .alert("Message Not Sent", isPresented: Binding(
             get: { vm.sendError != nil },
             set: { if !$0 { vm.sendError = nil } }

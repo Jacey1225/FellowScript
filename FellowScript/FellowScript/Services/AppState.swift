@@ -173,8 +173,31 @@ final class AppState: ObservableObject {
 
     let service: DataServiceProtocol
 
+    /// True once the server has told us (an authenticated request's 401, or a
+    /// refused chat-socket handshake) that this session ended. Cached content
+    /// stays readable; chat shows a "Sign in again" banner. Cleared by sign-in
+    /// and sign-out. Task 20261017-chat-ws-reconnect-stuck.
+    @Published private(set) var sessionEnded = false
+    private var sessionEndLatch = SessionEndLatch()
+    private var sessionEndObserver: AnyCancellable?
+
+    /// Idempotent; ignored when nobody is signed in.
+    func markSessionEnded() {
+        guard isAuthenticated, sessionEndLatch.mark() else { return }
+        sessionEnded = true
+    }
+
+    /// Also called by the chat banner's Retry before it re-probes the server.
+    func clearSessionEnded() {
+        sessionEndLatch.reset()
+        if sessionEnded { sessionEnded = false }
+    }
+
     init(service: DataServiceProtocol = MockDataService.shared) {
         self.service = service
+        sessionEndObserver = NotificationCenter.default.publisher(for: .sessionEndedByServer)
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in self?.markSessionEnded() }
         badgesForward = badges.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }
         badges.owner = self
         restoreSession()
@@ -375,6 +398,7 @@ final class AppState: ObservableObject {
 
     func signOut() {
         let signedOutUserId = currentUser?.user_id ?? storedUserId
+        clearSessionEnded()
         pendingNoteDraft = nil   // in-memory verse draft must not outlive the session
         clearPendingInvite()
         clearShareLinks()
@@ -420,6 +444,7 @@ final class AppState: ObservableObject {
         storedEmail    = user.email
         currentUser    = user
         isAuthenticated = true
+        clearSessionEnded()
         badges.hydrate(userId: user.user_id)   // this user's persisted badges, never the previous user's
         termsReacceptRequired = user.terms_reaccept_required
         needsProfileCompletion = user.needs_profile_completion

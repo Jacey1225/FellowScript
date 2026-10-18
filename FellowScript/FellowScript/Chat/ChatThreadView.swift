@@ -61,6 +61,11 @@ final class ChatThreadViewModel: ObservableObject {
     // timeout, or the server evicting a stale connection) gave no visible
     // signal at all — see backend step 8 finding #2.
     @Published var isConnected: Bool = true
+    // Task 20261017-chat-ws-reconnect-stuck: the server rejected the socket
+    // handshake as unauthenticated (401/403) or a REST call returned 401. The
+    // reconnect loop is stopped and the view shows a "Sign in again" banner
+    // (with Retry) in place of the Reconnecting pill; cached messages stay.
+    @Published var sessionEnded: Bool = false
     // Task 20260910-chat-message-disappear-reentry: ids (FSMessage.id) of an
     // optimistic echo (see sendMessage below) whose send the backend
     // explicitly rejected/failed to save (a {"type":"error",...} frame —
@@ -143,7 +148,13 @@ final class ChatThreadViewModel: ObservableObject {
     init() {
         socket.onFrame = { [weak self] json in self?.handleFrame(json) }
         socket.onConnectionChange = { [weak self] connected in self?.isConnected = connected }
+        socket.onSessionEndedChange = { [weak self] ended in self?.sessionEnded = ended }
     }
+
+    /// Manual Retry from the session-ended banner.
+    func retryConnection() { socket.retry() }
+    /// AppState's global 401 path fired: stop reconnecting now.
+    func noteSessionEnded() { socket.stopForSessionEnded() }
 
     /// The session/devotion room id. Must match the web client's `roomKey` so
     /// sessions (and their Chime calls) are shared cross-platform:
@@ -1457,7 +1468,15 @@ struct ChatThreadView: View {
                 // Same vm.isConnected-driven logic as before — restyled into
                 // a pill using the Ember Glass elevation language (§1) rather
                 // than bare floating text+spinner.
-                if !vm.isConnected {
+                if vm.sessionEnded {
+                    SessionEndedBanner(
+                        onSignIn: { appState.signOut() },
+                        onRetry: {
+                            appState.clearSessionEnded()
+                            vm.retryConnection()
+                        }
+                    )
+                } else if !vm.isConnected {
                     HStack(spacing: 6) {
                         ProgressView().tint(Theme.gold).scaleEffect(0.75)
                         Text("Reconnecting…")
@@ -1723,6 +1742,7 @@ struct ChatThreadView: View {
             // how the fetch that follows turns out.
             appState.markRead(contact)
             await vm.load(service: appState.service, contact: contact, userId: uid, capabilities: appState.capabilities)
+            if appState.sessionEnded { vm.noteSessionEnded() }
             // Populates the messageGroups/threadRows cache for the first
             // render after load() -- `.onChange(of: vm.messages.count)`
             // covers every later change, but wouldn't fire for this initial
@@ -1792,6 +1812,8 @@ struct ChatThreadView: View {
             }
         }
         .onDisappear { vm.disconnect() }
+        .onChange(of: appState.sessionEnded) { _, ended in if ended { vm.noteSessionEnded() } }
+        .onChange(of: vm.sessionEnded) { _, ended in if ended { appState.markSessionEnded() } }
         // App-lifecycle wiring (task 20260902-chat-push-notification-failure)
         // — complements onDisappear above, which only fires when this view
         // itself leaves the hierarchy, not when the whole app is backgrounded
