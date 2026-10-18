@@ -184,4 +184,38 @@ describe('useMessaging WS close — session-ended probe (task 20261017-chat-ws-r
     act(() => { vi.advanceTimersByTime(3000); });
     expect(MockWebSocket.instances).toHaveLength(2);
   });
+
+  test('latch already set (e.g. by a global 401): socket close stops without reconnecting and connectWS will not open', async () => {
+    const { markSessionEnded, resetSessionEnded } = await import('../lib/sessionEnd.js');
+    resetSessionEnded();
+    global.fetch = vi.fn(async () => ({ status: 200 }));
+    const { result } = renderHook(() => useMessaging({ user: USER }));
+    act(() => { result.current.connectWS(); });
+    act(() => { markSessionEnded(); });
+    act(() => { MockWebSocket.instances[0]._closeUnexpectedly(); });
+    await flush();
+    act(() => { vi.advanceTimersByTime(60_000); });
+    expect(MockWebSocket.instances).toHaveLength(1);
+    expect(result.current.wsStatus).toBe('session-ended');
+    // Explicit connect attempt while latched opens nothing.
+    act(() => { result.current.connectWS(); });
+    expect(MockWebSocket.instances).toHaveLength(1);
+    // Sign-in resets the latch and connecting works again.
+    act(() => { resetSessionEnded(); });
+    act(() => { result.current.connectWS(); });
+    expect(MockWebSocket.instances).toHaveLength(2);
+  });
+
+  test('probe 503 (server error, not 401) keeps reconnecting', async () => {
+    const { resetSessionEnded } = await import('../lib/sessionEnd.js');
+    resetSessionEnded();
+    global.fetch = vi.fn(async () => ({ status: 503 }));
+    const { result } = renderHook(() => useMessaging({ user: USER }));
+    act(() => { result.current.connectWS(); });
+    act(() => { MockWebSocket.instances[0]._closeUnexpectedly(); });
+    await flush();
+    act(() => { vi.advanceTimersByTime(3000); });
+    expect(MockWebSocket.instances).toHaveLength(2);
+    expect(result.current.wsStatus).not.toBe('session-ended');
+  });
 });

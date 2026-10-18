@@ -80,6 +80,24 @@ describe('fetch guard', () => {
   });
 });
 
+describe('fetch guard: a signed-in user\'s wrong credential never reads as "session ended"', () => {
+  // Fresh module copy so the guard installs on a throwaway target.
+  test('401 from the five non-session 401 routes never latches; a real session 401 still does', async () => {
+    vi.resetModules();
+    const mod = await import('./sessionEnd.js');
+    const { API: base } = await import('../config.js');
+    const res401 = { status: 401 };
+    const target = { fetch: vi.fn(async () => res401) };
+    mod.installSessionGuard(target);
+    for (const p of ['/login', '/auth/mfa/verify-login', '/auth/mfa/disable', '/auth/google', '/auth/apple']) {
+      expect(await target.fetch(`${base}${p}`, { method: 'POST' }), p).toBe(res401);
+      expect(mod.isSessionEnded(), p).toBe(false);
+    }
+    expect(await target.fetch(`${base}/auth/mfa/enable`, { method: 'POST' })).toBe(res401);
+    expect(mod.isSessionEnded()).toBe(true);
+  });
+});
+
 describe('reconnect backoff keeps the 3s -> 30s cap', () => {
   test('doubles then caps', () => {
     expect([1, 2, 3, 4, 5, 6, 7].map((n) => backoffDelay(n))).toEqual([3000, 6000, 12000, 24000, 30000, 30000, 30000]);
