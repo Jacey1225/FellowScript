@@ -1424,7 +1424,26 @@ struct ChatThreadView: View {
         threadRows = messageGroups.withDayDividers()
     }
 
+    private var sessionEndedBanner: SessionEndedBanner {
+        SessionEndedBanner(
+            onSignIn: { appState.signOut() },
+            onRetry: {
+                appState.clearSessionEnded()
+                vm.retryConnection()
+            }
+        )
+    }
+
+    /// The session-ended wiring is applied here, outside `content`, so the
+    /// already-long modifier chain inside `content` does not grow.
     var body: some View {
+        content
+            .modifier(SessionEndedWiring(
+                appEnded: appState.sessionEnded, vmEnded: vm.sessionEnded,
+                onAppEnded: { vm.noteSessionEnded() }, onVmEnded: { appState.markSessionEnded() }))
+    }
+
+    private var content: some View {
         ZStack {
             if !embedded {
             Theme.bgPage.ignoresSafeArea()
@@ -1469,13 +1488,7 @@ struct ChatThreadView: View {
                 // a pill using the Ember Glass elevation language (§1) rather
                 // than bare floating text+spinner.
                 if vm.sessionEnded {
-                    SessionEndedBanner(
-                        onSignIn: { appState.signOut() },
-                        onRetry: {
-                            appState.clearSessionEnded()
-                            vm.retryConnection()
-                        }
-                    )
+                    sessionEndedBanner
                 } else if !vm.isConnected {
                     HStack(spacing: 6) {
                         ProgressView().tint(Theme.gold).scaleEffect(0.75)
@@ -1812,8 +1825,6 @@ struct ChatThreadView: View {
             }
         }
         .onDisappear { vm.disconnect() }
-        .onChange(of: appState.sessionEnded) { _, ended in if ended { vm.noteSessionEnded() } }
-        .onChange(of: vm.sessionEnded) { _, ended in if ended { appState.markSessionEnded() } }
         // App-lifecycle wiring (task 20260902-chat-push-notification-failure)
         // — complements onDisappear above, which only fires when this view
         // itself leaves the hierarchy, not when the whole app is backgrounded

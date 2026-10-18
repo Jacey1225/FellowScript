@@ -42,3 +42,18 @@ struct SessionEndedBanner: View {
         .accessibilityElement(children: .contain)
     }
 }
+
+/// Applies the session-ended wiring as ONE modifier so the host view's body
+/// modifier chain stays short (the type-checker gave up on the long chain).
+struct SessionEndedWiring: ViewModifier {
+    let appEnded: Bool
+    let vmEnded: Bool
+    let onAppEnded: () -> Void
+    let onVmEnded: () -> Void
+
+    func body(content: Content) -> some View {
+        content
+            .onChange(of: appEnded) { _, ended in if ended { onAppEnded() } }
+            .onChange(of: vmEnded) { _, ended in if ended { onVmEnded() } }
+    }
+}

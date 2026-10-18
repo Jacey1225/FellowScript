@@ -81,6 +81,13 @@ final class SessionEndPolicyTests: XCTestCase {
         XCTAssertFalse(SessionEndPolicy.isUnauthenticatedPath("/api/auth/mfa/enable"))
     }
 
+    func testMfaDisableWrongPasswordNeverMarksSessionEnded() {
+        XCTAssertTrue(SessionEndPolicy.isUnauthenticatedPath("/api/auth/mfa/disable"))
+        XCTAssertFalse(SessionEndPolicy.shouldMarkSessionEnded(status: 401, path: "/api/auth/mfa/disable"))
+        // Neighbouring authenticated MFA routes are still session-sensitive.
+        XCTAssertTrue(SessionEndPolicy.shouldMarkSessionEnded(status: 401, path: "/api/auth/mfa/confirm"))
+    }
+
     func testThrowIfErrorPostsSessionEndedOnAuthenticated401AndStillThrows() {
         let net = NetworkService.shared
         var posts = 0

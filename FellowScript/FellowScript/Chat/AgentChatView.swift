@@ -422,7 +422,26 @@ struct AgentChatView: View {
         return name.isEmpty ? "U" : String(name.prefix(1)).uppercased()
     }
 
+    private var sessionEndedBanner: SessionEndedBanner {
+        SessionEndedBanner(
+            onSignIn: { appState.signOut() },
+            onRetry: {
+                appState.clearSessionEnded()
+                vm.retryConnection()
+            }
+        )
+    }
+
+    /// The session-ended wiring is applied here, outside `content`, so the
+    /// already-long modifier chain inside `content` does not grow.
     var body: some View {
+        content
+            .modifier(SessionEndedWiring(
+                appEnded: appState.sessionEnded, vmEnded: vm.sessionEnded,
+                onAppEnded: { vm.noteSessionEnded() }, onVmEnded: { appState.markSessionEnded() }))
+    }
+
+    private var content: some View {
         ZStack {
             if !embedded {
                 Theme.bgPage.ignoresSafeArea()
@@ -443,13 +462,7 @@ struct AgentChatView: View {
 
                 // ── Reconnecting banner (dropped-socket lifecycle state) ───
                 if vm.sessionEnded {
-                    SessionEndedBanner(
-                        onSignIn: { appState.signOut() },
-                        onRetry: {
-                            appState.clearSessionEnded()
-                            vm.retryConnection()
-                        }
-                    )
+                    sessionEndedBanner
                 } else if !vm.isConnected {
                     HStack(spacing: 6) {
                         ProgressView().tint(Theme.gold).scaleEffect(0.75)
@@ -582,8 +595,6 @@ struct AgentChatView: View {
             if appState.sessionEnded { vm.noteSessionEnded() }
         }
         .onDisappear { vm.disconnect() }
-        .onChange(of: appState.sessionEnded) { _, ended in if ended { vm.noteSessionEnded() } }
-        .onChange(of: vm.sessionEnded) { _, ended in if ended { appState.markSessionEnded() } }
         .alert("Message Not Sent", isPresented: Binding(
             get: { vm.sendError != nil },
             set: { if !$0 { vm.sendError = nil } }

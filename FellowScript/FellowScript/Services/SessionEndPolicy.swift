@@ -70,6 +70,8 @@ enum SessionEndPolicy {
         let exact: Set<String> = [
             "/login", "/signup", "/logout", "/auth/google", "/auth/apple",
             "/auth/mfa/verify-login", "/app/capabilities", "/invites/preview",
+            // Signed-in user, but a wrong password answers 401 (not a session failure).
+            "/auth/mfa/disable",
         ]
         if exact.contains(path) { return true }
         return path.hasPrefix("/auth/password-reset") || path.hasPrefix("/explorer/listings/")
