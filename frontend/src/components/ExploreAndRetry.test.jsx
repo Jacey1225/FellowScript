@@ -81,3 +81,52 @@ describe('failed message bubble', () => {
     expect(screen.queryByRole('button', { name: /Tap to retry/ })).toBeNull();
   });
 });
+
+describe('collapsible Friends / Groups sections', () => {
+  const caps = { features: { explorer_browse: true }, links: { explore: 'https://fellowscript.com/#/explore' } };
+  beforeEach(() => {
+    const store = new Map();
+    vi.stubGlobal('localStorage', {
+      getItem: k => (store.has(k) ? store.get(k) : null),
+      setItem: (k, v) => { store.set(k, String(v)); },
+      removeItem: k => { store.delete(k); },
+      clear: () => store.clear(),
+    });
+  });
+  afterEach(() => vi.unstubAllGlobals());
+
+  test('both expanded by default; toggles hide content but keep header action buttons', () => {
+    contacts(caps);
+    const friends = screen.getByRole('button', { name: 'Friends' });
+    const groups = screen.getByRole('button', { name: 'Groups' });
+    expect(friends).toHaveAttribute('aria-expanded', 'true');
+    expect(groups).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByText('No friends yet')).toBeInTheDocument();
+    fireEvent.click(friends);
+    expect(friends).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.queryByText('No friends yet')).toBeNull();
+    fireEvent.click(groups);
+    expect(screen.queryByRole('button', { name: /Explore groups/ })).toBeNull();
+    expect(screen.queryByText('No groups yet')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Add a friend' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Create a group' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Join with a link/ })).toBeInTheDocument();
+    fireEvent.click(groups);
+    expect(screen.getByRole('button', { name: /Explore groups/ })).toBeInTheDocument();
+  });
+
+  test('persists per user id in localStorage', () => {
+    contacts(caps);
+    fireEvent.click(screen.getByRole('button', { name: 'Groups' }));
+    expect(JSON.parse(window.localStorage.getItem('fs.contacts.collapsed.u1'))).toEqual({ groups: true });
+    cleanup();
+    contacts(caps);
+    expect(screen.getByRole('button', { name: 'Groups' })).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.getByRole('button', { name: 'Friends' })).toHaveAttribute('aria-expanded', 'true');
+    cleanup();
+    window.localStorage.clear();
+    window.localStorage.setItem('fs.contacts.collapsed.other', JSON.stringify({ groups: true }));
+    contacts(caps);
+    expect(screen.getByRole('button', { name: 'Groups' })).toHaveAttribute('aria-expanded', 'true');
+  });
+});

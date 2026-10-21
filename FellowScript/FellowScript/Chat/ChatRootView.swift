@@ -42,6 +42,8 @@ struct ChatRootView: View {
     @State private var selectedSegment = 0
     @State private var searchQuery     = ""
     @State private var showAddFriend   = false
+    /// iPad embedded list: collapsed FRIENDS/GROUPS sections (per user, device-local).
+    @State private var collapsedSections: Set<ContactSectionCollapse.Section> = []
     @State private var showAddGroup    = false
     @State private var showNewAgent    = false
     @State private var newAgentRole    = ""
@@ -275,40 +277,58 @@ struct ChatRootView: View {
         .accessibilityLabel(label)
     }
 
+    private func collapsibleHeader<Trailing: View>(
+        _ section: ContactSectionCollapse.Section, title: String,
+        @ViewBuilder trailing: () -> Trailing
+    ) -> some View {
+        let userId = appState.currentUser?.user_id
+        return HStack {
+            CollapsibleSectionHeader(title: title, isCollapsed: collapsedSections.contains(section)) {
+                withMotionAwareAnimation(.easeInOut(duration: 0.25), reduceMotion: reduceMotion) {
+                    let now = !collapsedSections.contains(section)
+                    if now { collapsedSections.insert(section) } else { collapsedSections.remove(section) }
+                    ContactSectionCollapse.setCollapsed(section, now, userId: userId)
+                }
+            }
+            Spacer()
+            trailing()
+        }
+    }
+
     private var embeddedList: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 4) {
-                HStack {
-                    sectionLabel("FRIENDS")
-                    Spacer()
+                collapsibleHeader(.friends, title: "FRIENDS") {
                     sectionIconButton("person.badge.plus", label: "Add friend") { showAddFriend = true }
                 }
-                if vm.friends.isEmpty {
-                    Text("No friends yet.")
-                        .font(.inter(Theme.fontSM)).foregroundColor(Theme.textSecondary)
-                        .padding(.vertical, 8)
-                }
-                ForEach(vm.friends) { contact in
-                    embeddedRow(contact)
+                if !collapsedSections.contains(.friends) {
+                    if vm.friends.isEmpty {
+                        Text("No friends yet.")
+                            .font(.inter(Theme.fontSM)).foregroundColor(Theme.textSecondary)
+                            .padding(.vertical, 8)
+                    }
+                    ForEach(vm.friends) { contact in
+                        embeddedRow(contact)
+                    }
                 }
 
-                HStack {
-                    sectionLabel("GROUPS")
-                    Spacer()
+                collapsibleHeader(.groups, title: "GROUPS") {
                     sectionIconButton("plus", label: "New group") { showAddGroup = true }
                 }
                 .padding(.top, 14)
-                if let exploreURL = ExploreEntry.browseURL(from: appState.capabilities) {
-                    ExploreEntryRow { exploreDestination = ExploreDestination(url: exploreURL) }
-                        .padding(.bottom, 6)
-                }
-                if vm.groups.isEmpty {
-                    Text("No groups yet.")
-                        .font(.inter(Theme.fontSM)).foregroundColor(Theme.textSecondary)
-                        .padding(.vertical, 8)
-                }
-                ForEach(vm.groups) { contact in
-                    embeddedRow(contact)
+                if !collapsedSections.contains(.groups) {
+                    if let exploreURL = ExploreEntry.browseURL(from: appState.capabilities) {
+                        ExploreEntryRow { exploreDestination = ExploreDestination(url: exploreURL) }
+                            .padding(.bottom, 6)
+                    }
+                    if vm.groups.isEmpty {
+                        Text("No groups yet.")
+                            .font(.inter(Theme.fontSM)).foregroundColor(Theme.textSecondary)
+                            .padding(.vertical, 8)
+                    }
+                    ForEach(vm.groups) { contact in
+                        embeddedRow(contact)
+                    }
                 }
             }
             .padding(.horizontal, 14)
@@ -316,6 +336,9 @@ struct ChatRootView: View {
         }
         .refreshable {
             await vm.refresh(service: appState.service, userId: appState.currentUser?.user_id ?? "")
+        }
+        .task(id: appState.currentUser?.user_id) {
+            collapsedSections = ContactSectionCollapse.collapsedSections(userId: appState.currentUser?.user_id)
         }
         // Same report / block / delete-group flows as the phone lists (those
         // modifiers live on friendsList/groupsList, which this variant replaces).
