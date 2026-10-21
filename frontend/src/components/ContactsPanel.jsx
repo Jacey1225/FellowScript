@@ -2,10 +2,11 @@ import React, { useState, useEffect } from 'react';
 import JoinWithLinkModal from './JoinWithLinkModal.jsx';
 import { useCapabilities } from '../hooks/useCapabilities.js';
 import { exploreEntryUrl } from '../lib/exploreEntry.js';
+import { useCollapsedSections } from '../hooks/useCollapsedSections.js';
 import { Button, Avatar, Typography, Modal, Form, Checkbox, Spin, Dropdown, Radio, Input, message as antMessage } from 'antd';
 import {
   MessageOutlined, PlusOutlined, EditOutlined, DeleteOutlined, UserAddOutlined,
-  RobotOutlined, MoreOutlined, FlagOutlined, StopOutlined, CompassOutlined,
+  RobotOutlined, MoreOutlined, DownOutlined, FlagOutlined, StopOutlined, CompassOutlined,
 } from '@ant-design/icons';
 
 const { Text } = Typography;
@@ -15,6 +16,31 @@ function agentLabel(agent) {
   if (!agent?.role || agent.role.startsWith('You are a spiritual')) return 'Spiritual Guide';
   const firstLine = agent.role.split('\n').find(l => l.trim());
   return (firstLine || '').slice(0, 26) || 'Agent';
+}
+
+// ── Collapsible section label ────────────────────────────────────────────────
+
+function SectionToggle({ label, collapsed, onToggle, controlsId }) {
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      aria-expanded={!collapsed}
+      aria-controls={controlsId}
+      style={{
+        display: 'inline-flex', alignItems: 'center', gap: 5, minHeight: 28,
+        background: 'none', border: 'none', padding: 0, cursor: 'pointer',
+        fontFamily: "'Space Grotesk', sans-serif", fontWeight: 700, fontSize: '0.52rem',
+        letterSpacing: '0.2em', textTransform: 'uppercase', color: 'rgba(255,198,26,0.4)',
+      }}
+    >
+      <DownOutlined aria-hidden="true" style={{
+        fontSize: '0.5rem', transition: 'transform 0.2s ease',
+        transform: collapsed ? 'rotate(-90deg)' : 'none',
+      }} />
+      {label}
+    </button>
+  );
 }
 
 // ── Agent row ─────────────────────────────────────────────────────────────────
@@ -174,6 +200,7 @@ export default function ContactsPanel({
   const [joinLinkModal,  setJoinLinkModal]  = useState(false);
   const [editingGroup,   setEditingGroup]   = useState(null);
   const [reportTarget,   setReportTarget]   = useState(null);
+  const [collapsed, toggleCollapsed] = useCollapsedSections(user?.user_id);
   const [form]                              = Form.useForm();
   const caps = useCapabilities();
   // Task 20261003-web-reader-ios-parity (E1): iOS shows an Explore groups row
@@ -246,11 +273,13 @@ export default function ContactsPanel({
       <div style={{ flex: 1, overflowY: 'auto' }}>
         {/* Friends */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.55rem 0.8rem 0.25rem' }}>
-          <Text style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 700, fontSize: '0.52rem', letterSpacing: '0.2em', textTransform: 'uppercase', color: 'rgba(255,198,26,0.4)' }}>Friends</Text>
+          <SectionToggle label="Friends" collapsed={!!collapsed.friends} onToggle={() => toggleCollapsed('friends')} controlsId="contacts-friends-body" />
           <Button type="text" size="small" icon={<UserAddOutlined />} onClick={() => setShowAddFriend(v => !v)}
             aria-label="Add a friend" aria-expanded={showAddFriend}
             style={{ color: 'rgba(255,198,26,0.5)', padding: '0 3px', height: 20 }} />
         </div>
+        {!collapsed.friends && (
+        <div id="contacts-friends-body">
         {showAddFriend && (
           <div style={{ padding: '0.25rem 0.7rem 0.4rem' }}>
             <Input
@@ -288,9 +317,12 @@ export default function ContactsPanel({
               ))
         }
 
+        </div>
+        )}
+
         {/* Groups */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.55rem 0.8rem 0.25rem', borderTop: '1px solid rgba(255,255,255,0.048)', marginTop: '0.3rem' }}>
-          <Text style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 700, fontSize: '0.52rem', letterSpacing: '0.2em', textTransform: 'uppercase', color: 'rgba(255,198,26,0.4)' }}>Groups</Text>
+          <SectionToggle label="Groups" collapsed={!!collapsed.groups} onToggle={() => toggleCollapsed('groups')} controlsId="contacts-groups-body" />
           <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
             <Button type="text" size="small" onClick={() => setJoinLinkModal(true)}
               style={{ color: 'rgba(255,198,26,0.7)', padding: '0 6px', minHeight: 44, fontSize: '0.62rem' }}>
@@ -300,6 +332,8 @@ export default function ContactsPanel({
               style={{ color: 'rgba(255,198,26,0.5)', padding: '0 3px', height: 20 }} />
           </span>
         </div>
+        {!collapsed.groups && (
+        <div id="contacts-groups-body">
         {exploreUrl && (
           <button
             type="button"
@@ -323,6 +357,9 @@ export default function ContactsPanel({
               );
             })
         }
+
+        </div>
+        )}
 
         {/* Agents */}
         {showAgents && (

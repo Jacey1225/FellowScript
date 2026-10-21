@@ -517,7 +517,9 @@ struct NoteDetailView: View {
             detailScroll
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Theme.bgPage)
+        // No opaque fill here: the iPad workspace panel chrome (ultraThinMaterial +
+        // dockTint, solid dockSolid under Reduce Transparency / Low Power) shows
+        // through so the note matches the other panels. sheetBody keeps bgPage.
         .onAppear {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { backFocused = true }
         }
