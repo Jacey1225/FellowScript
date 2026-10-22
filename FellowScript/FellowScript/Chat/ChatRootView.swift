@@ -695,8 +695,8 @@ struct ChatRootView: View {
             } else {
                 List(filteredGroups) { contact in
                     // Task 20261008-group-row-thread-dropdown: the row now
-                    // hosts an expandable inline thread list (chevron at the
-                    // card's bottom-right). Row-open tap + a11y label live
+                    // hosts an expandable "Threads" folder row beneath the
+                    // card (20261022-ios-group-threads-folder). Row-open tap + a11y label live
                     // inside GroupRowWithThreads on the card only, so a thread
                     // tap never opens the group chat; swipe actions stay here.
                     GroupRowWithThreads(
@@ -1192,9 +1192,6 @@ struct ContactRow: View {
     // never get one, per the intake spec's scope.
     var nudgeState: NudgeUIState = .idle
     var onNudge: (() -> Void)? = nil
-    /// Extra trailing space for the text column so it never runs under an
-    /// overlaid control (the groups list's threads chevron).
-    var trailingReserve: CGFloat = 0
     /// iPad workspace list row: 32pt avatar + name only, no card (screenshot 3).
     var compact: Bool = false
     @EnvironmentObject var appState: AppState
@@ -1301,7 +1298,6 @@ struct ContactRow: View {
                         .lineLimit(1)
                 }
             }
-            .padding(.trailing, trailingReserve)
 
             // Task 20260922-chat-friend-nudge-button: friend-only, and only
             // when the caller actually wired a handler -- groupsList's call
