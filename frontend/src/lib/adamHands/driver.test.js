@@ -361,8 +361,8 @@ describe('second fill, settle and family timeline (scrub domain past 1)', () => 
   test('named timeline table and monotonic ordering', () => {
     expect(BASE_SPAN_VH).toEqual({ desktop: 220, mobile: 160 });
     expect(WASH_START_P).toBe(0.84); expect(WHITE_HOLD_P).toBe(0.05);
-    near(FILL2_START_P, 1.02, 9); near(FILL2_END_P, 1.11, 9); near(SETTLE_END_P, 1.27, 9);
-    near(FILL2_DELAY_P, 0.22, 9); near(FILL2_SPAN_P, 0.09, 9); near(SETTLE_SPAN_P, 0.16, 9);
+    near(FILL2_START_P, 1.02, 9); near(FILL2_END_P, 1.11, 9); near(SETTLE_END_P, 1.23, 9);
+    near(FILL2_DELAY_P, 0.22, 9); near(FILL2_SPAN_P, 0.09, 9); near(SETTLE_SPAN_P, 0.12, 9);
     const seq = [TOUCH_P, WASH_START_P, FLOOD_END_P, FILL2_START_P, FILL2_END_P, SETTLE_END_P,
       FAMILY_REVEAL_P[0], FAMILY_REVEAL_P[1], FAMILY_HIDE_P[0], VERSE_START_P];
     // wash starts after the touch; settle ends after family begins to reveal

@@ -43,7 +43,7 @@ export const FIELD_BLOBS = [
   { c: '#1F4A70', a: 0.30, x: 72, y: 58, w: 60, h: 38, r: 26, t: 17, dx: -18, dy: 6, dr: -25, m: true, g: 1.25, l: [36, 58, 26, 28] },
   { c: '#0B1F42', a: 0.80, x: 58, y: 30, w: 44, h: 30, r: -40, t: 19, dx: 12, dy: 12, dr: 18, m: false, g: 1, l: [38, 58, 26, 26] },
   { c: '#245275', a: 0.20, x: 14, y: 66, w: 36, h: 22, r: 12, t: 21, dx: 10, dy: -10, dr: 10, m: false, g: 1.25 },
-  { c: FIELD_NAVY_DEEP, a: 0.95, x: 94, y: 94, w: 70, h: 58, r: -20, t: 26, dx: -9, dy: -7, dr: 14, m: true, g: 1.2 },
+  { c: FIELD_NAVY_DEEP, a: 0.95, x: 92, y: 84, w: 80, h: 66, r: -20, t: 26, dx: -9, dy: -7, dr: 14, m: true, g: 1.2 },
   { c: '#2A5A7E', a: 0.45, x: 3, y: 58, w: 16, h: 30, r: 20, t: 14, dx: 5, dy: -8, dr: 12, m: false, g: 1 },
   // teal highlights (s): kept out of the text zone so the lift budget holds
   { c: FIELD_TEAL_HI, a: 0.95, x: 46, y: 1, w: 62, h: 36, r: -6, t: 27, dx: 14, dy: 5, dr: 8, m: true, g: 1, s: true },
