@@ -23,6 +23,7 @@ export const CANVAS = {
 // their old end state for p > 1).
 export const BASE_SPAN_VH = { desktop: 220, mobile: 160 };
 export const WASH_START_P = 0.84;
+export const WASH_END_P = 0.92; // wash reaches full size here so its opaque tint leads the flood
 export const WHITE_HOLD_P = 0.05;
 export const FILL2_START_P = FLOOD_END_P + WHITE_HOLD_P; // 1.02: orb appears
 export const FILL2_DELAY_P = FILL2_START_P - TOUCH_P; // touch -> second fill (about 2 s of the mov)
@@ -215,24 +216,27 @@ export function eyebrowColor(c) {
 // Cool-white wash over the warm flood (p .84 -> .97), then held white until the
 // second fill takes over at FILL2_START_P. rc = stage half-diagonal in px.
 export function washDrivers(p, rc) {
-  const w = smooth((p - WASH_START_P) / (FLOOD_END_P - WASH_START_P));
+  const w = smooth((p - WASH_START_P) / (WASH_END_P - WASH_START_P));
   const on = p < FILL2_START_P;
   return {
     rWash: rc * (0.10 + 1.80 * w),
-    washOpacity: on ? smooth((p - 0.82) / 0.06) : 0,
+    washOpacity: on ? smooth((p - 0.82) / 0.04) : 0,
   };
 }
 
-// Ease-in-out (not the spec's 0.25/0.10/0.35/1): the mov's orb ring is about 0.43 r_c at
-// 1.85 s (u ~ .36), which an ease-out cannot reproduce (it gives ~0.8 r_c there).
-export const fillCurve = cubicBezier(0.42, 0, 0.58, 1);
+// Strong ease-in (not the spec's ease-out): the mov's orb is still small at 1.85 s
+// (u ~ .36, R about 0.57 r_c, visible orb about 59% of the width) and then races out so
+// the corners are clear (0.30 R > r_c) by FILL2_END_P.
+export const COVER_R0 = 0.08;
+export const COVER_R1 = 3.6;
+export const fillCurve = cubicBezier(0.6, 0, 0.8, 1);
 
 // Second light fill: a white cover with a growing hole reveals the live navy field.
 export function fill2Drivers(p, rc) {
   const u = clamp((p - FILL2_START_P) / FILL2_SPAN_P);
   return {
     u,
-    coverR: rc * lerp(0.12, 2.25, fillCurve(u)),
+    coverR: rc * lerp(COVER_R0, COVER_R1, fillCurve(u)),
     coverOn: p >= FILL2_START_P && p < FILL2_END_P,
     settle: smooth((p - FILL2_END_P) / SETTLE_SPAN_P),
     fieldOn: p >= FILL2_START_P - 0.005,

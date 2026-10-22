@@ -182,17 +182,24 @@ function haloGradient(g, tx, ty) {
 }
 
 const rgbaHex = (hex, a) => { const c = hexRgb(hex); return `rgba(${c[0]},${c[1]},${c[2]},${a})`; };
+const FIELD_WASH = '#DDEDF4'; // opaque pale cyan band (cool, R < G < B), no warm cast
 const WHITE_RGB = hexRgb(FIELD_WHITE);
 const white = (a) => `rgba(${WHITE_RGB[0]},${WHITE_RGB[1]},${WHITE_RGB[2]},${a})`;
 
 // Cool-white wash that resolves the warm flood to white (design spec 3.2).
 function washGradient(R) {
-  return `radial-gradient(circle at 50% 48%, ${FIELD_WHITE} 0, ${FIELD_WHITE} ${(R * 0.55).toFixed(1)}px, ${rgbaHex(FIELD_PALE, 0.92)} ${(R * 0.8).toFixed(1)}px, ${white(0)} ${R.toFixed(1)}px)`;
+  const at = (k) => `${(R * k).toFixed(1)}px`;
+  return `radial-gradient(circle at 50% 48%, ${FIELD_WHITE} 0, ${FIELD_WHITE} ${at(0.62)}, ${FIELD_WASH} ${at(0.80)}, ${rgbaHex(FIELD_WASH, 0)} ${R.toFixed(1)}px)`;
 }
 // White cover with a growing hole: the live navy field shows through it (spec 3.3).
-function coverGradient(R) {
+// Soft feather (about 35% of the visible radius), a pale-blue centre tint that fades
+// out over the first quarter of the fill so the orb opens as a glow and then darkens.
+const ORB_TINT = [209, 226, 237];
+function coverGradient(R, u) {
   const at = (k) => `${(R * k).toFixed(1)}px`;
-  return `radial-gradient(circle ${R.toFixed(1)}px at 46% 50%, ${white(0)} 0, ${white(0)} ${at(0.45)}, ${rgbaHex(FIELD_ORB_RING_A, 0.55)} ${at(0.62)}, ${rgbaHex(FIELD_ORB_RING_B, 0.40)} ${at(0.74)}, ${white(0.95)} ${at(0.92)}, ${FIELD_WHITE} ${R.toFixed(1)}px)`;
+  const a = 1 - smooth(u / 0.25);
+  const tint = (v) => `rgba(${ORB_TINT[0]},${ORB_TINT[1]},${ORB_TINT[2]},${v.toFixed(3)})`;
+  return `radial-gradient(circle ${at(1.12)} at 46% 50%, ${tint(a)} 0, ${tint(0)} ${at(0.30)}, ${rgbaHex(FIELD_ORB_RING_A, 0.55)} ${at(0.55)}, ${rgbaHex(FIELD_ORB_RING_B, 0.40)} ${at(0.70)}, ${white(0.95)} ${at(1.0)}, ${FIELD_WHITE} ${at(1.12)})`;
 }
 
 function setOpacity(el, v) {
@@ -296,8 +303,8 @@ function paintFrame(refs, p, mobile, stack) {
   }
   if (refs.cover) {
     if (f2.coverOn) {
-      const key = f2.coverR.toFixed(0);
-      if (refs.lastCover !== key) { refs.lastCover = key; refs.cover.style.background = coverGradient(f2.coverR); }
+      const key = `${f2.coverR.toFixed(0)}/${f2.u.toFixed(2)}`;
+      if (refs.lastCover !== key) { refs.lastCover = key; refs.cover.style.background = coverGradient(f2.coverR, f2.u); }
       refs.cover.style.visibility = 'visible';
     } else refs.cover.style.visibility = 'hidden';
   }

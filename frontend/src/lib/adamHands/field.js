@@ -21,7 +21,7 @@ export const FIELD_ORB_RING_B = '#4E85A7'; // teal-blue ring
 // Static underlayer. The first layer pins the bottom edge to FIELD_END so the join with
 // .hm-fam is seamless (it is repeated as .adam-liquid::before above the blobs).
 export const FIELD_BOTTOM_FADE = `linear-gradient(180deg, rgba(14,33,68,0) 86%, ${FIELD_END} 100%)`;
-export const FIELD_UNDER = `${FIELD_BOTTOM_FADE}, linear-gradient(135deg, #3A809C 0%, ${FIELD_TEAL_LO} 12%, #2A5A7E 30%, ${FIELD_BASE} 48%, ${FIELD_NAVY} 70%, ${FIELD_END} 100%)`;
+export const FIELD_UNDER = `${FIELD_BOTTOM_FADE}, linear-gradient(135deg, #3A809C 0%, ${FIELD_TEAL_LO} 12%, #2A5A7E 30%, ${FIELD_BASE} 48%, ${FIELD_NAVY} 70%, #0A1A3A 92%, ${FIELD_END} 100%)`;
 export const FIELD_UNDER_MOBILE = FIELD_UNDER.replace('135deg', '160deg');
 export const FIELD_GRAIN_OPACITY = 0.40;
 // Monochrome (colourless) grain tile, opaque grey from the noise red channel,
@@ -43,12 +43,12 @@ export const FIELD_BLOBS = [
   { c: '#1F4A70', a: 0.30, x: 72, y: 58, w: 60, h: 38, r: 26, t: 17, dx: -18, dy: 6, dr: -25, m: true, g: 1.25, l: [36, 58, 26, 28] },
   { c: '#0B1F42', a: 0.80, x: 58, y: 30, w: 44, h: 30, r: -40, t: 19, dx: 12, dy: 12, dr: 18, m: false, g: 1, l: [38, 58, 26, 26] },
   { c: '#245275', a: 0.20, x: 14, y: 66, w: 36, h: 22, r: 12, t: 21, dx: 10, dy: -10, dr: 10, m: false, g: 1.25 },
-  { c: FIELD_NAVY_DEEP, a: 0.85, x: 92, y: 90, w: 60, h: 50, r: -20, t: 26, dx: -9, dy: -7, dr: 14, m: true, g: 1.2 },
+  { c: FIELD_NAVY_DEEP, a: 0.95, x: 94, y: 94, w: 70, h: 58, r: -20, t: 26, dx: -9, dy: -7, dr: 14, m: true, g: 1.2 },
   { c: '#2A5A7E', a: 0.45, x: 3, y: 58, w: 16, h: 30, r: 20, t: 14, dx: 5, dy: -8, dr: 12, m: false, g: 1 },
   // teal highlights (s): kept out of the text zone so the lift budget holds
-  { c: FIELD_TEAL_HI, a: 0.85, x: 46, y: 3, w: 52, h: 30, r: -6, t: 27, dx: 14, dy: 5, dr: 8, m: true, g: 1, s: true },
-  { c: FIELD_TEAL_MID, a: 0.80, x: 8, y: 6, w: 22, h: 12, r: 28, t: 23, dx: 7, dy: 4, dr: -10, m: false, g: 1, s: true },
-  { c: FIELD_TEAL_LO, a: 0.70, x: 92, y: 11, w: 26, h: 14, r: -30, t: 25, dx: -9, dy: 4, dr: 12, m: true, g: 1, s: true },
+  { c: FIELD_TEAL_HI, a: 0.95, x: 46, y: 1, w: 62, h: 36, r: -6, t: 27, dx: 14, dy: 5, dr: 8, m: true, g: 1, s: true },
+  { c: FIELD_TEAL_MID, a: 0.90, x: 6, y: 3, w: 34, h: 20, r: 12, t: 23, dx: 7, dy: 4, dr: -10, m: false, g: 1, s: true },
+  { c: FIELD_TEAL_LO, a: 0.80, x: 92, y: 9, w: 34, h: 20, r: -14, t: 25, dx: -9, dy: 4, dr: 12, m: true, g: 1, s: true },
   { c: '#7CC3D4', a: 0.30, x: 60, y: 6, w: 22, h: 7, r: -12, t: 15, dx: -26, dy: 3, dr: 6, m: false, g: 1, s: true }, // sheen, desktop only
 ];
 

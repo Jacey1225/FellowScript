@@ -392,9 +392,10 @@ describe('second fill, settle and family timeline (scrub domain past 1)', () => 
     expect(washDrivers(0.80, rc).washOpacity).toBe(0);
     near(washDrivers(0.84, rc).rWash, 100, 6);
     expect(washDrivers(0.97, rc).rWash).toBeCloseTo(1900, 6);
-    // at 0.97 the solid core (0.55 Rw) covers every corner (r_c)
-    expect(0.55 * washDrivers(0.97, rc).rWash).toBeGreaterThan(rc);
-    expect(washDrivers(0.88, rc).washOpacity).toBe(1);
+    // the opaque pale-cyan band (0.80 Rw) covers every corner (r_c) from p .90 on
+    expect(0.80 * washDrivers(0.90, rc).rWash).toBeGreaterThan(rc);
+    expect(0.62 * washDrivers(0.97, rc).rWash).toBeGreaterThan(rc);
+    expect(washDrivers(0.86, rc).washOpacity).toBe(1);
     expect(washDrivers(1.0, rc)).toEqual({ ...washDrivers(0.97, rc), washOpacity: 1 });
     expect(washDrivers(FILL2_START_P, rc).washOpacity).toBe(0);
     let prev = -1; for (let p = 0.8; p <= 0.97; p += 0.01) { const r = washDrivers(p, rc).rWash; expect(r).toBeGreaterThanOrEqual(prev); prev = r; }
@@ -407,13 +408,13 @@ describe('second fill, settle and family timeline (scrub domain past 1)', () => 
     expect(fill2Drivers(0.97, rc).coverOn).toBe(false);
     expect(fill2Drivers(FILL2_START_P, rc).coverOn).toBe(true);
     expect(fill2Drivers(FILL2_END_P, rc).coverOn).toBe(false);
-    expect(fill2Drivers(FILL2_START_P, rc).coverR).toBeCloseTo(120, 6);
-    expect(fill2Drivers(FILL2_END_P, rc).coverR).toBeCloseTo(2250, 6);
-    expect(0.45 * fill2Drivers(FILL2_END_P, rc).coverR).toBeGreaterThan(rc);
+    expect(fill2Drivers(FILL2_START_P, rc).coverR).toBeCloseTo(80, 6);
+    expect(fill2Drivers(FILL2_END_P, rc).coverR).toBeCloseTo(3600, 6);
+    expect(0.30 * fill2Drivers(FILL2_END_P, rc).coverR).toBeGreaterThan(rc);
     let prev = 0; for (let p = FILL2_START_P; p <= FILL2_END_P; p += 0.005) { const r = fill2Drivers(p, rc).coverR; expect(r).toBeGreaterThanOrEqual(prev); prev = r; }
-    // ring near mov 1.85s (u = .36): ring radius .62 R about 0.44 r_c within 6% (design tolerance)
-    const ring = 0.62 * fill2Drivers(FILL2_START_P + 0.36 * FILL2_SPAN_P, rc).coverR / rc;
-    expect(ring).toBeGreaterThan(0.44 * 0.94); expect(ring).toBeLessThan(0.44 * 1.06);
+    // orb near mov 1.85s (u = .36): R about 0.57 r_c (visible orb about 59% of the width)
+    const R36 = fill2Drivers(FILL2_START_P + 0.36 * FILL2_SPAN_P, rc).coverR / rc;
+    expect(R36).toBeGreaterThan(0.52); expect(R36).toBeLessThan(0.62);
   });
 
   test('settle ramps over the settle span; hands hidden only after the fill', () => {
