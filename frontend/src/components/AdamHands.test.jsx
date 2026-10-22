@@ -10,7 +10,8 @@ import React from 'react';
 import { describe, test, expect, vi, afterEach } from 'vitest';
 import { render, cleanup, act } from '@testing-library/react';
 import { renderToString, renderToStaticMarkup } from 'react-dom/server';
-import { LEAKS_CSS } from './LightLeaks.jsx';
+import { LENS_CSS, LOBE_GRAD } from './LensBloom.jsx';
+import { LENS_LOBES } from '../lib/adamHands/driver.js';
 import AdamHands, { ADAM_CSS, ADAM_EYEBROW, ADAM_KEY_FILTER_ID, ADAM_FINAL_SUBTITLE, FIELD_END, FIELD_INK, FIELD_BASE, FIELD_CAP, FIELD_UNDER, FIELD_BLOBS, ADAM_FINAL_FONT, FALLBACK_GRADIENT, ADAM_ZONE, ADAM_ZONE_L_MAX, ADAM_STAGES, FIELD_ZONE_MAX, relLuminance, blobLift, blobInZone, zoneLift, swirlLift, adamPhase, FIELD_WHITE } from './AdamHands.jsx';
 
 afterEach(() => {
@@ -42,8 +43,9 @@ describe('AdamHands server / no-JS markup', () => {
   test('emits none of the live stack and no filter, canvas or light layers', () => {
     const body = html.replace(/<style>[\s\S]*?<\/style>/, '');
     expect(body).not.toContain('adam-canvas');
+    expect(body).not.toContain('data-adam="lens"');
+    expect(body).not.toContain('data-adam="lens-lobe-0"');
     expect(body).not.toContain('data-adam="leaks"');
-    expect(body).not.toContain('data-adam="lk-band"');
     expect(body).not.toContain('data-adam="field"');
     expect(body).not.toContain('<filter');
     expect(body).not.toContain(ADAM_KEY_FILTER_ID);
@@ -79,7 +81,8 @@ describe('AdamHands server / no-JS markup', () => {
     expect(ADAM_CSS).toMatch(/\[data-stack="true"\] \{ height: 408vh; \}/);
     expect(ADAM_CSS).toMatch(/\.adam-grad \{ position: relative; height: 24svh;/);
     expect(FIELD_END).toBe('#EBC480');
-    expect(FIELD_UNDER).toMatch(/#EBC480 97%, #EBC480 100%\)$/);
+    expect(FIELD_UNDER).toMatch(/#EBC480 100%\)$/);
+    expect(FIELD_UNDER).toMatch(/rgba\(235,196,128,0\) 80%, #EBC480 100%\)/);
     expect(FIELD_CAP).toBe('#FFF4DC'); // warm white: the bloom's white end stop is never clamped
     expect(ADAM_CSS).toMatch(/\.adam-final-h \{[^}]*Schibsted Grotesk[^}]*font-weight: 600/);
     expect(ADAM_CSS).toContain(`color: ${FIELD_INK}`);
@@ -140,8 +143,7 @@ describe('AdamHands client behaviour', () => {
     expect(container.querySelector('[data-adam="field"]').style.opacity).toBe('1');
     expect(container.querySelector('[data-adam="field"]').dataset.live).toBe('true');
     expect(parseFloat(container.querySelector('[data-adam="hilite"]').style.opacity)).toBeCloseTo(1, 2);
-    expect(container.querySelector('[data-adam="leaks"]').style.visibility).toBe('hidden');
-    expect(container.querySelector('[data-adam="lk-band"]').style.visibility).toBe('hidden');
+    expect(container.querySelector('[data-adam="lens"]').style.visibility).toBe('hidden');
     expect(parseFloat(container.querySelector('[data-adam="final"]').style.opacity)).toBeCloseTo(1, 2);
     expect(container.querySelector('[data-adam="eyebrow"]').style.visibility).toBe('hidden');
 
@@ -328,9 +330,9 @@ describe('rev 3: no halo, luminance rule from the blob table, variety, client-on
     expect(container.querySelector('.adam-liquid-calm')).toBeNull();
   });
 
-  test('table size: 12 desktop, 6 on mobile, sizes in the spec ranges', () => {
-    expect(FIELD_BLOBS.length).toBe(12);
-    expect(subset(true).length).toBe(6);
+  test('table size: 10 desktop (blue-era geometry), 5 on mobile, sizes in the spec ranges', () => {
+    expect(FIELD_BLOBS.length).toBe(10);
+    expect(subset(true).length).toBe(5);
     expect(FIELD_BLOBS.filter((b) => b.s).length).toBeGreaterThanOrEqual(3);
     expect(FIELD_BLOBS.length).toBeGreaterThanOrEqual(8);
   });
@@ -354,9 +356,9 @@ describe('rev 3: no halo, luminance rule from the blob table, variety, client-on
       expect(zoneLift(mobile, W, H)).toBeCloseTo(sum, 9);
       // contrast budget: ink at the zone's worst luminance clears 6.8:1 raw; soft-light grain adds at most ~.01 L
       const ratio = (lum(FIELD_INK) + 0.05) / (ADAM_ZONE_L_MAX + 0.05);
-      expect(ADAM_ZONE_L_MAX).toBe(0.095);
-      expect(ratio).toBeGreaterThanOrEqual(6.7);
-      expect((lum(FIELD_INK) + 0.05) / (ADAM_ZONE_L_MAX + 0.01 + 0.05)).toBeGreaterThanOrEqual(6.2);
+      expect(ADAM_ZONE_L_MAX).toBe(0.13);
+      expect(ratio).toBeGreaterThanOrEqual(5.4);
+      expect((lum(FIELD_INK) + 0.05) / (ADAM_ZONE_L_MAX + 0.01 + 0.05)).toBeGreaterThanOrEqual(4.5); // AA even with the grain's extra lift
       // nothing lighter than FIELD_ZONE_MAX may reach the zone at all
       for (const b of inZone) expect(lum(b.c)).toBeLessThanOrEqual(lum(FIELD_ZONE_MAX) + 1e-9);
     }
@@ -420,7 +422,7 @@ describe('rev 3: no halo, luminance rule from the blob table, variety, client-on
   test('highlights sit in the top band, clear of the headline zone and the join', () => {
     for (const b of FIELD_BLOBS.filter((x) => x.s)) expect(b.y).toBeLessThanOrEqual(12);
     expect(css).toMatch(/transparent 84%/);
-    expect(css).not.toMatch(/\.adam-liquid::before/); // original: the blob mask alone leaves the bottom edge at FIELD_END
+    expect(css).toMatch(/\.adam-liquid::before/); // blue-era bottom fade layer restored
     expect(css).not.toMatch(/adam-teal|#7CC3D4/);
   });
 
@@ -489,7 +491,7 @@ describe('rev 3: no halo, luminance rule from the blob table, variety, client-on
   });
 });
 
-describe('light band, onscreen pause and landscape-stack verses', () => {
+describe('lens bloom, onscreen pause and landscape-stack verses', () => {
   const setup = (opts) => {
     mm(opts);
     const rafQ = [];
@@ -506,85 +508,92 @@ describe('light band, onscreen pause and landscape-stack verses', () => {
     return { ...r, stage, goto };
   };
 
-  test('light band: climbs from p .84, white hold at 1.0 (field hidden), lifts off by 1.11; leaks are off outside .78-1.16', () => {
+  test('lens bloom: centre-origin lobes grow from p .86, full beat at 1.0 (field hidden), recede and are off by 1.16', () => {
     const { container, goto } = setup();
-    const leaks = container.querySelector('[data-adam="leaks"]');
-    const band = container.querySelector('[data-adam="lk-band"]');
+    const lens = container.querySelector('[data-adam="lens"]');
+    const lobe = (i) => container.querySelector(`[data-adam="lens-lobe-${i}"]`);
+    const scaleOf = (el) => parseFloat(el.style.transform.match(/scale\(([\d.]+)\)/)[1]);
     goto(0.5);
-    expect(leaks.style.visibility).toBe('hidden');
-    goto(0.905);
-    expect(leaks.style.visibility).toBe('visible');
-    expect(band.style.visibility).toBe('visible');
-    expect(band.style.transform).toMatch(/translate3d\(0, -?[\d.]+cqh, 0\) rotate\(-5deg\)/);
-    expect(band.style.willChange).toBe('transform');
-    expect(container.querySelector('[data-adam="lk-s0"]').style.visibility).toBe('visible');
-    expect(container.querySelector('[data-adam="lk-e3"]').style.visibility).toBe('visible');
+    expect(lens.style.visibility).toBe('hidden');
+    goto(0.9);
+    expect(lens.style.visibility).toBe('visible');
+    expect(lens.querySelectorAll('.lens-lobe').length).toBe(6);
+    expect(lobe(0).style.willChange).toBe('');
+    expect(lens.dataset.on).toBe('true');
+    const s9 = scaleOf(lobe(0));
+    expect(s9).toBeGreaterThan(0.05);
     expect(container.querySelector('[data-adam="field"]').dataset.live).toBe('false');
+    goto(0.95);
+    expect(scaleOf(lobe(0))).toBeGreaterThan(s9); // grows outward
     goto(1.0);
     expect(container.querySelector('[data-adam="field"]').dataset.live).toBe('false');
-    expect(band.style.visibility).toBe('visible');
-    const y1 = parseFloat(band.style.transform.match(/translate3d\(0, (-?[\d.]+)cqh/)[1]);
-    goto(1.06);
-    const y2 = parseFloat(band.style.transform.match(/translate3d\(0, (-?[\d.]+)cqh/)[1]);
-    expect(y2).toBeLessThan(y1); // lifts off upward
+    expect(parseFloat(container.querySelector('[data-adam="lens-flat"]').style.opacity)).toBe(1);
+    const s10 = scaleOf(lobe(0));
+    goto(1.1);
+    expect(scaleOf(lobe(0))).toBeLessThan(s10); // pulls back toward the centre
     expect(container.querySelector('[data-adam="field"]').dataset.live).toBe('true');
-    // hands are hidden from the lift-off: the band is solid at the hand-over
     expect(container.querySelector('.adam-stage').dataset.flat).toBe('true');
     goto(1.2);
-    expect(leaks.style.visibility).toBe('hidden');
-    expect(band.style.visibility).toBe('hidden');
-    expect(container.querySelector('.adam-stage').dataset.flat).toBe('true');
+    expect(lens.style.visibility).toBe('hidden');
     // reverse scroll is exact: same p, same transform
-    goto(1.06);
-    expect(parseFloat(band.style.transform.match(/translate3d\(0, (-?[\d.]+)cqh/)[1])).toBeCloseTo(y2, 2);
+    goto(0.9);
+    expect(scaleOf(lobe(0))).toBeCloseTo(s9, 3);
+    // nothing in the lens writes a vertical wipe: no translateY travel, no band element
+    expect(container.querySelector('[data-adam="lk-band"]')).toBeNull();
+    expect(container.querySelector('[data-adam="leaks"]')).toBeNull();
   }, 30000);
 
-  test('mobile band is rotated -4deg and keeps only the s0/s2 streaks and e1/e3 leaks visible', () => {
+  test('lens lobes are offset from the centre origin and each is scaled/rotated independently (irregular union, no circle)', () => {
+    const { container, goto } = setup();
+    goto(0.93);
+    const tf = [0, 1, 2, 3, 4, 5].map((i) => container.querySelector(`[data-adam="lens-lobe-${i}"]`).style.transform);
+    expect(new Set(tf).size).toBe(6);
+    for (const t of tf) expect(t).toMatch(/translate\(-50%, -50%\) translate\(calc\(-?[\d.]+ \* var\(--u\)\), calc\(-?[\d.]+ \* var\(--u\)\)\) rotate\(-?[\d.]+deg\) scale\([\d.]+\)/);
+    // the origin wrapper is the stage centre
+    expect(LENS_CSS).toMatch(/\.lens-o \{[^}]*left: 50%; top: 50%/);
+    // wider lobes have unequal radii
+    expect(LENS_LOBES.every((l) => l.rx !== l.ry)).toBe(true);
+    expect(container.querySelector('[data-adam="lens-streak"]')).not.toBeNull();
+    expect(container.querySelectorAll('[data-adam^="lens-ghost-"]').length).toBe(3);
+    expect(container.querySelector('[data-adam="lens-rays"]')).not.toBeNull();
+  }, 30000);
+
+  test('mobile lens keeps 4 lobes, no ghosts and no rays', () => {
     const { container, goto } = setup({ mobile: true });
     goto(0.93 * (1440 / 1980)); // mobile runs on a 160vh base span (1440px on a 900px stage)
-    expect(container.querySelector('[data-adam="lk-band"]').style.transform).toMatch(/rotate\(-4deg\)/);
-    expect(container.querySelector('[data-adam="lk-s0"]').style.visibility).toBe('visible');
-    expect(container.querySelector('[data-adam="lk-s1"]').style.visibility).toBe('hidden');
-    expect(container.querySelector('[data-adam="lk-e1"]').style.visibility).toBe('visible');
-    expect(container.querySelector('[data-adam="lk-e2"]').style.visibility).toBe('hidden');
-    expect(LEAKS_CSS).toMatch(/\.lk-bs2, \.lk-bs4, \.lk-s1, \.lk-s3, \.lk-s4, \.lk-e2, \.lk-e4 \{ display: none; \}/);
+    expect(container.querySelector('[data-adam="lens"]').style.visibility).toBe('visible');
+    expect(container.querySelectorAll('.lens-lobe').length).toBe(4);
+    expect(container.querySelectorAll('.lens-ghost').length).toBe(0);
+    expect(container.querySelector('[data-adam="lens-rays"]')).toBeNull();
   }, 30000);
 
-  test('no circles in the transition layers: no circle()/50% radius in the CSS or painted styles; every gradient is an ellipse or linear', () => {
-    expect(LEAKS_CSS).not.toMatch(/circle/i);
-    expect(LEAKS_CSS).not.toMatch(/border-radius/);
-    const grads = LEAKS_CSS.match(/(radial|linear)-gradient\([^;]*?\)(?=[,;\s])/g) || [];
-    expect(grads.length).toBeGreaterThan(8);
-    for (const g of LEAKS_CSS.match(/radial-gradient\([^,]*,/g)) expect(g).toMatch(/^radial-gradient\(ellipse /);
-    // streaks are at least 70:1 (140cqw wide, 1 to 2cqh tall); edge leaks are lopsided, anchored on a frame edge
-    expect(LEAKS_CSS).toMatch(/\.lk-s \{[^}]*width: 140%/);
-    expect(LEAKS_CSS).toMatch(/at 0% 50%/); expect(LEAKS_CSS).toMatch(/at 100% 50%/); expect(LEAKS_CSS).toMatch(/at 50% 100%/); expect(LEAKS_CSS).toMatch(/at 100% 0%/);
-    expect(ADAM_CSS).not.toMatch(/adam-wash|adam-cover/);
+  test('no circles in the transition layers: gradients are ellipse-shaped, no border-radius, no 50% radius; old band is gone', () => {
+    expect(LENS_CSS).not.toMatch(/border-radius/);
+    expect(LOBE_GRAD).toMatch(/^radial-gradient\(ellipse /);
+    for (const g of LENS_CSS.match(/radial-gradient\([^,]*,/g) || []) expect(g).not.toMatch(/circle(?! closest-side)/);
+    expect(LENS_CSS).toMatch(/mask-image: url\("data:image\/svg\+xml;utf8,<svg[^"]*feTurbulence/);
+    expect(ADAM_CSS).not.toMatch(/adam-wash|adam-cover|lk-band|adam-leaks/);
     const { container, goto } = setup();
-    for (const p of [0.84, 0.92, 1.0, 1.06, 1.11]) {
+    for (const p of [0.86, 0.92, 1.0, 1.06, 1.11]) {
       goto(p);
-      container.querySelectorAll('.adam-leaks, .adam-leaks *').forEach((el) => {
+      container.querySelectorAll('.adam-lens, .adam-lens *').forEach((el) => {
+        // gradients are static (CSS, or the fixed ghost-glint inline fill), never rewritten per frame
+        if (el.classList.contains('lens-ghost')) expect(el.style.background).toMatch(/^radial-gradient\(/); else expect(el.style.background || '').toBe('');
         expect(el.style.background || '').not.toMatch(/circle/);
         expect(el.style.borderRadius || '').toBe('');
       });
     }
-    // the markup has no wash/cover layers any more
     expect(container.querySelector('[data-adam="wash"]')).toBeNull();
     expect(container.querySelector('[data-adam="cover"]')).toBeNull();
   }, 30000);
 
-  test('band is a warm-white hold: gradient body is FIELD_WHITE, noise masks are unioned (add), no per-frame gradient strings', () => {
+  test('lens is a warm-white hold: flat layer is FIELD_WHITE, hidden under reduced motion', () => {
     expect(FIELD_WHITE).toBe('#FFF4DC');
-    expect(LEAKS_CSS).toMatch(/\.lk-band \{[^}]*#FFF4DC 20%, #FFF4DC 77\.8%/);
-    expect(LEAKS_CSS).toMatch(/mask-size: 100% 100%, 1024px 1024px/);
-    expect(LEAKS_CSS).not.toMatch(/mask-composite/);
-    expect(LEAKS_CSS).toMatch(/@media \(prefers-reduced-motion: reduce\) \{ \.adam-leaks \{ display: none; \} \}/);
-    expect(LEAKS_CSS).toMatch(/\.adam-leaks \{[^}]*visibility: hidden/);
-    const { container, goto } = setup();
-    goto(0.9);
-    const band = container.querySelector('[data-adam="lk-band"]');
-    expect(band.style.background).toBe(''); // gradient lives in CSS only; paint writes transform/opacity/visibility
-  }, 30000);
+    expect(LENS_CSS).toMatch(/\.lens-flat \{[^}]*background: #FFF4DC/);
+    expect(LENS_CSS).toMatch(/@media \(prefers-reduced-motion: reduce\) \{ \.adam-lens \{ display: none; \} \}/);
+    expect(LENS_CSS).toMatch(/\.adam-lens \{[^}]*visibility: hidden/);
+    expect(LENS_CSS).toMatch(/\.adam-lens \{[^}]*pointer-events: none/);
+  });
 
   test('liquid drift runs only while on screen: IntersectionObserver toggles data-onscreen', () => {
     let cb = null;

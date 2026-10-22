@@ -82,7 +82,7 @@ describe('Adam section: fallback (first render, reduced motion, no-JS equivalent
     expect(p.getAttribute('data-live')).toBe('false');
     expect(p.querySelector('.adam-canvas')).toBeNull();
     expect(p.querySelector('[data-adam="wash"]')).toBeNull();
-    expect(p.querySelector('[data-adam="leaks"]')).toBeNull();
+    expect(p.querySelector('[data-adam="lens"]')).toBeNull();
     expect(p.querySelector('[data-adam="field"]')).toBeNull();
     expect(p.querySelector('[data-adam="verses"]')).toBeNull(); // no pinned descent
     const still = p.querySelector('img.adam-fb-img');
@@ -95,7 +95,7 @@ describe('Adam section: fallback (first render, reduced motion, no-JS equivalent
     expect(css).toMatch(/\.adam-pin\[data-live="true"\] \{ height: 672vh; \}/);
     expect(css).toMatch(/\.adam-grad \{ position: relative; height: 24svh;/);
     expect(css).toMatch(/#17120F 0%, #2B1B0B 22%, #3F2610 50%, #5C3509 100%/);
-    expect(css).toMatch(/#EBC480 97%, #EBC480 100%/);
+    expect(css).toMatch(/#EBC480 100%/);
     // verses are readable in normal flow inside the section (reduced motion / no-JS)
     expect(p.querySelector('[data-testid="verse-stack"]').querySelectorAll('blockquote').length).toBeGreaterThanOrEqual(3);
     expect(p.querySelector('[data-testid="adam-fallback-field"]').textContent).toBe('FamilyWelcoming scripture into a deeper comunity.');
@@ -156,12 +156,12 @@ describe('Adam section: live stack is decorative and a11y-safe', () => {
     expect(n('feFuncR', 'intercept')).toBeCloseTo(-0.1, 4);
   });
 
-  test('final-frame type: Schibsted headline "Family" + Schibsted subtitle, grainy field layer, light-band layers and #FFF4DC darken cap', () => {
+  test('final-frame type: Schibsted headline "Family" + Schibsted subtitle, grainy field layer, lens bloom layer and #FFF4DC darken cap', () => {
     mockMotion(false);
     const { container } = renderHome();
     const p = pin(container);
     expect(p.querySelector('.adam-final-h').textContent).toBe('Family');
-    expect(p.querySelector('[data-adam="leaks"]').getAttribute('aria-hidden')).toBe('true');
+    expect(p.querySelector('[data-adam="lens"]').getAttribute('aria-hidden')).toBe('true');
     expect(p.querySelector('[data-adam="wash"]')).toBeNull();
     expect(p.querySelector('[data-adam="cover"]')).toBeNull();
     expect(p.querySelector('[data-adam="field"]').getAttribute('aria-hidden')).toBe('true');
