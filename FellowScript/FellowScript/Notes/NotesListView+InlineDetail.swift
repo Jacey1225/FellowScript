@@ -13,6 +13,16 @@ extension NotesListView {
 
     var inlineDetailShowing: Bool { inlineDetail && detailNote != nil }
 
+    /// The list stays mounted under the open note, so blur it heavily (80pt) to
+    /// keep the note's panel background calm and the text readable. Skipped
+    /// under Low Power / Reduce Transparency, where NoteDetailView paints the
+    /// solid dock fill instead.
+    var inlineBackdropBlur: CGFloat {
+        guard inlineDetailShowing, !reduceTransparency,
+              !ProcessInfo.processInfo.isLowPowerModeEnabled else { return 0 }
+        return 80
+    }
+
     /// Overlay layer; empty unless an inline detail is open.
     @ViewBuilder var inlineDetailLayer: some View {
         if inlineDetail, let note = detailNote {

@@ -55,6 +55,7 @@ struct NoteDetailView: View {
     /// button, no NavigationStack, no sheet chrome) instead of as a sheet.
     /// `onBack` returns to the list. iPhone/compact keep `inline == false`.
     var inline: Bool = false
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     var onBack: (() -> Void)? = nil
     @AccessibilityFocusState private var backFocused: Bool
 
@@ -517,9 +518,15 @@ struct NoteDetailView: View {
             detailScroll
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        // No opaque fill here: the iPad workspace panel chrome (ultraThinMaterial +
-        // dockTint, solid dockSolid under Reduce Transparency / Low Power) shows
-        // through so the note matches the other panels. sheetBody keeps bgPage.
+        // The panel chrome (ultraThinMaterial + dockTint) shows through so the note
+        // matches the other panels; the Notes list underneath is blurred by
+        // NotesListView. Reduce Transparency / Low Power get the solid dock fill.
+        // sheetBody keeps bgPage.
+        .background {
+            if reduceTransparency || ProcessInfo.processInfo.isLowPowerModeEnabled {
+                WorkspaceLayout.dockSolid
+            }
+        }
         .onAppear {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { backFocused = true }
         }

@@ -28,6 +28,7 @@ import Combine
 struct NotesListView: View {
     @EnvironmentObject var appState: AppState
     @Environment(\.accessibilityReduceMotion) var reduceMotion
+    @Environment(\.accessibilityReduceTransparency) var reduceTransparency
     @Environment(\.horizontalSizeClass) var horizontalSizeClass
     @StateObject var vm: NotesViewModel
     @StateObject var hsm = HighlightSearchModel()
@@ -101,6 +102,7 @@ struct NotesListView: View {
                 .ignoresSafeArea()
             }
 
+            Group {
             if embedded && showEditor {
                 // iPad workspace: editor replaces the list inside the Notes panel;
                 // close/cancel/save returns to the list (task 20261014 addendum 5).
@@ -222,6 +224,10 @@ struct NotesListView: View {
                 }
             }
             }
+            }
+            .blur(radius: inlineBackdropBlur)
+            .allowsHitTesting(!inlineDetailShowing)
+            .accessibilityHidden(inlineDetailShowing)
 
             inlineDetailLayer
         }
