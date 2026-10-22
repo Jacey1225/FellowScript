@@ -22,14 +22,15 @@ export const CANVAS = {
 // original hands/flood timeline and is unchanged (its drivers clamp, so they hold
 // their old end state for p > 1).
 export const BASE_SPAN_VH = { desktop: 220, mobile: 160 };
-export const BAND_START_P = 0.84; // the light band's soft leading edge enters from below
 export const WHITE_HOLD_P = 0.05;
-export const FILL2_START_P = FLOOD_END_P + WHITE_HOLD_P; // 1.02: the band lifts off, revealing the field
+export const FILL2_START_P = FLOOD_END_P + WHITE_HOLD_P; // 1.02: the lens bloom starts to recede, revealing the field
 export const FILL2_DELAY_P = FILL2_START_P - TOUCH_P; // touch -> second fill (about 2 s of the mov)
 export const FILL2_SPAN_P = 0.09;
-export const FILL2_END_P = FILL2_START_P + FILL2_SPAN_P; // 1.11: band clear of the stage
-export const LEAKS_START_P = 0.78; // first free streak (s0) starts before the touch
-export const LEAKS_END_P = 1.16; // every leak is fully off here, before the Family reveal
+export const FILL2_END_P = FILL2_START_P + FILL2_SPAN_P; // 1.11: bloom edge gone
+export const LENS_START_P = 0.86; // the star burst owns .80-.86; the lens swells from its core
+export const LENS_FULL_P = FLOOD_END_P; // every lobe fully grown
+export const LENS_RECEDE_P = [1.02, 1.14]; // fall back toward the centre
+export const LEAKS_END_P = 1.16; // lens hard off here, before the Family reveal
 export const SETTLE_SPAN_P = 0.12;
 export const SETTLE_END_P = FILL2_END_P + SETTLE_SPAN_P; // 1.23
 export const FAMILY_REVEAL_P = [1.19, 1.26];
@@ -214,67 +215,78 @@ export function eyebrowColor(c) {
   return a.map((v, i) => Math.round(lerp(v, b[i], c)));
 }
 
-// Light transition (design-spec-r2.md R2-3): ONE tall, noise-masked, slightly rotated
-// band of warm light travels up through the stage. Its soft leading edge is the first
-// fill, its solid body is the white hold, its soft trailing edge is the second fill
-// (the field shows behind it). Plus free anamorphic streaks and edge leaks. No circles.
-// Geometry in units of stage height H; y = top edge of the band element (0 = stage top).
-export const BAND = { yStart: 1.12, yCover: -0.57, yHoldEnd: -0.63, yClear: -2.37, F1: 0.45, Bd: 1.30, F2: 0.50 };
-export const BAND_HEIGHT = BAND.F1 + BAND.Bd + BAND.F2; // 2.25 H
-const bandEaseA = cubicBezier(0.30, 0, 0.40, 1);
-const bandEaseB = cubicBezier(0.35, 0.05, 0.35, 1);
-export function bandY(p) {
-  if (p <= BAND_START_P) return BAND.yStart;
-  if (p < FLOOD_END_P) return lerp(BAND.yStart, BAND.yCover, bandEaseA((p - BAND_START_P) / (FLOOD_END_P - BAND_START_P)));
-  if (p < FILL2_START_P) return lerp(BAND.yCover, BAND.yHoldEnd, (p - FLOOD_END_P) / (FILL2_START_P - FLOOD_END_P));
-  if (p < FILL2_END_P) return lerp(BAND.yHoldEnd, BAND.yClear, bandEaseB((p - FILL2_START_P) / (FILL2_END_P - FILL2_START_P)));
-  return BAND.yClear;
-}
-
-// Free streaks s0..s4: a = start p, y = % of stage, h = cqh, d = rise (cqh), tone, mobile = kept on mobile.
-export const STREAKS = [
-  { a: 0.78, y: 48, h: 1.9, d: 6, tone: 'white', mobile: true, mh: 1.2 },
-  { a: 0.81, y: 41, h: 1.3, d: 11, tone: 'gold', mobile: false },
-  { a: 0.83, y: 57, h: 1.6, d: 9, tone: 'white', mobile: true, mh: 1.0 },
-  { a: 0.85, y: 30, h: 1.0, d: 13, tone: 'amber', mobile: false },
-  { a: 0.86, y: 65.9, h: 1.2, d: 8, tone: 'gold', mobile: false },
+// Lens bloom (design-spec.md section 2): light opens at the screen centre and swells
+// outward as six overlapping soft lobes of different size, tilt and delay, so the union
+// boundary has a different radius at every angle (no circle, no band, no vertical
+// direction). It holds a full-screen overexposed beat, then pulls back toward its own
+// centre, bright core last. Everything is a pure function of p (scrub-reversible).
+const lensEase = cubicBezier(0.2, 0.6, 0.3, 1);
+// Origin: the stage centre (Jacey's brief: light grows from the centre of the screen).
+export const LENS_ORIGIN = { x: 0.5, y: 0.5 };
+// dx, dy = offset and rx, ry = radii in u% (u = max(1cqw, 1cqh)); rot, rotDrift in deg; delay in w.
+export const LENS_LOBES = [
+  { id: 'L0', dx: 0, dy: 0, rx: 78, ry: 66, rot: -8, rotDrift: 14, delay: 0 },
+  { id: 'L1', dx: 9, dy: -5, rx: 92, ry: 52, rot: 14, rotDrift: -18, delay: 0.08 },
+  { id: 'L2', dx: -12, dy: 4, rx: 70, ry: 88, rot: -22, rotDrift: 20, delay: 0.14 },
+  { id: 'L3', dx: 4, dy: 10, rx: 100, ry: 60, rot: 31, rotDrift: -16, delay: 0.20 },
+  { id: 'L4', dx: -6, dy: -9, rx: 84, ry: 74, rot: 47, rotDrift: 12, delay: 0.26 },
+  { id: 'L5', dx: 15, dy: 2, rx: 110, ry: 46, rot: -4, rotDrift: -10, delay: 0.32 },
 ];
-export const STREAK_END_P = 1.03;
-const streakEaseOut = cubicBezier(0.2, 0.7, 0.2, 1);
-// Edge leaks e1..e4: in = [start, full], out = [start, gone] windows (scroll p), o = peak opacity.
-export const EDGES = [
-  { id: 'e1', inW: [0.80, 0.92], outW: [1.00, 1.12], o: 0.90, mobile: true },
-  { id: 'e2', inW: [0.83, 0.95], outW: [1.02, 1.13], o: 0.85, mobile: false },
-  { id: 'e3', inW: [0.81, 0.91], outW: [1.03, 1.11], o: 0.95, mobile: true },
-  { id: 'e4', inW: [0.90, 0.97], outW: [1.08, 1.16], o: 0.70, mobile: false },
+export const LENS_MOBILE_LOBES = 4;
+// Ghost glints: offset from the origin (u%) at full growth, size w x h (u%), peak opacity.
+export const LENS_GHOSTS = [
+  { id: 'G1', dx: -16, dy: 5, w: 5.0, h: 3.4, o: 0.55 },
+  { id: 'G2', dx: 21, dy: -7, w: 3.0, h: 2.2, o: 0.40 },
+  { id: 'G3', dx: 34, dy: -11, w: 8.0, h: 5.5, o: 0.28 },
 ];
+export const LENS_GROW_SPAN = LENS_FULL_P - LENS_START_P;
+const lensZero = (n, ng) => ({
+  on: false, flat: 0,
+  lobes: Array.from({ length: n }, () => ({ g: 0, rot: 0, o: 0 })),
+  core: { g: 0, o: 0 },
+  flare: { sx: 0, o: 0 },
+  ghosts: Array.from({ length: ng }, () => ({ g: 0, o: 0 })),
+  rays: { rot: 0, o: 0 },
+});
 
-export function leakDrivers(p, mobile = false) {
-  const streaks = STREAKS.map((s) => {
-    const on = p >= s.a && p <= STREAK_END_P && (!mobile || s.mobile);
-    if (!on) return { on: false, sx: 0.25, ty: 0, o: 0 };
-    return {
-      on,
-      sx: lerp(0.25, 1, streakEaseOut((p - s.a) / 0.12)),
-      ty: -s.d * smooth((p - s.a) / 0.20),
-      o: smooth((p - s.a) / 0.06) * (1 - smooth((p - 0.96) / 0.07)),
-    };
+export function lensDrivers(p, mobile = false) {
+  const n = mobile ? LENS_MOBILE_LOBES : LENS_LOBES.length;
+  const ng = mobile ? 0 : LENS_GHOSTS.length;
+  if (p <= LENS_START_P || p >= LEAKS_END_P) {
+    const z = lensZero(n, ng);
+    z.on = p > LENS_START_P - 0.005 && p < LEAKS_END_P;
+    return z;
+  }
+  const w = clamp((p - LENS_START_P) / LENS_GROW_SPAN);
+  const [r0, r1] = LENS_RECEDE_P;
+  const outer = 1 - smooth((p - r0) / 0.07);
+  const shrink = lerp(1, 0.82, smooth((p - r0) / (r1 - r0)));
+  const grow = (delay) => lensEase(clamp((w - delay) / (1 - delay)));
+  const lobes = LENS_LOBES.slice(0, n).map((l) => {
+    const g = grow(l.delay);
+    return { g: g * shrink, rot: l.rotDrift * g, o: outer * smooth(g * 6) };
   });
-  const edges = EDGES.map((e) => {
-    const o = e.o * smooth((p - e.inW[0]) / (e.inW[1] - e.inW[0])) * (1 - smooth((p - e.outW[0]) / (e.outW[1] - e.outW[0])));
-    const on = (!mobile || e.mobile) && o > 0.002;
-    return { on, o: on ? o : 0, tx: lerp(-4, 4, smooth((p - e.inW[0]) / (e.outW[1] - e.inW[0]))) };
-  });
+  const g0 = grow(0);
+  const coreO = (1 - smooth((p - 1.035) / 0.08)) * smooth(g0 * 8);
+  const flareO = (1 - smooth((p - 1.06) / 0.08)) * smooth((p - LENS_START_P) / 0.04);
+  const flat = Math.min(smooth((p - 0.95) / 0.02), 1 - smooth((p - r0) / 0.04));
+  const ghosts = LENS_GHOSTS.slice(0, ng).map((gh, i) => ({
+    g: grow(0.1 + 0.06 * i),
+    o: (1 - smooth((p - 1.06) / 0.08)) * smooth((p - 0.88 - 0.01 * i) / 0.05),
+  }));
+  const raysO = (1 - smooth((p - 1.03) / 0.07)) * smooth((p - 0.88) / 0.05);
   return {
-    bandY: bandY(p),
-    bandOn: p > BAND_START_P && p < FILL2_END_P,
-    streaks,
-    edges,
-    leavesOn: p >= LEAKS_START_P && p < LEAKS_END_P,
+    on: true,
+    flat,
+    lobes,
+    core: { g: g0 * shrink, o: coreO },
+    flare: { sx: lerp(0.05, 1, grow(0.04)), o: flareO },
+    ghosts,
+    rays: mobile ? { rot: 0, o: 0 } : { rot: lerp(-8, 10, w), o: raysO },
   };
 }
 
-// Field timing: the opaque field sits above the canvas once the band is solid.
+// Field timing: the opaque field sits above the canvas once the lens hold is solid.
 export function fill2Drivers(p) {
   return {
     u: clamp((p - FILL2_START_P) / FILL2_SPAN_P),

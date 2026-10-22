@@ -1,7 +1,7 @@
 // Task 20261015-adam-hands-scroll-hero: pinned, scroll-scrubbed "Creation of
 // Adam" hero. Two marble hand layers approach on an ink stage, touch, and a
-// live-drawn light floods the stage white; a sweeping band of warm light, streaks and
-// leaks then climbs and lifts off the screen, revealing a grainy warm brown/honey liquid gradient (task 20261022-hands-scroll-grain-gradient) and
+// live-drawn light floods the stage white; a lens-gleam bloom of irregular warm lobes grows
+// from the screen centre, holds, and falls back to its centre, revealing a grainy warm brown/honey liquid gradient (task 20261022-hands-scroll-grain-gradient) and
 // community verses descend through it in glass widgets (VerseDescent).
 //
 // Rendering model
@@ -13,7 +13,7 @@
 //    100svh stage; p runs 0 .. P_END (2.6 / 2.9). Scroll progress p is smoothed (~0.6 s) and painted by writing
 //    styles straight onto the layer elements (no React re-render per frame).
 //    All maths lives in src/lib/adamHands/driver.js.
-//  - All light, the key filter, light band, cap and type are live; only the cut-out
+//  - All light, the key filter, lens bloom, cap and type are live; only the cut-out
 //    hand layers, edge-light, bounce, fan and spark sprites are image files
 //    (public/adam/).
 import React, { useEffect, useRef, useState } from 'react';
@@ -26,7 +26,7 @@ import {
   FIELD_CAP, FIELD_INK, FIELD_UNDER, FIELD_GRAIN_URL, FIELD_BLOBS, FALLBACK_GRADIENT, adamPhase,
 } from '../lib/adamHands/field.js';
 import LiquidField, { LIQUID_CSS } from './LiquidField.jsx';
-import { LightLeaks, LEAKS_CSS, collectLeaks, paintLeaks } from './LightLeaks.jsx';
+import { LensBloom, LENS_CSS, collectLens, paintLens } from './LensBloom.jsx';
 import { VerseDescent, VerseStack, VERSE_CSS, paintVerses } from './VerseDescent.jsx';
 import { VERSE_STACK_QUERY } from '../lib/verseDescent.js';
 
@@ -101,7 +101,7 @@ export const ADAM_CSS = `
 .adam-stage { position: relative; height: 100vh; height: 100svh; overflow: hidden; background: ${INK}; container-type: size; }
 .adam-pin[data-live="true"] .adam-stage { position: sticky; top: 0; }
 ${LIQUID_CSS}
-${LEAKS_CSS}
+${LENS_CSS}
 ${VERSE_CSS}
 .adam-fb-img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: 50% 48%; display: block; }
 .adam-eyebrow { position: absolute; margin: 0; left: 5.25cqw; top: 7cqh; font-family: ${HEAD_FONT}; font-size: clamp(11.5px, 0.8cqw, 14px); letter-spacing: 0.26em; text-transform: uppercase; line-height: 1.6; white-space: nowrap; color: #F0C08A; pointer-events: none; }
@@ -242,10 +242,12 @@ function paintFrame(refs, p, mobile, stack) {
   }
 
   // Touch light.
-  const bloomKey = `${L.r0.toFixed(1)}|${L.k.toFixed(3)}|${ig.toFixed(3)}`;
+  // Past f .35 the lens lobes own the wide light; fade the canvas radial so it never reads as a clean circle.
+  const igBloom = ig * (1 - 0.7 * smooth((d.f - 0.35) / 0.40));
+  const bloomKey = `${L.r0.toFixed(1)}|${L.k.toFixed(3)}|${igBloom.toFixed(3)}|${ig.toFixed(3)}`;
   if (refs.lastBloom !== bloomKey) {
     refs.lastBloom = bloomKey;
-    refs.bloom.style.background = bloomGradient(L, ig, cv.tx, cv.ty);
+    refs.bloom.style.background = bloomGradient(L, igBloom, cv.tx, cv.ty);
     refs.core.style.background = coreGradient(L.sigma, ig, cv.tx, cv.ty);
   }
   refs.bloom.style.visibility = ig > 0.002 ? 'visible' : 'hidden';
@@ -269,8 +271,8 @@ function paintFrame(refs, p, mobile, stack) {
 
   setOpacity(refs.tip, d.tipS * ig);
 
-  // Light band, streaks and leaks (style writes only), then the field underneath.
-  paintLeaks(refs, p, mobile);
+  // Lens bloom (style writes only), then the field underneath.
+  paintLens(refs, p, mobile);
   setOpacity(refs.field, f2.fieldOn ? 1 : 0);
   if (refs.field) {
     const on = f2.fieldOn ? 'true' : 'false';
@@ -304,7 +306,7 @@ function collect(stage) {
     bloom: q('bloom'), core: q('core'),
     fanWrap: q('fan-wrap'), fan: { a: q('fan-a'), b: q('fan-b'), c: q('fan-c') },
     hair: q('hair'), streak: q('streak'), tip: q('tip'),
-    field: q('field'), hilite: q('hilite'), ...collectLeaks(q),
+    field: q('field'), hilite: q('hilite'), ...collectLens(q),
     verses: qa('verse'), eyebrow: q('eyebrow'), final: q('final'),
     w: 1, h: 1,
     lastKey: null, lastBloom: null,
@@ -419,7 +421,7 @@ function LiveStage({ mobile, stack }) {
       {/* Stage-level liquid field (opacity = w). Drift lives on this element only, so the
           data-flat stage background (FIELD_UNDER) never has to match a drift state. */}
       <LiquidField live mobile={mobile} />
-      <LightLeaks />
+      <LensBloom mobile={mobile} />
 
       <p className="adam-eyebrow" data-adam="eyebrow" aria-hidden="true">{ADAM_EYEBROW}</p>
       <div className="adam-final" data-adam="final">
@@ -466,7 +468,7 @@ export default function AdamHands() {
       const s = coverScale(stage.clientWidth || 1, stage.clientHeight || 1, mode.mobile);
       refs.canvas.style.transform = `translate(-50%, -50%) scale(${s.toFixed(5)})`;
       refs.w = stage.clientWidth || 1; refs.h = stage.clientHeight || 1;
-          };
+    };
     const baseSpan = mode.mobile ? BASE_SPAN_VH.mobile : BASE_SPAN_VH.desktop;
     const pEnd = mode.stack ? P_END_STACK : (mode.mobile ? P_END.mobile : P_END.desktop);
     const readTarget = () => {
