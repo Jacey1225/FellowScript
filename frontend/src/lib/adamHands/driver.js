@@ -215,6 +215,11 @@ export function eyebrowColor(c) {
   return a.map((v, i) => Math.round(lerp(v, b[i], c)));
 }
 
+// The cut-out hands dissolve under the growing bloom instead of sitting behind it as a faint arm
+// silhouette (they are fully gone before the second fill, p .98). Eased, scrub-reversible.
+export const HANDS_FADE_P = [0.90, 0.98];
+export const handsOpacity = (p) => 1 - smooth((p - HANDS_FADE_P[0]) / (HANDS_FADE_P[1] - HANDS_FADE_P[0]));
+
 // Lens bloom (design-spec.md section 2): light opens at the screen centre and swells
 // outward as six overlapping soft lobes of different size, tilt and delay, so the union
 // boundary has a different radius at every angle (no circle, no band, no vertical
@@ -259,17 +264,18 @@ export function lensDrivers(p, mobile = false) {
   }
   const w = clamp((p - LENS_START_P) / LENS_GROW_SPAN);
   const [r0, r1] = LENS_RECEDE_P;
-  const outer = 1 - smooth((p - r0) / 0.07);
+  const outer = 1 - smooth((p - r0) / 0.12);
   const shrink = lerp(1, 0.82, smooth((p - r0) / (r1 - r0)));
   const grow = (delay) => lensEase(clamp((w - delay) / (1 - delay)));
   const lobes = LENS_LOBES.slice(0, n).map((l) => {
     const g = grow(l.delay);
-    return { g: g * shrink, rot: l.rotDrift * g, o: outer * smooth(g * 6) };
+    // opacity ramps on the lobe's own linear progress (not the fast-start ease), so a lobe fades in while it grows instead of popping in
+    return { g: g * shrink, rot: l.rotDrift * g, o: outer * smooth(clamp((w - l.delay) / (1 - l.delay)) / 0.5) };
   });
   const g0 = grow(0);
-  const coreO = (1 - smooth((p - 1.035) / 0.08)) * smooth(g0 * 8);
+  const coreO = (1 - smooth((p - 1.035) / 0.08)) * smooth(w / 0.3);
   const flareO = (1 - smooth((p - 1.06) / 0.08)) * smooth((p - LENS_START_P) / 0.04);
-  const flat = Math.min(smooth((p - 0.95) / 0.02), 1 - smooth((p - r0) / 0.04));
+  const flat = Math.min(smooth((p - 0.94) / 0.04), 1 - smooth((p - r0) / 0.08));
   const ghosts = LENS_GHOSTS.slice(0, ng).map((gh, i) => ({
     g: grow(0.1 + 0.06 * i),
     o: (1 - smooth((p - 1.06) / 0.08)) * smooth((p - 0.88 - 0.01 * i) / 0.05),

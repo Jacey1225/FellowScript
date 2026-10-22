@@ -10,6 +10,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import {
+  handsOpacity, HANDS_FADE_P,
   TOUCH_P, FLOOD_END_P, TABLE_STEP, CANVAS, RUNWAY_VH, SMOOTH_TAU_S,
   clamp, lerp, smooth, cubicBezier, floodCurve, easingB, getRows, lookupRow, handsPose,
   floodDrivers, lightParams, fanWeights, bloomIntensity, ignite, beatGlow, typeReveal,
@@ -419,10 +420,16 @@ describe('second fill, settle and family timeline (scrub domain past 1)', () => 
     expect(new Set(mid.map((g) => g.toFixed(3))).size).toBeGreaterThan(3);
     // full-screen beat: flat white solid inside the hold, off before the recede
     expect(lensDrivers(0.99).flat).toBe(1); expect(lensDrivers(0.9).flat).toBe(0);
-    expect(lensDrivers(LENS_RECEDE_P[0] + 0.04).flat).toBe(0);
+    expect(lensDrivers(LENS_RECEDE_P[0] + 0.08).flat).toBe(0);
     // lobes pull back toward the centre and fade, never a bottom-up wipe (no y-travel field exists)
     expect(lensDrivers(1.1).lobes[0].g).toBeLessThan(lensDrivers(LENS_FULL_P).lobes[0].g);
     expect(lensDrivers(1.14).lobes.every((l) => l.o < 0.01)).toBe(true);
+    // no abrupt pop: adjacent 0.005-p samples never step flat or a lobe opacity by more than 0.25
+    for (let p = 0.86; p < 1.2; p += 0.005) {
+      const a = lensDrivers(p); const b = lensDrivers(p + 0.005);
+      expect(Math.abs(a.flat - b.flat)).toBeLessThan(0.25);
+      a.lobes.forEach((l, i) => expect(Math.abs(l.o - b.lobes[i].o)).toBeLessThan(0.25));
+    }
     // everything bounded 0..1
     for (let p = 0.7; p <= 1.2; p += 0.01) {
       const d = lensDrivers(p);
@@ -456,5 +463,14 @@ describe('second fill, settle and family timeline (scrub domain past 1)', () => 
 
   test('P_END and runway stay in the formula', () => {
     expect(RUNWAY_VH_STACK.desktop).toBe(Math.round(100 + P_END_STACK * BASE_SPAN_VH.desktop));
+  });
+});
+
+describe('handsOpacity: hands dissolve under the bloom', () => {
+  test('1 before the bloom, 0 once the lens holds, eased and monotone', () => {
+    expect(handsOpacity(0)).toBe(1); expect(handsOpacity(0.8)).toBe(1);
+    expect(handsOpacity(HANDS_FADE_P[1])).toBe(0); expect(handsOpacity(1.2)).toBe(0);
+    let prev = 1;
+    for (let p = 0.8; p <= 1.0; p += 0.005) { const o = handsOpacity(p); expect(o).toBeLessThanOrEqual(prev + 1e-9); expect(prev - o).toBeLessThan(0.1); prev = o; }
   });
 });

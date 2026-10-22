@@ -8,12 +8,19 @@ import React from 'react';
 import { lensDrivers, LENS_LOBES, LENS_MOBILE_LOBES, LENS_GHOSTS } from '../lib/adamHands/driver.js';
 import { FIELD_WHITE, LEAK_PEACH, LEAK_GOLD, LEAK_HONEY } from '../lib/adamHands/field.js';
 
-// Isotropic fractal-noise alpha mask: soft irregular holes that never go fully clear.
-const LENS_NOISE = `url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='1024' height='1024'><filter id='n' x='0' y='0' width='100%' height='100%' color-interpolation-filters='sRGB'><feTurbulence type='fractalNoise' baseFrequency='.006' numOctaves='3' seed='11' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  1.7 0 0 0 -.05'/></filter><rect width='1024' height='1024' filter='url(%23n)'/></svg>")`;
+// Soft irregular alpha mask for the lobe wash: a 0.74 floor plus a few broad radial swells (union), so the
+// lobes breathe unevenly but the mask has no tile seams and no facets. It replaces an SVG feTurbulence mask
+// (rendered as an image, then clamped by a colour matrix) whose low-frequency noise resolved into hard-edged
+// angular grey polygons wherever a lobe sat over the dark field.
+const LENS_MASK = ['radial-gradient(ellipse 46% 58% at 24% 30%, #000 0, rgba(0,0,0,.6) 55%, rgba(0,0,0,0) 100%)',
+  'radial-gradient(ellipse 52% 44% at 74% 64%, #000 0, rgba(0,0,0,.6) 55%, rgba(0,0,0,0) 100%)',
+  'radial-gradient(ellipse 40% 50% at 56% 14%, #000 0, rgba(0,0,0,.55) 55%, rgba(0,0,0,0) 100%)',
+  'linear-gradient(rgba(0,0,0,.74), rgba(0,0,0,.74))'].join(', ');
 // Flare-style falloff with an amber shoulder (the fringe that reads as light bending).
-export const LOBE_GRAD = 'radial-gradient(ellipse 50% 50% at 50% 50%, #FFF6E4 0, #FFF4DC 32%, rgba(255,244,220,.96) 46%, rgba(255,226,170,.58) 62%, rgba(224,154,48,.26) 76%, rgba(180,113,44,.07) 89%, rgba(180,113,44,0) 100%)';
+export const LOBE_GRAD = 'radial-gradient(ellipse 50% 50% at 50% 50%, #FFF3D6 0, #FFEFCC 32%, rgba(255,232,184,.94) 46%, rgba(246,208,134,.56) 62%, rgba(224,154,48,.25) 76%, rgba(180,113,44,.07) 89%, rgba(180,113,44,0) 100%)';
 const CORE_GRAD = 'radial-gradient(ellipse 50% 50% at 50% 50%, #FFFAF0 0, rgba(255,246,228,.92) 30%, rgba(255,226,170,.50) 60%, rgba(255,226,170,0) 100%)';
-const STREAK_GRAD = 'radial-gradient(ellipse 50% 50% at 50% 50%, rgba(255,246,228,.95) 0, rgba(255,226,170,.55) 30%, rgba(224,154,48,.20) 62%, rgba(224,154,48,0) 100%)';
+// Wide and soft (a hot core fading through amber), so it reads as a glow band and never as a ruled line.
+const STREAK_GRAD = 'radial-gradient(ellipse 50% 50% at 50% 50%, rgba(255,240,208,.55) 0, rgba(246,208,134,.34) 28%, rgba(224,154,48,.14) 58%, rgba(224,154,48,.04) 82%, rgba(224,154,48,0) 100%)';
 const ghostGrad = (c) => `radial-gradient(ellipse 50% 50% at 50% 50%, ${c} 0, ${c} 35%, rgba(255,226,170,0) 100%)`;
 const GHOST_COLOR = [LEAK_PEACH, LEAK_GOLD, LEAK_HONEY];
 const GHOST_ROT = -18; // all three sit on one oblique axis through the origin
@@ -26,16 +33,16 @@ export const LENS_CSS = `
 .adam-lens { --u: max(1cqw, 1cqh); position: absolute; inset: 0; overflow: hidden; isolation: isolate; pointer-events: none; visibility: hidden; }
 .lens-flat { position: absolute; inset: 0; background: ${FIELD_WHITE}; opacity: 0; }
 .lens-o { position: absolute; left: 50%; top: 50%; width: 0; height: 0; }
-.lens-wash { position: absolute; inset: 0; -webkit-mask-image: ${LENS_NOISE}; mask-image: ${LENS_NOISE}; -webkit-mask-size: 1024px 1024px; mask-size: 1024px 1024px; -webkit-mask-repeat: repeat; mask-repeat: repeat; }
+/* The mask lives on a stage-sized box (a 0 x 0 masked box has no defined mask area, which engines treat differently). */
+.lens-wash { position: absolute; inset: 0; -webkit-mask-image: ${LENS_MASK}; mask-image: ${LENS_MASK}; -webkit-mask-size: 100% 100%; mask-size: 100% 100%; -webkit-mask-repeat: no-repeat; mask-repeat: no-repeat; }
 .lens-lobe, .lens-core-lobe, .lens-streak, .lens-ghost, .lens-rays { position: absolute; left: 0; top: 0; opacity: 0; transform-origin: 50% 50%; transform: translate(-50%, -50%) scale(0); }
 .lens-lobe { background: ${LOBE_GRAD}; }
 .lens-core-lobe { background: ${CORE_GRAD}; mix-blend-mode: screen; }
-.lens-streak { width: calc(150 * var(--u)); height: 1.3cqh; background: ${STREAK_GRAD}; mix-blend-mode: screen; }
+.lens-streak { width: calc(150 * var(--u)); height: 6cqh; background: ${STREAK_GRAD}; mix-blend-mode: screen; }
 .lens-ghost { mix-blend-mode: screen; }
 .lens-rays { width: calc(200 * var(--u)); height: calc(200 * var(--u)); background: radial-gradient(circle closest-side, rgba(255,246,228,.80) 0, rgba(255,226,170,.35) 40%, rgba(255,226,170,0) 100%); mix-blend-mode: screen;
-  -webkit-mask-image: ${RAYS_MASK}, ${LENS_NOISE}; mask-image: ${RAYS_MASK}, ${LENS_NOISE}; -webkit-mask-size: 100% 100%, 1024px 1024px; mask-size: 100% 100%, 1024px 1024px; -webkit-mask-composite: source-in; mask-composite: intersect; }
+  -webkit-mask-image: ${RAYS_MASK}; mask-image: ${RAYS_MASK}; -webkit-mask-size: 100% 100%; mask-size: 100% 100%; }
 @media (max-width: 899px), (pointer: coarse) {
-  .lens-wash { -webkit-mask-size: 768px 768px; mask-size: 768px 768px; }
   .lens-streak { mix-blend-mode: normal; }
 }
 @media (prefers-reduced-motion: reduce) { .adam-lens { display: none; } }
@@ -46,12 +53,14 @@ export function LensBloom({ mobile = false }) {
   return (
     <div className="adam-lens" data-adam="lens" aria-hidden="true">
       <div className="lens-flat" data-adam="lens-flat" />
-      <div className="lens-o">
-        <div className="lens-wash">
+      <div className="lens-wash">
+        <div className="lens-o">
           {lobes.map((l, i) => (
             <i key={l.id} className="lens-lobe" data-adam={`lens-lobe-${i}`} style={{ width: `calc(${2 * l.rx} * var(--u))`, height: `calc(${2 * l.ry} * var(--u))` }} />
           ))}
         </div>
+      </div>
+      <div className="lens-o">
         {[0, 1].map((i) => (
           <i key={`c${i}`} className="lens-core-lobe" data-adam={`lens-core-${i}`} style={{ width: `calc(${2 * LENS_LOBES[i].rx} * var(--u))`, height: `calc(${2 * LENS_LOBES[i].ry} * var(--u))` }} />
         ))}
@@ -84,6 +93,8 @@ export function paintLens(refs, p, mobile) {
   const { lens } = refs;
   if (!lens) return;
   const d = lensDrivers(p, mobile);
+  // display:none (not just visibility) while the lens is off, so its surfaces are released outside the bloom window.
+  lens.style.display = d.on ? '' : 'none';
   lens.style.visibility = d.on ? 'visible' : 'hidden';
   lens.dataset.on = d.on ? 'true' : 'false';
   if (!d.on) return;
@@ -100,7 +111,7 @@ export function paintLens(refs, p, mobile) {
   });
   if (refs.lensStreak) {
     refs.lensStreak.style.transform = `translate(-50%, -50%) rotate(-3deg) scaleX(${d.flare.sx.toFixed(4)})`;
-    op(refs.lensStreak, d.flare.o * (mobile ? 0.85 : 1));
+    op(refs.lensStreak, d.flare.o * (mobile ? 0.12 : 0.7));
   }
   d.ghosts.forEach((s, i) => {
     const g = LENS_GHOSTS[i];

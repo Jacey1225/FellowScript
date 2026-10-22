@@ -571,7 +571,9 @@ describe('lens bloom, onscreen pause and landscape-stack verses', () => {
     expect(LENS_CSS).not.toMatch(/border-radius/);
     expect(LOBE_GRAD).toMatch(/^radial-gradient\(ellipse /);
     for (const g of LENS_CSS.match(/radial-gradient\([^,]*,/g) || []) expect(g).not.toMatch(/circle(?! closest-side)/);
-    expect(LENS_CSS).toMatch(/mask-image: url\("data:image\/svg\+xml;utf8,<svg[^"]*feTurbulence/);
+    // the wash mask is smooth radial gradients on a stage-sized box: no SVG noise image (its facets read as hard grey polygons)
+    expect(LENS_CSS).not.toMatch(/feTurbulence/);
+    expect(LENS_CSS).toMatch(/\.lens-wash \{ position: absolute; inset: 0; -webkit-mask-image: radial-gradient/);
     expect(ADAM_CSS).not.toMatch(/adam-wash|adam-cover|lk-band|adam-leaks/);
     const { container, goto } = setup();
     for (const p of [0.86, 0.92, 1.0, 1.06, 1.11]) {

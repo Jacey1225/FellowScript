@@ -19,7 +19,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
   CANVAS, RUNWAY_VH, RUNWAY_VH_STACK, BASE_SPAN_VH, P_END, P_END_STACK, floodDrivers, lightParams, fanWeights, FAN_REF,
-  handsPose, bloomIntensity, ignite, beatGlow, warmGlowAlpha, eyebrowColor, fill2Drivers, familyOpacity,
+  handsPose, handsOpacity, bloomIntensity, ignite, beatGlow, warmGlowAlpha, eyebrowColor, fill2Drivers, familyOpacity,
   scrubProgress, smoothStep, coverScale, smooth, lerp,
 } from '../lib/adamHands/driver.js';
 import {
@@ -113,7 +113,7 @@ ${VERSE_CSS}
 .adam-fbfield .adam-final-h { font-size: clamp(48px, 7vw, 88px); }
 .adam-fbfield .adam-final-b { max-width: 34em; margin-inline: auto; }
 .adam-canvas { position: absolute; left: 50%; top: 50%; transform-origin: 50% 50%; isolation: isolate; overflow: hidden; background: ${INK}; pointer-events: none; }
-.adam-stage[data-flat="true"] .adam-canvas { visibility: hidden; }
+.adam-stage[data-flat="true"] .adam-canvas { display: none; }
 .adam-layer { position: absolute; left: 0; top: 0; pointer-events: none; }
 .adam-img { position: absolute; left: 0; top: 0; display: block; max-width: none; pointer-events: none; user-select: none; }
 .adam-edge { -webkit-mask-image: ${EDGE_MASK}; mask-image: ${EDGE_MASK}; }
@@ -206,6 +206,9 @@ function paintFrame(refs, p, mobile, stack) {
   };
   place(refs.adamGroup, pose.adam);
   place(refs.godGroup, pose.god);
+  const ho = handsOpacity(p).toFixed(3);
+  if (refs.adamGroup) refs.adamGroup.style.opacity = ho;
+  if (refs.godGroup) refs.godGroup.style.opacity = ho;
 
   // Key filter (sRGB; slope/intercept from key_fixed). Dropped once identity.
   const keyId = `${pose.slope.map((s) => s.toFixed(4)).join(',')}|${pose.intercept.toFixed(4)}`;
