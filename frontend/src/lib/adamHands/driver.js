@@ -222,7 +222,7 @@ export function eyebrowColor(c) {
 export const BAND = { yStart: 1.12, yCover: -0.57, yHoldEnd: -0.63, yClear: -2.37, F1: 0.45, Bd: 1.30, F2: 0.50 };
 export const BAND_HEIGHT = BAND.F1 + BAND.Bd + BAND.F2; // 2.25 H
 const bandEaseA = cubicBezier(0.30, 0, 0.40, 1);
-const bandEaseB = cubicBezier(0.25, 0.10, 0.30, 1);
+const bandEaseB = cubicBezier(0.35, 0.05, 0.35, 1);
 export function bandY(p) {
   if (p <= BAND_START_P) return BAND.yStart;
   if (p < FLOOD_END_P) return lerp(BAND.yStart, BAND.yCover, bandEaseA((p - BAND_START_P) / (FLOOD_END_P - BAND_START_P)));

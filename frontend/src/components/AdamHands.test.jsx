@@ -599,6 +599,13 @@ describe('light band, onscreen pause and landscape-stack verses', () => {
     expect(ADAM_CSS).toMatch(/\[data-onscreen="true"\] \.adam-swirl/);
   });
 
+  test('swirl mask is intersected with a closest-side radial so the rotating box edge never shows', () => {
+    const rule = ADAM_CSS.match(/\.adam-swirl \{[^}]*\}/)[0];
+    expect(rule).toMatch(/radial-gradient\(closest-side, #000 70%, transparent 100%\)/);
+    expect(rule).toMatch(/mask-composite: intersect/);
+    expect(rule).toMatch(/-webkit-mask-composite: source-in/);
+  });
+
   test('desktop live renders both swirl layers; mobile renders none and keeps only m:true blobs visible by CSS', () => {
     const d = setup();
     expect(d.container.querySelectorAll('.adam-swirl').length).toBe(2);
