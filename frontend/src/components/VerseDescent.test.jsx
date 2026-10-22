@@ -9,7 +9,7 @@ import { VerseDescent, VerseStack, VERSE_CSS, paintVerses } from './VerseDescent
 import AdamHands from './AdamHands.jsx';
 import { COMMUNITY_VERSES } from '../lib/communityVerses.js';
 import { VERSE_FILL, VERSE_INK, VERSE_REF_INK, VERSE_STACK_QUERY, VERSE_LABEL } from '../lib/verseDescent.js';
-import { FIELD_WHITE, FIELD_INK, FIELD_TEAL_HI, FIELD_ZONE_MAX, FIELD_BLOBS, FIELD_UNDER, hexRgb, relLuminance } from '../lib/adamHands/field.js';
+import { FIELD_WHITE, FIELD_END, FIELD_INK, FIELD_ZONE_MAX, FIELD_BLOBS, FIELD_UNDER, hexRgb, relLuminance } from '../lib/adamHands/field.js';
 import { VERSE_START_P, P_END } from '../lib/adamHands/driver.js';
 
 afterEach(() => { cleanup(); vi.restoreAllMocks(); });
@@ -21,20 +21,27 @@ const ratio = (fg, bg) => { const [x, y] = [lum(fg), lum(bg)].sort((m, n) => n -
 describe('verse widget contrast (WCAG AA 4.5:1)', () => {
   const ink = hexRgb(VERSE_INK); const ref = hexRgb(VERSE_REF_INK);
   test('ink matches the field ink constant', () => { expect(VERSE_INK.toUpperCase()).toBe(FIELD_INK.toUpperCase()); });
-  test('worst case: the semi-opaque fill over pure white', () => {
+  test('bounding case: the semi-opaque fill over warm white (never actually behind a verse), 7.0:1 / 5.9:1', () => {
     const bg = over(VERSE_FILL.a, hexRgb(FIELD_WHITE));
     expect(ratio(ink, bg)).toBeGreaterThanOrEqual(4.5);
     expect(ratio(ref, bg)).toBeGreaterThanOrEqual(4.5);
+    expect(ratio(ink, bg)).toBeGreaterThanOrEqual(6.9);
+    expect(ratio(ref, bg)).toBeGreaterThanOrEqual(5.8);
+  });
+  test('over the lightest field colour, honey FIELD_END (the bottom pool): 8.5:1 ink, 7.1:1 ref', () => {
+    const bg = over(VERSE_FILL.a, hexRgb(FIELD_END));
+    expect(ratio(ink, bg)).toBeGreaterThanOrEqual(8.4);
+    expect(ratio(ref, bg)).toBeGreaterThanOrEqual(7);
   });
   test('grain lightening the backdrop by up to 15% over every blob colour at full alpha (the real worst case; the field is never white behind a widget)', () => {
-    for (const hex of [FIELD_TEAL_HI, FIELD_ZONE_MAX, ...FIELD_BLOBS.map((b) => b.c)]) {
+    for (const hex of [FIELD_END, FIELD_WHITE, FIELD_ZONE_MAX, ...FIELD_BLOBS.map((b) => b.c)]) {
       const bg = over(VERSE_FILL.a, hexRgb(hex)).map((v) => Math.min(255, v * 1.15));
       expect(ratio(ink, bg)).toBeGreaterThanOrEqual(4.5);
       expect(ratio(ref, bg)).toBeGreaterThanOrEqual(4.5);
     }
   });
-  test('over the lightest field colours (teal highlight, zone max, every blob colour at full alpha)', () => {
-    const lights = [FIELD_TEAL_HI, FIELD_ZONE_MAX, ...FIELD_BLOBS.map((b) => b.c)];
+  test('over the lightest field colours (honey, zone max, every blob colour at full alpha)', () => {
+    const lights = [FIELD_END, FIELD_WHITE, FIELD_ZONE_MAX, ...FIELD_BLOBS.map((b) => b.c)];
     for (const hex of lights) {
       const bg = over(VERSE_FILL.a, hexRgb(hex));
       expect(ratio(ink, bg)).toBeGreaterThanOrEqual(4.5);
@@ -45,10 +52,12 @@ describe('verse widget contrast (WCAG AA 4.5:1)', () => {
     const bg = over(VERSE_FILL.fallbackA, hexRgb(FIELD_WHITE));
     expect(ratio(ink, bg)).toBeGreaterThanOrEqual(4.5);
     expect(ratio(ref, bg)).toBeGreaterThanOrEqual(4.5);
-    expect(VERSE_CSS).toMatch(/@supports not \(\(backdrop-filter: blur\(1px\)\) or \(-webkit-backdrop-filter: blur\(1px\)\)\) \{ \.verse \{ background: rgba\(8,22,52,0\.92\); \} \}/);
+    expect(VERSE_CSS).toMatch(/@supports not \(\(backdrop-filter: blur\(1px\)\) or \(-webkit-backdrop-filter: blur\(1px\)\)\) \{ \.verse \{ background: rgba\(34,19,6,0\.93\); \} \}/);
     expect(VERSE_CSS).toMatch(/backdrop-filter: blur\(22px\) saturate\(1\.15\)/);
     expect(VERSE_CSS).toMatch(/-webkit-backdrop-filter: blur\(22px\)/);
-    expect(FIELD_UNDER).toContain('#0E2144');
+    expect(FIELD_UNDER).toContain('#EBC480');
+    expect(VERSE_CSS).toMatch(/background: rgba\(34,19,6,0\.72\)/);
+    expect(VERSE_CSS).toMatch(/border: 1px solid rgba\(255,236,205,0\.22\)/);
   });
 });
 
@@ -77,7 +86,7 @@ describe('markup and accessibility', () => {
   });
   test('stacked layout constants: single column, max 640px, on the join colour', () => {
     expect(VERSE_CSS).toMatch(/\.verse-stack-list \{[^}]*max-width: 640px/);
-    expect(VERSE_CSS).toMatch(/\.verse-stack \{[^}]*background: #0E2144/);
+    expect(VERSE_CSS).toMatch(/\.verse-stack \{[^}]*background: #EBC480/);
     expect(VERSE_STACK_QUERY).toBe('(prefers-reduced-motion: reduce), (max-height: 520px) and (orientation: landscape)');
   });
   test('mobile CSS: 360px cap and smaller blur', () => {

@@ -14,9 +14,9 @@ import {
   clamp, lerp, smooth, cubicBezier, floodCurve, easingB, getRows, lookupRow, handsPose,
   floodDrivers, lightParams, fanWeights, bloomIntensity, ignite, beatGlow, typeReveal,
   warmGlowAlpha, eyebrowColor, scrubProgress, smoothStep, coverScale,
-  BASE_SPAN_VH, WASH_START_P, WHITE_HOLD_P, FILL2_START_P, FILL2_DELAY_P, FILL2_SPAN_P, FILL2_END_P,
+  BASE_SPAN_VH, BAND_START_P, WHITE_HOLD_P, FILL2_START_P, FILL2_DELAY_P, FILL2_SPAN_P, FILL2_END_P,
   SETTLE_SPAN_P, SETTLE_END_P, FAMILY_REVEAL_P, FAMILY_HIDE_P, VERSE_START_P, VERSE_SPAN_P, P_END, P_END_STACK,
-  RUNWAY_VH_STACK, washDrivers, fill2Drivers, familyOpacity,
+  RUNWAY_VH_STACK, fill2Drivers, familyOpacity, BAND, bandY, leakDrivers, STREAKS, EDGES, LEAKS_START_P, LEAKS_END_P, STREAK_END_P,
 } from './driver.js';
 import { DESKTOP_ROWS, MOBILE_ROWS, TABLE_COLUMNS } from './table.js';
 
@@ -360,13 +360,13 @@ describe('scrub progress and smoothing', () => {
 describe('second fill, settle and family timeline (scrub domain past 1)', () => {
   test('named timeline table and monotonic ordering', () => {
     expect(BASE_SPAN_VH).toEqual({ desktop: 220, mobile: 160 });
-    expect(WASH_START_P).toBe(0.84); expect(WHITE_HOLD_P).toBe(0.05);
+    expect(BAND_START_P).toBe(0.84); expect(WHITE_HOLD_P).toBe(0.05);
     near(FILL2_START_P, 1.02, 9); near(FILL2_END_P, 1.11, 9); near(SETTLE_END_P, 1.23, 9);
     near(FILL2_DELAY_P, 0.22, 9); near(FILL2_SPAN_P, 0.09, 9); near(SETTLE_SPAN_P, 0.12, 9);
-    const seq = [TOUCH_P, WASH_START_P, FLOOD_END_P, FILL2_START_P, FILL2_END_P, SETTLE_END_P,
+    const seq = [TOUCH_P, BAND_START_P, FLOOD_END_P, FILL2_START_P, FILL2_END_P, SETTLE_END_P,
       FAMILY_REVEAL_P[0], FAMILY_REVEAL_P[1], FAMILY_HIDE_P[0], VERSE_START_P];
     // wash starts after the touch; settle ends after family begins to reveal
-    expect(WASH_START_P).toBeGreaterThan(TOUCH_P);
+    expect(BAND_START_P).toBeGreaterThan(TOUCH_P);
     expect(FLOOD_END_P).toBeLessThan(FILL2_START_P);
     expect(FILL2_START_P).toBeLessThan(FILL2_END_P);
     expect(FILL2_END_P).toBeLessThan(SETTLE_END_P);
@@ -387,44 +387,71 @@ describe('second fill, settle and family timeline (scrub domain past 1)', () => 
     expect(ignite(1.7)).toBe(1);
   });
 
-  test('washDrivers: grows over .84-.97, holds white until the second fill, then off', () => {
-    const rc = 1000;
-    expect(washDrivers(0.80, rc).washOpacity).toBe(0);
-    near(washDrivers(0.84, rc).rWash, 100, 6);
-    expect(washDrivers(0.97, rc).rWash).toBeCloseTo(1900, 6);
-    // the opaque pale-cyan band (0.80 Rw) covers every corner (r_c) from p .90 on
-    expect(0.80 * washDrivers(0.90, rc).rWash).toBeGreaterThan(rc);
-    expect(0.62 * washDrivers(0.97, rc).rWash).toBeGreaterThan(rc);
-    expect(washDrivers(0.86, rc).washOpacity).toBe(1);
-    expect(washDrivers(1.0, rc)).toEqual({ ...washDrivers(0.97, rc), washOpacity: 1 });
-    expect(washDrivers(FILL2_START_P, rc).washOpacity).toBe(0);
-    let prev = -1; for (let p = 0.8; p <= 0.97; p += 0.01) { const r = washDrivers(p, rc).rWash; expect(r).toBeGreaterThanOrEqual(prev); prev = r; }
+  test('bandY: continuous at .84, .97, 1.02, 1.11; covers, holds white, then clears', () => {
+    expect(bandY(0.5)).toBe(BAND.yStart); expect(bandY(BAND_START_P)).toBe(BAND.yStart);
+    near(bandY(FLOOD_END_P), BAND.yCover, 9); near(bandY(FILL2_START_P), BAND.yHoldEnd, 9);
+    near(bandY(FILL2_END_P), BAND.yClear, 9); expect(bandY(1.5)).toBe(BAND.yClear);
+    for (const q of [BAND_START_P, FLOOD_END_P, FILL2_START_P, FILL2_END_P]) {
+      expect(Math.abs(bandY(q + 1e-4) - bandY(q - 1e-4))).toBeLessThan(0.002);
+    }
+    // monotone rise (y decreases) over the whole travel
+    let prev = Infinity; for (let p = 0.8; p <= 1.2; p += 0.005) { const y = bandY(p); expect(y).toBeLessThanOrEqual(prev + 1e-9); prev = y; }
+    // geometry in H: lead feather covers the stage top (with margin) at .97, body covers the bottom, trail is clear at 1.11
+    expect(BAND.yCover + BAND.F1).toBeLessThan(0);
+    expect(BAND.yHoldEnd + BAND.F1 + BAND.Bd).toBeGreaterThanOrEqual(1.12);
+    expect(BAND.yClear + BAND.F1 + BAND.Bd + BAND.F2).toBeLessThanOrEqual(0);
+    near(BAND.F1 + BAND.Bd + BAND.F2, 2.25, 9);
+    // never a linear wipe: the first fill eases in and out
+    const mid = bandY((BAND_START_P + FLOOD_END_P) / 2);
+    expect(Math.abs(mid - (BAND.yStart + BAND.yCover) / 2)).toBeGreaterThan(0.01);
   });
 
-  test('fill2Drivers: field on just before the fill, cover grows monotonically, hole covers corners at end', () => {
-    const rc = 1000;
-    expect(fill2Drivers(1.0, rc).fieldOn).toBe(false);
-    expect(fill2Drivers(FILL2_START_P - 0.004, rc).fieldOn).toBe(true);
-    expect(fill2Drivers(0.97, rc).coverOn).toBe(false);
-    expect(fill2Drivers(FILL2_START_P, rc).coverOn).toBe(true);
-    expect(fill2Drivers(FILL2_END_P, rc).coverOn).toBe(false);
-    expect(fill2Drivers(FILL2_START_P, rc).coverR).toBeCloseTo(80, 6);
-    expect(fill2Drivers(FILL2_END_P, rc).coverR).toBeCloseTo(3600, 6);
-    expect(0.30 * fill2Drivers(FILL2_END_P, rc).coverR).toBeGreaterThan(rc);
-    let prev = 0; for (let p = FILL2_START_P; p <= FILL2_END_P; p += 0.005) { const r = fill2Drivers(p, rc).coverR; expect(r).toBeGreaterThanOrEqual(prev); prev = r; }
-    // orb near mov 1.85s (u = .36): R about 0.57 r_c (visible orb about 59% of the width)
-    const R36 = fill2Drivers(FILL2_START_P + 0.36 * FILL2_SPAN_P, rc).coverR / rc;
-    expect(R36).toBeGreaterThan(0.52); expect(R36).toBeLessThan(0.62);
+  test('leakDrivers: windows are ordered, layers are off outside them, mobile keeps a subset', () => {
+    expect(LEAKS_START_P).toBeLessThanOrEqual(BAND_START_P); expect(LEAKS_END_P).toBe(1.16);
+    expect(LEAKS_END_P).toBeLessThan(FAMILY_REVEAL_P[0]);
+    expect(leakDrivers(0.5).leavesOn).toBe(false); expect(leakDrivers(0.79).leavesOn).toBe(true);
+    expect(leakDrivers(1.159).leavesOn).toBe(true); expect(leakDrivers(1.16).leavesOn).toBe(false);
+    expect(leakDrivers(0.84).bandOn).toBe(false); expect(leakDrivers(0.9).bandOn).toBe(true);
+    expect(leakDrivers(FILL2_END_P).bandOn).toBe(false);
+    for (const e of EDGES) {
+      expect(e.inW[0]).toBeLessThan(e.inW[1]); expect(e.inW[1]).toBeLessThanOrEqual(e.outW[0]); expect(e.outW[0]).toBeLessThan(e.outW[1]);
+      expect(e.outW[1]).toBeLessThanOrEqual(LEAKS_END_P);
+    }
+    for (const s of STREAKS) expect(s.a).toBeGreaterThanOrEqual(LEAKS_START_P);
+    expect(STREAK_END_P).toBeLessThan(FILL2_END_P);
+    // all gone before the Family reveal
+    const late = leakDrivers(LEAKS_END_P);
+    expect(late.streaks.every((s) => !s.on && s.o === 0)).toBe(true);
+    expect(late.edges.every((e) => !e.on && e.o === 0)).toBe(true);
+    // peaks: edges reach their peak opacity inside the hold; everything bounded
+    const hold = leakDrivers(1.0);
+    for (const e of hold.edges) { expect(e.o).toBeLessThanOrEqual(0.95 + 1e-9); expect(e.o).toBeGreaterThanOrEqual(0); }
+    // streak 0 starts before the touch frame ends, lengthens, then fades by 1.03
+    expect(leakDrivers(0.78).streaks[0].on).toBe(true); expect(leakDrivers(0.77).streaks[0].on).toBe(false);
+    expect(leakDrivers(0.9).streaks[0].sx).toBeGreaterThan(leakDrivers(0.8).streaks[0].sx);
+    expect(leakDrivers(0.9).streaks[0].ty).toBeLessThan(0);
+    expect(leakDrivers(1.04).streaks.every((s) => !s.on)).toBe(true);
+    // mobile: only s0, s2, e1, e3
+    const mob = leakDrivers(0.93, true);
+    expect(mob.streaks.map((s) => s.on)).toEqual([true, false, true, false, false]);
+    expect(mob.edges.map((e) => e.on)).toEqual([true, false, true, false]);
+    const desk = leakDrivers(0.93, false);
+    expect(desk.streaks.every((s) => s.on)).toBe(true); expect(desk.edges.every((e) => e.on)).toBe(true);
+    // pure function of p (reverse scroll is exact)
+    expect(leakDrivers(1.055)).toEqual(leakDrivers(1.055));
+    expect(leakDrivers(0.905).bandY).toBe(bandY(0.905));
   });
 
-  test('settle ramps over the settle span; hands hidden only after the fill', () => {
-    const rc = 800;
-    expect(fill2Drivers(FILL2_END_P, rc).settle).toBe(0);
-    expect(fill2Drivers(SETTLE_END_P, rc).settle).toBe(1);
-    expect(fill2Drivers(1.2, rc).settle).toBeGreaterThan(0.5);
-    expect(fill2Drivers(FILL2_END_P, rc).handsHidden).toBe(false);
-    expect(fill2Drivers(FILL2_END_P + 0.001, rc).handsHidden).toBe(true);
-    expect(fill2Drivers(0.9, rc).handsHidden).toBe(false);
+  test('fill2Drivers: field on just before the band lifts, settle ramps, hands hidden from the lift-off', () => {
+    expect(fill2Drivers(1.0).fieldOn).toBe(false);
+    expect(fill2Drivers(FILL2_START_P - 0.004).fieldOn).toBe(true);
+    expect(fill2Drivers(FILL2_END_P).settle).toBe(0);
+    expect(fill2Drivers(SETTLE_END_P).settle).toBe(1);
+    expect(fill2Drivers(1.2).settle).toBeGreaterThan(0.5);
+    expect(fill2Drivers(FILL2_START_P - 0.001).handsHidden).toBe(false);
+    expect(fill2Drivers(FILL2_START_P).handsHidden).toBe(true);
+    expect(fill2Drivers(0.9).handsHidden).toBe(false);
+    expect(fill2Drivers(FILL2_START_P).u).toBe(0); expect(fill2Drivers(FILL2_END_P).u).toBe(1);
   });
 
   test('familyOpacity reveals 1.19-1.26, holds, hides 1.38-1.46; keep never hides', () => {

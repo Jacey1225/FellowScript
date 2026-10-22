@@ -82,7 +82,7 @@ describe('Adam section: fallback (first render, reduced motion, no-JS equivalent
     expect(p.getAttribute('data-live')).toBe('false');
     expect(p.querySelector('.adam-canvas')).toBeNull();
     expect(p.querySelector('[data-adam="wash"]')).toBeNull();
-    expect(p.querySelector('[data-adam="cover"]')).toBeNull();
+    expect(p.querySelector('[data-adam="leaks"]')).toBeNull();
     expect(p.querySelector('[data-adam="field"]')).toBeNull();
     expect(p.querySelector('[data-adam="verses"]')).toBeNull(); // no pinned descent
     const still = p.querySelector('img.adam-fb-img');
@@ -94,8 +94,8 @@ describe('Adam section: fallback (first render, reduced motion, no-JS equivalent
     // The runway height is only ever applied under data-live="true".
     expect(css).toMatch(/\.adam-pin\[data-live="true"\] \{ height: 672vh; \}/);
     expect(css).toMatch(/\.adam-grad \{ position: relative; height: 24svh;/);
-    expect(css).toMatch(/#17120F 0%, #10192B 35%, #14294E 70%, #1B3B64 100%/);
-    expect(css).toMatch(/#0E2144 100%\)/);
+    expect(css).toMatch(/#17120F 0%, #2B1B0B 22%, #3F2610 50%, #5C3509 100%/);
+    expect(css).toMatch(/#EBC480 97%, #EBC480 100%/);
     // verses are readable in normal flow inside the section (reduced motion / no-JS)
     expect(p.querySelector('[data-testid="verse-stack"]').querySelectorAll('blockquote').length).toBeGreaterThanOrEqual(3);
     expect(p.querySelector('[data-testid="adam-fallback-field"]').textContent).toBe('FamilyWelcoming scripture into a deeper comunity.');
@@ -156,13 +156,14 @@ describe('Adam section: live stack is decorative and a11y-safe', () => {
     expect(n('feFuncR', 'intercept')).toBeCloseTo(-0.1, 4);
   });
 
-  test('final-frame type: Schibsted headline "Family" + Schibsted subtitle, grainy field layer, wash/cover layers and #FCFFFC darken cap', () => {
+  test('final-frame type: Schibsted headline "Family" + Schibsted subtitle, grainy field layer, light-band layers and #FFF4DC darken cap', () => {
     mockMotion(false);
     const { container } = renderHome();
     const p = pin(container);
     expect(p.querySelector('.adam-final-h').textContent).toBe('Family');
-    expect(p.querySelector('[data-adam="wash"]').getAttribute('aria-hidden')).toBe('true');
-    expect(p.querySelector('[data-adam="cover"]').getAttribute('aria-hidden')).toBe('true');
+    expect(p.querySelector('[data-adam="leaks"]').getAttribute('aria-hidden')).toBe('true');
+    expect(p.querySelector('[data-adam="wash"]')).toBeNull();
+    expect(p.querySelector('[data-adam="cover"]')).toBeNull();
     expect(p.querySelector('[data-adam="field"]').getAttribute('aria-hidden')).toBe('true');
     // pinned verse layer is aria-hidden; the same verses are exposed once via the sr-only list
     expect(p.querySelector('[data-adam="verses"]').getAttribute('aria-hidden')).toBe('true');
@@ -170,7 +171,7 @@ describe('Adam section: live stack is decorative and a11y-safe', () => {
     expect(p.querySelector('[data-testid="verse-stack"]')).toBeNull();
     expect(p.querySelector('.adam-final-b').textContent).toBe('Welcoming scripture into a deeper comunity.');
     const cap = p.querySelector('[data-adam="cap"]');
-    expect(cap.style.background).toMatch(/rgb\(252, 255, 252\)|#FCFFFC/i);
+    expect(cap.style.background).toMatch(/rgb\(255, 244, 220\)|#FFF4DC/i);
     expect(cap.style.mixBlendMode).toBe('darken');
     const css = p.querySelector('style').textContent;
     expect(css).toMatch(/\.adam-final-h \{[^}]*Schibsted Grotesk[^}]*font-weight: 600/);

@@ -1,7 +1,7 @@
 // Task 20261015-adam-hands-scroll-hero: pinned, scroll-scrubbed "Creation of
 // Adam" hero. Two marble hand layers approach on an ink stage, touch, and a
-// live-drawn light floods the stage white; a second light fill then resolves into a
-// grainy navy liquid gradient (task 20261022-hands-scroll-grain-gradient) and
+// live-drawn light floods the stage white; a sweeping band of warm light, streaks and
+// leaks then climbs and lifts off the screen, revealing a grainy warm brown/honey liquid gradient (task 20261022-hands-scroll-grain-gradient) and
 // community verses descend through it in glass widgets (VerseDescent).
 //
 // Rendering model
@@ -13,21 +13,20 @@
 //    100svh stage; p runs 0 .. P_END (2.6 / 2.9). Scroll progress p is smoothed (~0.6 s) and painted by writing
 //    styles straight onto the layer elements (no React re-render per frame).
 //    All maths lives in src/lib/adamHands/driver.js.
-//  - All light, the key filter, wash, cap and type are live; only the cut-out
+//  - All light, the key filter, light band, cap and type are live; only the cut-out
 //    hand layers, edge-light, bounce, fan and spark sprites are image files
 //    (public/adam/).
 import React, { useEffect, useRef, useState } from 'react';
 import {
   CANVAS, RUNWAY_VH, RUNWAY_VH_STACK, BASE_SPAN_VH, P_END, P_END_STACK, floodDrivers, lightParams, fanWeights, FAN_REF,
-  handsPose, bloomIntensity, ignite, beatGlow, warmGlowAlpha, eyebrowColor, washDrivers, fill2Drivers, familyOpacity,
+  handsPose, bloomIntensity, ignite, beatGlow, warmGlowAlpha, eyebrowColor, fill2Drivers, familyOpacity,
   scrubProgress, smoothStep, coverScale, smooth, lerp,
 } from '../lib/adamHands/driver.js';
 import {
-  FIELD_WHITE, FIELD_PALE, FIELD_CAP, FIELD_INK, FIELD_UNDER, FIELD_ORB_RING_A, FIELD_ORB_RING_B,
-  FIELD_GRAIN_URL, FIELD_BLOBS, FALLBACK_GRADIENT, hexRgb,
-  adamPhase,
+  FIELD_CAP, FIELD_INK, FIELD_UNDER, FIELD_GRAIN_URL, FIELD_BLOBS, FALLBACK_GRADIENT, adamPhase,
 } from '../lib/adamHands/field.js';
 import LiquidField, { LIQUID_CSS } from './LiquidField.jsx';
+import { LightLeaks, LEAKS_CSS, collectLeaks, paintLeaks } from './LightLeaks.jsx';
 import { VerseDescent, VerseStack, VERSE_CSS, paintVerses } from './VerseDescent.jsx';
 import { VERSE_STACK_QUERY } from '../lib/verseDescent.js';
 
@@ -35,8 +34,8 @@ import { VERSE_STACK_QUERY } from '../lib/verseDescent.js';
 // (re-exported here: Home.jsx and the tests import them from this module).
 export {
   FIELD_BASE, FIELD_END, FIELD_CAP, FIELD_INK, FIELD_UNDER, FIELD_GRAIN_URL, FIELD_BLOBS, FALLBACK_GRADIENT, adamPhase,
-  FIELD_WHITE, FIELD_PALE, FIELD_ZONE_MAX, ADAM_ZONE, ADAM_ZONE_L_MAX, ADAM_STAGES, ADAM_LOBE_K, relLuminance, blobAlpha, blobLift, blobExtent,
-  blobInZone, zoneLift, FIELD_GRAIN_OPACITY,
+  FIELD_WHITE, FIELD_ZONE_MAX, ADAM_ZONE, ADAM_ZONE_L_MAX, ADAM_STAGES, ADAM_LOBE_K, relLuminance, blobAlpha, blobLift, blobExtent,
+  blobInZone, zoneLift, swirlLift, FIELD_GRAIN_OPACITY, SWIRL_LIGHT_LOBES,
 } from '../lib/adamHands/field.js';
 
 const INK = '#17120F';
@@ -102,7 +101,7 @@ export const ADAM_CSS = `
 .adam-stage { position: relative; height: 100vh; height: 100svh; overflow: hidden; background: ${INK}; container-type: size; }
 .adam-pin[data-live="true"] .adam-stage { position: sticky; top: 0; }
 ${LIQUID_CSS}
-.adam-wash, .adam-cover { position: absolute; inset: 0; pointer-events: none; visibility: hidden; }
+${LEAKS_CSS}
 ${VERSE_CSS}
 .adam-fb-img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: 50% 48%; display: block; }
 .adam-eyebrow { position: absolute; margin: 0; left: 5.25cqw; top: 7cqh; font-family: ${HEAD_FONT}; font-size: clamp(11.5px, 0.8cqw, 14px); letter-spacing: 0.26em; text-transform: uppercase; line-height: 1.6; white-space: nowrap; color: #F0C08A; pointer-events: none; }
@@ -181,27 +180,6 @@ function haloGradient(g, tx, ty) {
   return `radial-gradient(circle ${g.r.toFixed(1)}px at ${tx}px ${ty}px, ${stops.join(',')})`;
 }
 
-const rgbaHex = (hex, a) => { const c = hexRgb(hex); return `rgba(${c[0]},${c[1]},${c[2]},${a})`; };
-const FIELD_WASH = '#DDEDF4'; // opaque pale cyan band (cool, R < G < B), no warm cast
-const WHITE_RGB = hexRgb(FIELD_WHITE);
-const white = (a) => `rgba(${WHITE_RGB[0]},${WHITE_RGB[1]},${WHITE_RGB[2]},${a})`;
-
-// Cool-white wash that resolves the warm flood to white (design spec 3.2).
-function washGradient(R) {
-  const at = (k) => `${(R * k).toFixed(1)}px`;
-  return `radial-gradient(circle at 50% 48%, ${FIELD_WHITE} 0, ${FIELD_WHITE} ${at(0.62)}, ${FIELD_WASH} ${at(0.80)}, ${rgbaHex(FIELD_WASH, 0)} ${R.toFixed(1)}px)`;
-}
-// White cover with a growing hole: the live navy field shows through it (spec 3.3).
-// Soft feather (about 35% of the visible radius), a pale-blue centre tint that fades
-// out over the first quarter of the fill so the orb opens as a glow and then darkens.
-const ORB_TINT = [209, 226, 237];
-function coverGradient(R, u) {
-  const at = (k) => `${(R * k).toFixed(1)}px`;
-  const a = 1 - smooth(u / 0.25);
-  const tint = (v) => `rgba(${ORB_TINT[0]},${ORB_TINT[1]},${ORB_TINT[2]},${v.toFixed(3)})`;
-  return `radial-gradient(circle ${at(1.12)} at 46% 50%, ${tint(a)} 0, ${tint(0)} ${at(0.30)}, ${rgbaHex(FIELD_ORB_RING_A, 0.55)} ${at(0.55)}, ${rgbaHex(FIELD_ORB_RING_B, 0.40)} ${at(0.70)}, ${white(0.95)} ${at(1.0)}, ${FIELD_WHITE} ${at(1.12)})`;
-}
-
 function setOpacity(el, v) {
   if (!el) return;
   const o = v < 0.003 ? 0 : v > 1 ? 1 : v;
@@ -217,8 +195,8 @@ function paintFrame(refs, p, mobile, stack) {
   const d = floodDrivers(p);
   const L = lightParams(d.f, d.g);
   const ig = ignite(p);
-  const f2 = fill2Drivers(p, refs.rc);
-  const flat = f2.handsHidden; // hands, bloom and fans sit under the opaque navy: stop compositing them
+  const f2 = fill2Drivers(p);
+  const flat = f2.handsHidden; // hands, bloom and fans sit under the opaque field: stop compositing them
   stage.dataset.p = p.toFixed(3);
   stage.dataset.flat = flat ? 'true' : 'false';
 
@@ -291,29 +269,14 @@ function paintFrame(refs, p, mobile, stack) {
 
   setOpacity(refs.tip, d.tipS * ig);
 
-  // Wash, then the second fill (white cover with a growing hole over the live field).
-  const wd = washDrivers(p, refs.rc);
-  if (refs.wash) {
-    if (wd.washOpacity > 0.003) {
-      const key = wd.rWash.toFixed(0);
-      if (refs.lastWash !== key) { refs.lastWash = key; refs.wash.style.background = washGradient(wd.rWash); }
-      refs.wash.style.opacity = wd.washOpacity.toFixed(3);
-      refs.wash.style.visibility = 'visible';
-    } else refs.wash.style.visibility = 'hidden';
-  }
-  if (refs.cover) {
-    if (f2.coverOn) {
-      const key = `${f2.coverR.toFixed(0)}/${f2.u.toFixed(2)}`;
-      if (refs.lastCover !== key) { refs.lastCover = key; refs.cover.style.background = coverGradient(f2.coverR, f2.u); }
-      refs.cover.style.visibility = 'visible';
-    } else refs.cover.style.visibility = 'hidden';
-  }
+  // Light band, streaks and leaks (style writes only), then the field underneath.
+  paintLeaks(refs, p, mobile);
   setOpacity(refs.field, f2.fieldOn ? 1 : 0);
   if (refs.field) {
     const on = f2.fieldOn ? 'true' : 'false';
     if (refs.field.dataset.live !== on) refs.field.dataset.live = on;
   }
-  if (refs.teal) refs.teal.style.opacity = f2.settle.toFixed(3);
+  if (refs.hilite) refs.hilite.style.opacity = f2.settle.toFixed(3);
   if (refs.verses.length) paintVerses(refs.verses, p, mobile, refs.w, refs.h);
 
   // Type.
@@ -341,10 +304,10 @@ function collect(stage) {
     bloom: q('bloom'), core: q('core'),
     fanWrap: q('fan-wrap'), fan: { a: q('fan-a'), b: q('fan-b'), c: q('fan-c') },
     hair: q('hair'), streak: q('streak'), tip: q('tip'),
-    field: q('field'), teal: q('teal'), wash: q('wash'), cover: q('cover'),
+    field: q('field'), hilite: q('hilite'), ...collectLeaks(q),
     verses: qa('verse'), eyebrow: q('eyebrow'), final: q('final'),
-    rc: 1000, w: 1, h: 1,
-    lastKey: null, lastBloom: null, lastWash: null, lastCover: null,
+    w: 1, h: 1,
+    lastKey: null, lastBloom: null,
   };
 }
 
@@ -456,8 +419,7 @@ function LiveStage({ mobile, stack }) {
       {/* Stage-level liquid field (opacity = w). Drift lives on this element only, so the
           data-flat stage background (FIELD_UNDER) never has to match a drift state. */}
       <LiquidField live mobile={mobile} />
-      <div className="adam-wash" data-adam="wash" aria-hidden="true" />
-      <div className="adam-cover" data-adam="cover" aria-hidden="true" />
+      <LightLeaks />
 
       <p className="adam-eyebrow" data-adam="eyebrow" aria-hidden="true">{ADAM_EYEBROW}</p>
       <div className="adam-final" data-adam="final">
@@ -504,8 +466,7 @@ export default function AdamHands() {
       const s = coverScale(stage.clientWidth || 1, stage.clientHeight || 1, mode.mobile);
       refs.canvas.style.transform = `translate(-50%, -50%) scale(${s.toFixed(5)})`;
       refs.w = stage.clientWidth || 1; refs.h = stage.clientHeight || 1;
-      refs.rc = Math.hypot(refs.w / 2, refs.h / 2);
-    };
+          };
     const baseSpan = mode.mobile ? BASE_SPAN_VH.mobile : BASE_SPAN_VH.desktop;
     const pEnd = mode.stack ? P_END_STACK : (mode.mobile ? P_END.mobile : P_END.desktop);
     const readTarget = () => {
@@ -514,8 +475,10 @@ export default function AdamHands() {
     };
 
     // Per-visit variety: random drift start phase per blob. Client only, after mount (never in render).
+    // DOM order is the non-highlight blobs, then the highlights (see LiquidField).
     const blobEls = stage.querySelectorAll('.adam-field .adam-blob');
-    blobEls.forEach((el, i) => { if (FIELD_BLOBS[i]) el.style.setProperty('--ph', adamPhase(FIELD_BLOBS[i].t, Math.random())); });
+    const domOrder = [...FIELD_BLOBS.filter((b) => !b.s), ...FIELD_BLOBS.filter((b) => b.s)];
+    blobEls.forEach((el, i) => { if (domOrder[i]) el.style.setProperty('--ph', adamPhase(domOrder[i].t, Math.random())); });
 
     // Pause the drift when the stage is off screen (CSS keys animation-play-state on data-onscreen).
     const fieldEl = refs.field;

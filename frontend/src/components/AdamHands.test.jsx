@@ -10,7 +10,8 @@ import React from 'react';
 import { describe, test, expect, vi, afterEach } from 'vitest';
 import { render, cleanup, act } from '@testing-library/react';
 import { renderToString, renderToStaticMarkup } from 'react-dom/server';
-import AdamHands, { ADAM_CSS, ADAM_EYEBROW, ADAM_KEY_FILTER_ID, ADAM_FINAL_SUBTITLE, FIELD_END, FIELD_INK, FIELD_BASE, FIELD_CAP, FIELD_UNDER, FIELD_BLOBS, ADAM_FINAL_FONT, FALLBACK_GRADIENT, ADAM_ZONE, ADAM_ZONE_L_MAX, ADAM_STAGES, FIELD_ZONE_MAX, relLuminance, blobLift, blobInZone, zoneLift, adamPhase } from './AdamHands.jsx';
+import { LEAKS_CSS } from './LightLeaks.jsx';
+import AdamHands, { ADAM_CSS, ADAM_EYEBROW, ADAM_KEY_FILTER_ID, ADAM_FINAL_SUBTITLE, FIELD_END, FIELD_INK, FIELD_BASE, FIELD_CAP, FIELD_UNDER, FIELD_BLOBS, ADAM_FINAL_FONT, FALLBACK_GRADIENT, ADAM_ZONE, ADAM_ZONE_L_MAX, ADAM_STAGES, FIELD_ZONE_MAX, relLuminance, blobLift, blobInZone, zoneLift, swirlLift, adamPhase, FIELD_WHITE } from './AdamHands.jsx';
 
 afterEach(() => {
   cleanup();
@@ -38,10 +39,11 @@ describe('AdamHands server / no-JS markup', () => {
     expect(html).toContain(ADAM_EYEBROW);
   });
 
-  test('emits none of the live stack and no filter, canvas or wash', () => {
+  test('emits none of the live stack and no filter, canvas or light layers', () => {
     const body = html.replace(/<style>[\s\S]*?<\/style>/, '');
     expect(body).not.toContain('adam-canvas');
-    expect(body).not.toContain('data-adam="wash"');
+    expect(body).not.toContain('data-adam="leaks"');
+    expect(body).not.toContain('data-adam="lk-band"');
     expect(body).not.toContain('data-adam="field"');
     expect(body).not.toContain('<filter');
     expect(body).not.toContain(ADAM_KEY_FILTER_ID);
@@ -76,9 +78,9 @@ describe('AdamHands server / no-JS markup', () => {
     expect(ADAM_CSS).toMatch(/height: 564vh/);
     expect(ADAM_CSS).toMatch(/\[data-stack="true"\] \{ height: 408vh; \}/);
     expect(ADAM_CSS).toMatch(/\.adam-grad \{ position: relative; height: 24svh;/);
-    expect(FIELD_END).toBe('#0E2144');
-    expect(FIELD_UNDER).toMatch(/#0E2144 100%\)$/);
-    expect(FIELD_CAP).toBe('#FCFFFC'); // the bloom can never clamp lighter than the white flash
+    expect(FIELD_END).toBe('#EBC480');
+    expect(FIELD_UNDER).toMatch(/#EBC480 97%, #EBC480 100%\)$/);
+    expect(FIELD_CAP).toBe('#FFF4DC'); // warm white: the bloom's white end stop is never clamped
     expect(ADAM_CSS).toMatch(/\.adam-final-h \{[^}]*Schibsted Grotesk[^}]*font-weight: 600/);
     expect(ADAM_CSS).toContain(`color: ${FIELD_INK}`);
     expect(ADAM_CSS).toMatch(/height: 100vh; height: 100svh;/);
@@ -131,15 +133,15 @@ describe('AdamHands client behaviour', () => {
     section.getBoundingClientRect = () => ({ top, height: H, bottom: top + H, left: 0, right: 0, width: 0, x: 0, y: top });
     const run = (frames) => { let t = 0; for (let i = 0; i < frames; i++) { t += 100; const q = rafQ.splice(0); q.forEach((cb) => cb(t)); } };
 
-    top = -(1.3 * 1980); // p = 1.3: settled navy field, Family fully revealed
+    top = -(1.3 * 1980); // p = 1.3: settled warm field, Family fully revealed
     act(() => { document.dispatchEvent(new Event('scroll')); run(80); });
     expect(parseFloat(stage.dataset.p)).toBeCloseTo(1.3, 2);
-    expect(stage.dataset.flat).toBe('true'); // hands hidden under the opaque navy
+    expect(stage.dataset.flat).toBe('true'); // hands hidden under the opaque field
     expect(container.querySelector('[data-adam="field"]').style.opacity).toBe('1');
     expect(container.querySelector('[data-adam="field"]').dataset.live).toBe('true');
-    expect(parseFloat(container.querySelector('[data-adam="teal"]').style.opacity)).toBeCloseTo(1, 2);
-    expect(container.querySelector('[data-adam="wash"]').style.visibility).toBe('hidden');
-    expect(container.querySelector('[data-adam="cover"]').style.visibility).toBe('hidden');
+    expect(parseFloat(container.querySelector('[data-adam="hilite"]').style.opacity)).toBeCloseTo(1, 2);
+    expect(container.querySelector('[data-adam="leaks"]').style.visibility).toBe('hidden');
+    expect(container.querySelector('[data-adam="lk-band"]').style.visibility).toBe('hidden');
     expect(parseFloat(container.querySelector('[data-adam="final"]').style.opacity)).toBeCloseTo(1, 2);
     expect(container.querySelector('[data-adam="eyebrow"]').style.visibility).toBe('hidden');
 
@@ -244,8 +246,8 @@ describe('rev 2: centred text, font constant, exact subtitle, reduced-motion no-
     expect(html).toContain('>Family</span>');
   });
 
-  test('palette: navy base, fields share the exported constants', () => {
-    expect(FIELD_BASE).toBe('#1B3B64');
+  test('palette: warm brown base, fields share the exported constants', () => {
+    expect(FIELD_BASE).toBe('#5C3509');
     expect(FIELD_UNDER).toContain(FIELD_BASE);
     expect(css).toContain(`background: ${FIELD_UNDER}`);
     expect(FALLBACK_GRADIENT.endsWith(`${FIELD_BASE} 100%`)).toBe(true);
@@ -297,12 +299,12 @@ describe('rev 2 contrast (WCAG AA), cream ink on the brown field, worst-case gra
   const over = (top, a, bot) => top.map((v, i) => Math.round(v * a + bot[i] * (1 - a)));
   const ink = rgb(FIELD_INK);
 
-  test('ink on the navy base with grain lightening up to 15%', () => {
+  test('ink on the brown base with grain lightening up to 15%', () => {
     expect(ratio(ink, scale(rgb(FIELD_BASE), 1.15))).toBeGreaterThanOrEqual(4.5);
   });
 
-  test('.hm-fam eyebrow and body ink sit on the cream (#FBF7F1), past the short navy ramp', () => {
-    expect(FIELD_END).toBe('#0E2144');
+  test('.hm-fam eyebrow and body ink sit on the cream (#FBF7F1), on the honey ramp', () => {
+    expect(FIELD_END).toBe('#EBC480');
     expect(ratio(rgb('#5C3509'), rgb('#FBF7F1'))).toBeGreaterThanOrEqual(4.5);
     expect(ratio(rgb('#1A1512'), rgb('#FBF7F1'))).toBeGreaterThanOrEqual(4.5);
   });
@@ -326,9 +328,9 @@ describe('rev 3: no halo, luminance rule from the blob table, variety, client-on
     expect(container.querySelector('.adam-liquid-calm')).toBeNull();
   });
 
-  test('table size: 10 desktop, 5 on mobile, sizes in the spec ranges', () => {
-    expect(FIELD_BLOBS.length).toBe(10);
-    expect(subset(true).length).toBe(5);
+  test('table size: 12 desktop, 6 on mobile, sizes in the spec ranges', () => {
+    expect(FIELD_BLOBS.length).toBe(12);
+    expect(subset(true).length).toBe(6);
     expect(FIELD_BLOBS.filter((b) => b.s).length).toBeGreaterThanOrEqual(3);
     expect(FIELD_BLOBS.length).toBeGreaterThanOrEqual(8);
   });
@@ -347,12 +349,14 @@ describe('rev 3: no halo, luminance rule from the blob table, variety, client-on
         else expect(lift).toBe(0);
         sum += lift;
       }
-      expect(sum).toBeLessThanOrEqual(budget + 1e-9);
+      // blobs plus the swirls (desktop only, worst case overlapping the zone) fit one budget
+      expect(sum + (mobile ? 0 : swirlLift())).toBeLessThanOrEqual(budget + 1e-9);
       expect(zoneLift(mobile, W, H)).toBeCloseTo(sum, 9);
-      // ink at that worst luminance clears AA (5.6:1 pre-grain at L .13; grain budget keeps it >= 4.5)
+      // contrast budget: ink at the zone's worst luminance clears 6.8:1 raw; soft-light grain adds at most ~.01 L
       const ratio = (lum(FIELD_INK) + 0.05) / (ADAM_ZONE_L_MAX + 0.05);
-      expect(ratio).toBeGreaterThanOrEqual(5.5);
-      expect(ratio / 1.0).toBeGreaterThan(4.5);
+      expect(ADAM_ZONE_L_MAX).toBe(0.095);
+      expect(ratio).toBeGreaterThanOrEqual(6.7);
+      expect((lum(FIELD_INK) + 0.05) / (ADAM_ZONE_L_MAX + 0.01 + 0.05)).toBeGreaterThanOrEqual(6.2);
       // nothing lighter than FIELD_ZONE_MAX may reach the zone at all
       for (const b of inZone) expect(lum(b.c)).toBeLessThanOrEqual(lum(FIELD_ZONE_MAX) + 1e-9);
     }
@@ -393,7 +397,7 @@ describe('rev 3: no halo, luminance rule from the blob table, variety, client-on
     expect(Math.max(...ws)).toBeGreaterThanOrEqual(70);
     const ts = FIELD_BLOBS.map((b) => b.t);
     expect(new Set(ts).size).toBe(ts.length);
-    expect(Math.min(...ts)).toBeGreaterThanOrEqual(14);
+    expect(Math.min(...ts)).toBeGreaterThanOrEqual(12); // r2 drift is about 0.45x the original half-cycle
     expect(Math.max(...ts)).toBeLessThanOrEqual(27);
     expect(new Set(FIELD_BLOBS.map((b) => b.c.toUpperCase())).size).toBeGreaterThanOrEqual(7);
     const amp = FIELD_BLOBS.map((b) => Math.max(Math.abs(b.dx), Math.abs(b.dy)));
@@ -404,7 +408,7 @@ describe('rev 3: no halo, luminance rule from the blob table, variety, client-on
     expect(new Set(FIELD_BLOBS.map((b) => b.r)).size).toBeGreaterThanOrEqual(8);
   });
 
-  test('deep navy dominates by area; teal highlights are the accent', () => {
+  test('dark umber dominates by area; gold highlights are the accent', () => {
     const area = (b) => b.w * b.h;
     const dark = (b) => !b.s;
     const d = FIELD_BLOBS.filter(dark).reduce((s, b) => s + area(b), 0);
@@ -413,10 +417,11 @@ describe('rev 3: no halo, luminance rule from the blob table, variety, client-on
     expect(d / total).toBeLessThan(0.95);
   });
 
-  test('teal highlights sit in the top band, clear of the headline zone and the join', () => {
+  test('highlights sit in the top band, clear of the headline zone and the join', () => {
     for (const b of FIELD_BLOBS.filter((x) => x.s)) expect(b.y).toBeLessThanOrEqual(12);
     expect(css).toMatch(/transparent 84%/);
-    expect(css).toMatch(/\.adam-liquid::before \{[^}]*FIELD_END|\.adam-liquid::before \{[^}]*#0E2144/);
+    expect(css).not.toMatch(/\.adam-liquid::before/); // original: the blob mask alone leaves the bottom edge at FIELD_END
+    expect(css).not.toMatch(/adam-teal|#7CC3D4/);
   });
 
   test('adamPhase maps a unit random to [0, 2t] and is deterministic', () => {
@@ -452,7 +457,8 @@ describe('rev 3: no halo, luminance rule from the blob table, variety, client-on
     const { container } = render(<AdamHands />);
     const live = container.querySelectorAll('.adam-field .adam-blob');
     expect(live.length).toBe(FIELD_BLOBS.length);
-    live.forEach((el, i) => expect(parseFloat(el.style.getPropertyValue('--ph'))).toBeCloseTo(FIELD_BLOBS[i].t, 1));
+    const domOrder = [...FIELD_BLOBS.filter((b) => !b.s), ...FIELD_BLOBS.filter((b) => b.s)];
+    live.forEach((el, i) => expect(parseFloat(el.style.getPropertyValue('--ph'))).toBeCloseTo(domOrder[i].t, 1));
     container.querySelectorAll('.adam-liquid-frozen .adam-blob').forEach((el) => expect(el.style.getPropertyValue('--ph')).toBe(''));
   });
 
@@ -483,7 +489,7 @@ describe('rev 3: no halo, luminance rule from the blob table, variety, client-on
   });
 });
 
-describe('second fill, wash, onscreen pause and landscape-stack verses', () => {
+describe('light band, onscreen pause and landscape-stack verses', () => {
   const setup = (opts) => {
     mm(opts);
     const rafQ = [];
@@ -500,25 +506,84 @@ describe('second fill, wash, onscreen pause and landscape-stack verses', () => {
     return { ...r, stage, goto };
   };
 
-  test('wash covers the stage at p .95; white hold at p 1.0 (field still hidden); cover hole opens at p 1.06', () => {
+  test('light band: climbs from p .84, white hold at 1.0 (field hidden), lifts off by 1.11; leaks are off outside .78-1.16', () => {
     const { container, goto } = setup();
-    goto(0.95);
-    const wash = container.querySelector('[data-adam="wash"]');
-    expect(wash.style.visibility).toBe('visible');
-    expect(wash.style.background).toMatch(/radial-gradient/);
-    expect(container.querySelector('[data-adam="cover"]').style.visibility).toBe('hidden');
+    const leaks = container.querySelector('[data-adam="leaks"]');
+    const band = container.querySelector('[data-adam="lk-band"]');
+    goto(0.5);
+    expect(leaks.style.visibility).toBe('hidden');
+    goto(0.905);
+    expect(leaks.style.visibility).toBe('visible');
+    expect(band.style.visibility).toBe('visible');
+    expect(band.style.transform).toMatch(/translate3d\(0, -?[\d.]+cqh, 0\) rotate\(-5deg\)/);
+    expect(band.style.willChange).toBe('transform');
+    expect(container.querySelector('[data-adam="lk-s0"]').style.visibility).toBe('visible');
+    expect(container.querySelector('[data-adam="lk-e3"]').style.visibility).toBe('visible');
+    expect(container.querySelector('[data-adam="field"]').dataset.live).toBe('false');
     goto(1.0);
     expect(container.querySelector('[data-adam="field"]').dataset.live).toBe('false');
-    expect(wash.style.visibility).toBe('visible');
+    expect(band.style.visibility).toBe('visible');
+    const y1 = parseFloat(band.style.transform.match(/translate3d\(0, (-?[\d.]+)cqh/)[1]);
     goto(1.06);
-    expect(container.querySelector('[data-adam="cover"]').style.visibility).toBe('visible');
-    expect(wash.style.visibility).toBe('hidden');
+    const y2 = parseFloat(band.style.transform.match(/translate3d\(0, (-?[\d.]+)cqh/)[1]);
+    expect(y2).toBeLessThan(y1); // lifts off upward
     expect(container.querySelector('[data-adam="field"]').dataset.live).toBe('true');
-    expect(container.querySelector('[data-adam="cover"]').style.background).toMatch(/radial-gradient\(circle/);
-    // hands still composited until the fill completes
-    expect(container.querySelector('.adam-stage').dataset.flat).toBe('false');
-    goto(1.2);
+    // hands are hidden from the lift-off: the band is solid at the hand-over
     expect(container.querySelector('.adam-stage').dataset.flat).toBe('true');
+    goto(1.2);
+    expect(leaks.style.visibility).toBe('hidden');
+    expect(band.style.visibility).toBe('hidden');
+    expect(container.querySelector('.adam-stage').dataset.flat).toBe('true');
+    // reverse scroll is exact: same p, same transform
+    goto(1.06);
+    expect(parseFloat(band.style.transform.match(/translate3d\(0, (-?[\d.]+)cqh/)[1])).toBeCloseTo(y2, 2);
+  }, 30000);
+
+  test('mobile band is rotated -4deg and keeps only the s0/s2 streaks and e1/e3 leaks visible', () => {
+    const { container, goto } = setup({ mobile: true });
+    goto(0.93 * (1440 / 1980)); // mobile runs on a 160vh base span (1440px on a 900px stage)
+    expect(container.querySelector('[data-adam="lk-band"]').style.transform).toMatch(/rotate\(-4deg\)/);
+    expect(container.querySelector('[data-adam="lk-s0"]').style.visibility).toBe('visible');
+    expect(container.querySelector('[data-adam="lk-s1"]').style.visibility).toBe('hidden');
+    expect(container.querySelector('[data-adam="lk-e1"]').style.visibility).toBe('visible');
+    expect(container.querySelector('[data-adam="lk-e2"]').style.visibility).toBe('hidden');
+    expect(LEAKS_CSS).toMatch(/\.lk-bs2, \.lk-bs4, \.lk-s1, \.lk-s3, \.lk-s4, \.lk-e2, \.lk-e4 \{ display: none; \}/);
+  }, 30000);
+
+  test('no circles in the transition layers: no circle()/50% radius in the CSS or painted styles; every gradient is an ellipse or linear', () => {
+    expect(LEAKS_CSS).not.toMatch(/circle/i);
+    expect(LEAKS_CSS).not.toMatch(/border-radius/);
+    const grads = LEAKS_CSS.match(/(radial|linear)-gradient\([^;]*?\)(?=[,;\s])/g) || [];
+    expect(grads.length).toBeGreaterThan(8);
+    for (const g of LEAKS_CSS.match(/radial-gradient\([^,]*,/g)) expect(g).toMatch(/^radial-gradient\(ellipse /);
+    // streaks are at least 70:1 (140cqw wide, 1 to 2cqh tall); edge leaks are lopsided, anchored on a frame edge
+    expect(LEAKS_CSS).toMatch(/\.lk-s \{[^}]*width: 140%/);
+    expect(LEAKS_CSS).toMatch(/at 0% 50%/); expect(LEAKS_CSS).toMatch(/at 100% 50%/); expect(LEAKS_CSS).toMatch(/at 50% 100%/); expect(LEAKS_CSS).toMatch(/at 100% 0%/);
+    expect(ADAM_CSS).not.toMatch(/adam-wash|adam-cover/);
+    const { container, goto } = setup();
+    for (const p of [0.84, 0.92, 1.0, 1.06, 1.11]) {
+      goto(p);
+      container.querySelectorAll('.adam-leaks, .adam-leaks *').forEach((el) => {
+        expect(el.style.background || '').not.toMatch(/circle/);
+        expect(el.style.borderRadius || '').toBe('');
+      });
+    }
+    // the markup has no wash/cover layers any more
+    expect(container.querySelector('[data-adam="wash"]')).toBeNull();
+    expect(container.querySelector('[data-adam="cover"]')).toBeNull();
+  }, 30000);
+
+  test('band is a warm-white hold: gradient body is FIELD_WHITE, noise masks are unioned (add), no per-frame gradient strings', () => {
+    expect(FIELD_WHITE).toBe('#FFF4DC');
+    expect(LEAKS_CSS).toMatch(/\.lk-band \{[^}]*#FFF4DC 20%, #FFF4DC 77\.8%/);
+    expect(LEAKS_CSS).toMatch(/mask-size: 100% 100%, 1024px 1024px/);
+    expect(LEAKS_CSS).not.toMatch(/mask-composite/);
+    expect(LEAKS_CSS).toMatch(/@media \(prefers-reduced-motion: reduce\) \{ \.adam-leaks \{ display: none; \} \}/);
+    expect(LEAKS_CSS).toMatch(/\.adam-leaks \{[^}]*visibility: hidden/);
+    const { container, goto } = setup();
+    goto(0.9);
+    const band = container.querySelector('[data-adam="lk-band"]');
+    expect(band.style.background).toBe(''); // gradient lives in CSS only; paint writes transform/opacity/visibility
   }, 30000);
 
   test('liquid drift runs only while on screen: IntersectionObserver toggles data-onscreen', () => {

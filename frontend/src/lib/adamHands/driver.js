@@ -22,13 +22,14 @@ export const CANVAS = {
 // original hands/flood timeline and is unchanged (its drivers clamp, so they hold
 // their old end state for p > 1).
 export const BASE_SPAN_VH = { desktop: 220, mobile: 160 };
-export const WASH_START_P = 0.84;
-export const WASH_END_P = 0.92; // wash reaches full size here so its opaque tint leads the flood
+export const BAND_START_P = 0.84; // the light band's soft leading edge enters from below
 export const WHITE_HOLD_P = 0.05;
-export const FILL2_START_P = FLOOD_END_P + WHITE_HOLD_P; // 1.02: orb appears
+export const FILL2_START_P = FLOOD_END_P + WHITE_HOLD_P; // 1.02: the band lifts off, revealing the field
 export const FILL2_DELAY_P = FILL2_START_P - TOUCH_P; // touch -> second fill (about 2 s of the mov)
 export const FILL2_SPAN_P = 0.09;
-export const FILL2_END_P = FILL2_START_P + FILL2_SPAN_P; // 1.11: corners navy
+export const FILL2_END_P = FILL2_START_P + FILL2_SPAN_P; // 1.11: band clear of the stage
+export const LEAKS_START_P = 0.78; // first free streak (s0) starts before the touch
+export const LEAKS_END_P = 1.16; // every leak is fully off here, before the Family reveal
 export const SETTLE_SPAN_P = 0.12;
 export const SETTLE_END_P = FILL2_END_P + SETTLE_SPAN_P; // 1.23
 export const FAMILY_REVEAL_P = [1.19, 1.26];
@@ -213,34 +214,73 @@ export function eyebrowColor(c) {
   return a.map((v, i) => Math.round(lerp(v, b[i], c)));
 }
 
-// Cool-white wash over the warm flood (p .84 -> .97), then held white until the
-// second fill takes over at FILL2_START_P. rc = stage half-diagonal in px.
-export function washDrivers(p, rc) {
-  const w = smooth((p - WASH_START_P) / (WASH_END_P - WASH_START_P));
-  const on = p < FILL2_START_P;
+// Light transition (design-spec-r2.md R2-3): ONE tall, noise-masked, slightly rotated
+// band of warm light travels up through the stage. Its soft leading edge is the first
+// fill, its solid body is the white hold, its soft trailing edge is the second fill
+// (the field shows behind it). Plus free anamorphic streaks and edge leaks. No circles.
+// Geometry in units of stage height H; y = top edge of the band element (0 = stage top).
+export const BAND = { yStart: 1.12, yCover: -0.57, yHoldEnd: -0.63, yClear: -2.37, F1: 0.45, Bd: 1.30, F2: 0.50 };
+export const BAND_HEIGHT = BAND.F1 + BAND.Bd + BAND.F2; // 2.25 H
+const bandEaseA = cubicBezier(0.30, 0, 0.40, 1);
+const bandEaseB = cubicBezier(0.25, 0.10, 0.30, 1);
+export function bandY(p) {
+  if (p <= BAND_START_P) return BAND.yStart;
+  if (p < FLOOD_END_P) return lerp(BAND.yStart, BAND.yCover, bandEaseA((p - BAND_START_P) / (FLOOD_END_P - BAND_START_P)));
+  if (p < FILL2_START_P) return lerp(BAND.yCover, BAND.yHoldEnd, (p - FLOOD_END_P) / (FILL2_START_P - FLOOD_END_P));
+  if (p < FILL2_END_P) return lerp(BAND.yHoldEnd, BAND.yClear, bandEaseB((p - FILL2_START_P) / (FILL2_END_P - FILL2_START_P)));
+  return BAND.yClear;
+}
+
+// Free streaks s0..s4: a = start p, y = % of stage, h = cqh, d = rise (cqh), tone, mobile = kept on mobile.
+export const STREAKS = [
+  { a: 0.78, y: 48, h: 1.9, d: 6, tone: 'white', mobile: true, mh: 1.2 },
+  { a: 0.81, y: 41, h: 1.3, d: 11, tone: 'gold', mobile: false },
+  { a: 0.83, y: 57, h: 1.6, d: 9, tone: 'white', mobile: true, mh: 1.0 },
+  { a: 0.85, y: 30, h: 1.0, d: 13, tone: 'amber', mobile: false },
+  { a: 0.86, y: 65.9, h: 1.2, d: 8, tone: 'gold', mobile: false },
+];
+export const STREAK_END_P = 1.03;
+const streakEaseOut = cubicBezier(0.2, 0.7, 0.2, 1);
+// Edge leaks e1..e4: in = [start, full], out = [start, gone] windows (scroll p), o = peak opacity.
+export const EDGES = [
+  { id: 'e1', inW: [0.80, 0.92], outW: [1.00, 1.12], o: 0.90, mobile: true },
+  { id: 'e2', inW: [0.83, 0.95], outW: [1.02, 1.13], o: 0.85, mobile: false },
+  { id: 'e3', inW: [0.81, 0.91], outW: [1.03, 1.11], o: 0.95, mobile: true },
+  { id: 'e4', inW: [0.90, 0.97], outW: [1.08, 1.16], o: 0.70, mobile: false },
+];
+
+export function leakDrivers(p, mobile = false) {
+  const streaks = STREAKS.map((s) => {
+    const on = p >= s.a && p <= STREAK_END_P && (!mobile || s.mobile);
+    if (!on) return { on: false, sx: 0.25, ty: 0, o: 0 };
+    return {
+      on,
+      sx: lerp(0.25, 1, streakEaseOut((p - s.a) / 0.12)),
+      ty: -s.d * smooth((p - s.a) / 0.20),
+      o: smooth((p - s.a) / 0.06) * (1 - smooth((p - 0.96) / 0.07)),
+    };
+  });
+  const edges = EDGES.map((e) => {
+    const o = e.o * smooth((p - e.inW[0]) / (e.inW[1] - e.inW[0])) * (1 - smooth((p - e.outW[0]) / (e.outW[1] - e.outW[0])));
+    const on = (!mobile || e.mobile) && o > 0.002;
+    return { on, o: on ? o : 0, tx: lerp(-4, 4, smooth((p - e.inW[0]) / (e.outW[1] - e.inW[0]))) };
+  });
   return {
-    rWash: rc * (0.10 + 1.80 * w),
-    washOpacity: on ? smooth((p - 0.82) / 0.04) : 0,
+    bandY: bandY(p),
+    bandOn: p > BAND_START_P && p < FILL2_END_P,
+    streaks,
+    edges,
+    leavesOn: p >= LEAKS_START_P && p < LEAKS_END_P,
   };
 }
 
-// Strong ease-in (not the spec's ease-out): the mov's orb is still small at 1.85 s
-// (u ~ .36, R about 0.57 r_c, visible orb about 59% of the width) and then races out so
-// the corners are clear (0.30 R > r_c) by FILL2_END_P.
-export const COVER_R0 = 0.08;
-export const COVER_R1 = 3.6;
-export const fillCurve = cubicBezier(0.6, 0, 0.8, 1);
-
-// Second light fill: a white cover with a growing hole reveals the live navy field.
-export function fill2Drivers(p, rc) {
-  const u = clamp((p - FILL2_START_P) / FILL2_SPAN_P);
+// Field timing: the opaque field sits above the canvas once the band is solid.
+export function fill2Drivers(p) {
   return {
-    u,
-    coverR: rc * lerp(COVER_R0, COVER_R1, fillCurve(u)),
-    coverOn: p >= FILL2_START_P && p < FILL2_END_P,
+    u: clamp((p - FILL2_START_P) / FILL2_SPAN_P),
     settle: smooth((p - FILL2_END_P) / SETTLE_SPAN_P),
     fieldOn: p >= FILL2_START_P - 0.005,
-    handsHidden: p > FILL2_END_P,
+    handsHidden: p >= FILL2_START_P,
   };
 }
 

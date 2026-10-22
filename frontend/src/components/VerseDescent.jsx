@@ -8,7 +8,7 @@
 // Maths: lib/verseDescent.js. Text: lib/communityVerses.js (verified against bible.json).
 import React from 'react';
 import { COMMUNITY_VERSES } from '../lib/communityVerses.js';
-import { verseState, VERSE_LABEL, VERSE_FILL } from '../lib/verseDescent.js';
+import { verseState, VERSE_LABEL, VERSE_FILL, VERSE_INK, VERSE_REF_INK } from '../lib/verseDescent.js';
 import { FIELD_END } from '../lib/adamHands/field.js';
 
 const { rgb: F, a: FA, fallbackA: FFA } = VERSE_FILL;
@@ -17,10 +17,10 @@ const HEAD_FONT = "'Schibsted Grotesk', sans-serif";
 const BODY_FONT = "'Hanken Grotesk', system-ui, sans-serif";
 
 export const VERSE_CSS = `
-.verse { box-sizing: border-box; margin: 0; padding: 22px 26px 20px; border-radius: 22px; background: ${fill(FA)}; border: 1px solid rgba(220,238,247,0.22); box-shadow: 0 18px 48px rgba(2,8,24,0.35), inset 0 1px 0 rgba(255,255,255,0.16); -webkit-backdrop-filter: blur(22px) saturate(1.15); backdrop-filter: blur(22px) saturate(1.15); color: #F7FBFC; text-align: left; }
+.verse { box-sizing: border-box; margin: 0; padding: 22px 26px 20px; border-radius: 22px; background: ${fill(FA)}; border: 1px solid rgba(255,236,205,0.22); box-shadow: 0 18px 48px rgba(20,10,2,0.38), inset 0 1px 0 rgba(255,244,220,0.16); -webkit-backdrop-filter: blur(22px) saturate(1.15); backdrop-filter: blur(22px) saturate(1.15); color: ${VERSE_INK}; text-align: left; }
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) { .verse { background: ${fill(FFA)}; } }
 .verse-text { margin: 0; font: 400 clamp(16px, 0.9rem + 0.4vw, 20px)/1.5 ${BODY_FONT}; text-wrap: pretty; }
-.verse-ref { margin: 14px 0 0; font: 600 13px/1.4 ${HEAD_FONT}; letter-spacing: 0.16em; text-transform: uppercase; color: #CFE3EE; }
+.verse-ref { margin: 14px 0 0; font: 600 13px/1.4 ${HEAD_FONT}; letter-spacing: 0.16em; text-transform: uppercase; color: ${VERSE_REF_INK}; }
 .verse-descent { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
 .verse-descent .verse { position: absolute; left: 0; top: 0; width: min(560px, 44cqw); visibility: hidden; opacity: 0; will-change: transform, opacity; }
 .verse-sr { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }

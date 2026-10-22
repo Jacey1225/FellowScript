@@ -125,13 +125,13 @@ describe('Home — "Not just once a week" family section', () => {
     expect(document.querySelector('.hm-fam-eyebrow').textContent).toBe('// NOT JUST ONCE A WEEK');
   });
 
-  test('family block is a section continuing the pin FIELD_END (navy) gradient into #FBF7F1, with #1A1512 text and sits right after the Adam pin', () => {
+  test('family block is a section continuing the pin FIELD_END gradient into #FBF7F1, with #1A1512 text and sits right after the Adam pin', () => {
     const { container } = renderHome();
     const fam = container.querySelector('section.hm-fam');
     const pin = container.querySelector('[data-testid="adam-hands"]');
     expect(pin.nextElementSibling).toBe(fam);
     const css = [...container.querySelectorAll('style')].map((s) => s.textContent).join('\n');
-    expect(css).toMatch(/\.hm-fam \{[^}]*background-color: #FBF7F1;[^}]*linear-gradient\(180deg, #0E2144 0, #FBF7F1 var\(--fam-settle\)\)[^}]*color: #1A1512/);
+    expect(css).toMatch(/\.hm-fam \{[^}]*background-color: #FBF7F1;[^}]*linear-gradient\(180deg, #EBC480 0, #FBF7F1 var\(--fam-settle\)\)[^}]*color: #1A1512/);
     // Fade the divider: no hard border under the eyebrow, a gradient-masked ::after rule instead.
     const eb = css.match(/\.hm-fam-eyebrow \{[^}]*\}/)[0];
     expect(eb).not.toMatch(/border-bottom/);

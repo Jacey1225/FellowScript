@@ -30,7 +30,7 @@ export function verseState(i, n, p, mobile) {
 }
 
 // Widget colours (design spec section 7). Fill is composited over whatever is behind it;
-// tests bound the contrast over the worst case (pure white) and the lightest field colour.
-export const VERSE_FILL = { rgb: [8, 22, 52], a: 0.70, fallbackA: 0.92 };
-export const VERSE_INK = '#F7FBFC';
-export const VERSE_REF_INK = '#CFE3EE';
+// tests bound the contrast over warm white (FIELD_WHITE) and the lightest field colour (honey).
+export const VERSE_FILL = { rgb: [34, 19, 6], a: 0.72, fallbackA: 0.93 };
+export const VERSE_INK = '#FBF7F1';
+export const VERSE_REF_INK = '#F4E3C3';
