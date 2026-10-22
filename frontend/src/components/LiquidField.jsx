@@ -23,7 +23,7 @@ export const LIQUID_CSS = `
 .adam-swirl { position: absolute; inset: -30%; border-radius: 50%; -webkit-mask-image: radial-gradient(ellipse 70% 70% at 30% 22%, #000 0%, transparent 100%), radial-gradient(closest-side, #000 70%, transparent 100%); mask-image: radial-gradient(ellipse 70% 70% at 30% 22%, #000 0%, transparent 100%), radial-gradient(closest-side, #000 70%, transparent 100%); -webkit-mask-composite: source-in; mask-composite: intersect; animation: adam-spin 90s linear infinite; animation-play-state: paused; }
 .adam-swirl-a { background: ${SWIRL_A}; filter: blur(48px); }
 .adam-swirl-b { background: ${SWIRL_B}; filter: blur(64px); animation-duration: 140s; animation-direction: reverse; }
-.adam-field[data-live="true"][data-onscreen="true"] .adam-blob, .adam-field[data-live="true"][data-onscreen="true"] .adam-swirl { animation-play-state: running; will-change: transform; }
+.adam-field[data-live="true"][data-onscreen="true"] .adam-blob, .adam-field[data-live="true"][data-onscreen="true"] .adam-swirl { animation-play-state: running; }
 .adam-liquid-frozen .adam-blob { animation: none; }
 /* Fallback block only: also fade blobs out at the top edge so it joins the ink strip flat. */
 .adam-liquid-frozen .adam-liquid-blobs { -webkit-mask-image: linear-gradient(180deg, transparent 0, #000 16%, #000 60%, transparent 84%); mask-image: linear-gradient(180deg, transparent 0, #000 16%, #000 60%, transparent 84%); }

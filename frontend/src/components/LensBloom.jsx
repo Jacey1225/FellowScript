@@ -34,7 +34,6 @@ export const LENS_CSS = `
 .lens-ghost { mix-blend-mode: screen; }
 .lens-rays { width: calc(200 * var(--u)); height: calc(200 * var(--u)); background: radial-gradient(circle closest-side, rgba(255,246,228,.80) 0, rgba(255,226,170,.35) 40%, rgba(255,226,170,0) 100%); mix-blend-mode: screen;
   -webkit-mask-image: ${RAYS_MASK}, ${LENS_NOISE}; mask-image: ${RAYS_MASK}, ${LENS_NOISE}; -webkit-mask-size: 100% 100%, 1024px 1024px; mask-size: 100% 100%, 1024px 1024px; -webkit-mask-composite: source-in; mask-composite: intersect; }
-.adam-lens[data-on="true"] .lens-lobe, .adam-lens[data-on="true"] .lens-core-lobe, .adam-lens[data-on="true"] .lens-streak, .adam-lens[data-on="true"] .lens-ghost, .adam-lens[data-on="true"] .lens-rays { will-change: transform, opacity; }
 @media (max-width: 899px), (pointer: coarse) {
   .lens-wash { -webkit-mask-size: 768px 768px; mask-size: 768px 768px; }
   .lens-streak { mix-blend-mode: normal; }
