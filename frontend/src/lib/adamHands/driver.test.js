@@ -14,6 +14,9 @@ import {
   clamp, lerp, smooth, cubicBezier, floodCurve, easingB, getRows, lookupRow, handsPose,
   floodDrivers, lightParams, fanWeights, bloomIntensity, ignite, beatGlow, typeReveal,
   warmGlowAlpha, eyebrowColor, scrubProgress, smoothStep, coverScale,
+  BASE_SPAN_VH, WASH_START_P, WHITE_HOLD_P, FILL2_START_P, FILL2_DELAY_P, FILL2_SPAN_P, FILL2_END_P,
+  SETTLE_SPAN_P, SETTLE_END_P, FAMILY_REVEAL_P, FAMILY_HIDE_P, VERSE_START_P, VERSE_SPAN_P, P_END, P_END_STACK,
+  RUNWAY_VH_STACK, washDrivers, fill2Drivers, familyOpacity,
 } from './driver.js';
 import { DESKTOP_ROWS, MOBILE_ROWS, TABLE_COLUMNS } from './table.js';
 
@@ -303,7 +306,7 @@ describe('type and colour', () => {
 
 describe('scrub progress and smoothing', () => {
   test('scrubProgress maps the pinned runway: top of section = 0, end of runway = 1, clamped', () => {
-    const section = 3200; const stage = 900; // 320vh on a 900px viewport
+    const section = 3200; const stage = 900; // legacy two-span form: span = section - stage
     expect(Math.abs(scrubProgress(0, section, stage))).toBe(0);
     expect(scrubProgress(300, section, stage)).toBe(0);          // before the pin
     expect(scrubProgress(-(section - stage) / 2, section, stage)).toBeCloseTo(0.5, 6);
@@ -312,8 +315,22 @@ describe('scrub progress and smoothing', () => {
     expect(scrubProgress(0, 900, 900)).toBe(0);                  // no runway guard
   });
 
-  test('runway constants: 320vh desktop, 260vh mobile', () => {
-    expect(RUNWAY_VH).toEqual({ desktop: 320, mobile: 260 });
+  test('runway constants follow 100 + P_END * baseSpanVh: 672vh desktop, 564vh mobile', () => {
+    expect(RUNWAY_VH).toEqual({ desktop: 672, mobile: 564 });
+    expect(RUNWAY_VH_STACK).toEqual({ desktop: 408, mobile: 324 });
+    expect(P_END.desktop).toBeCloseTo(2.6, 9); expect(P_END.mobile).toBeCloseTo(2.9, 9);
+  });
+
+  test('scrubProgress with baseSpanVh/pEnd extends past 1 and is clamped to pEnd', () => {
+    const stage = 900; const section = (RUNWAY_VH.desktop / 100) * stage;
+    expect(Math.abs(scrubProgress(0, section, stage, 220, P_END.desktop))).toBe(0);
+    expect(scrubProgress(300, section, stage, 220, P_END.desktop)).toBe(0);
+    expect(scrubProgress(-220 * 9, section, stage, 220, P_END.desktop)).toBeCloseTo(1, 9);
+    expect(scrubProgress(-220 * 9 * 1.5, section, stage, 220, P_END.desktop)).toBeCloseTo(1.5, 9);
+    expect(scrubProgress(-99999, section, stage, 220, P_END.desktop)).toBe(P_END.desktop);
+    // the full runway scrolls exactly P_END spans
+    expect(scrubProgress(-(section - stage), section, stage, 220, P_END.desktop)).toBeCloseTo(P_END.desktop, 6);
+    expect(Math.abs(scrubProgress(0, 900, 900, 220, P_END.desktop))).toBe(0);
   });
 
   test('smoothStep chases the target, is frame-rate independent, ~95% in 0.6 s, and snaps when close', () => {
@@ -337,5 +354,87 @@ describe('scrub progress and smoothing', () => {
     expect(coverScale(1920, 900, false)).toBeCloseTo(1.2, 6);
     expect(coverScale(1600, 1200, false)).toBeCloseTo(1200 / 900, 6);
     expect(coverScale(390, 844, true)).toBeCloseTo(Math.max(390 / 900, 844 / 1600), 6);
+  });
+});
+
+describe('second fill, settle and family timeline (scrub domain past 1)', () => {
+  test('named timeline table and monotonic ordering', () => {
+    expect(BASE_SPAN_VH).toEqual({ desktop: 220, mobile: 160 });
+    expect(WASH_START_P).toBe(0.84); expect(WHITE_HOLD_P).toBe(0.05);
+    near(FILL2_START_P, 1.02, 9); near(FILL2_END_P, 1.11, 9); near(SETTLE_END_P, 1.27, 9);
+    near(FILL2_DELAY_P, 0.22, 9); near(FILL2_SPAN_P, 0.09, 9); near(SETTLE_SPAN_P, 0.16, 9);
+    const seq = [TOUCH_P, WASH_START_P, FLOOD_END_P, FILL2_START_P, FILL2_END_P, SETTLE_END_P,
+      FAMILY_REVEAL_P[0], FAMILY_REVEAL_P[1], FAMILY_HIDE_P[0], VERSE_START_P];
+    // wash starts after the touch; settle ends after family begins to reveal
+    expect(WASH_START_P).toBeGreaterThan(TOUCH_P);
+    expect(FLOOD_END_P).toBeLessThan(FILL2_START_P);
+    expect(FILL2_START_P).toBeLessThan(FILL2_END_P);
+    expect(FILL2_END_P).toBeLessThan(SETTLE_END_P);
+    expect(FAMILY_REVEAL_P[0]).toBeLessThan(FAMILY_REVEAL_P[1]);
+    expect(FAMILY_REVEAL_P[1]).toBeLessThanOrEqual(FAMILY_HIDE_P[0]);
+    expect(FAMILY_HIDE_P[0]).toBeLessThan(FAMILY_HIDE_P[1]);
+    expect(FAMILY_HIDE_P[0]).toBeLessThanOrEqual(VERSE_START_P);
+    expect(seq.length).toBe(10);
+    expect(P_END_STACK).toBe(VERSE_START_P);
+    expect(VERSE_SPAN_P).toEqual({ desktop: 1.2, mobile: 1.5 });
+  });
+
+  test('original hands/flood drivers are unchanged and saturate beyond 1', () => {
+    expect(TOUCH_P).toBe(0.80); expect(FLOOD_END_P).toBe(0.97);
+    expect(floodDrivers(1.5)).toEqual(floodDrivers(1));
+    expect(floodDrivers(2.6)).toEqual(floodDrivers(1));
+    expect(handsPose(2, false)).toEqual(handsPose(1, false));
+    expect(ignite(1.7)).toBe(1);
+  });
+
+  test('washDrivers: grows over .84-.97, holds white until the second fill, then off', () => {
+    const rc = 1000;
+    expect(washDrivers(0.80, rc).washOpacity).toBe(0);
+    near(washDrivers(0.84, rc).rWash, 100, 6);
+    expect(washDrivers(0.97, rc).rWash).toBeCloseTo(1900, 6);
+    // at 0.97 the solid core (0.55 Rw) covers every corner (r_c)
+    expect(0.55 * washDrivers(0.97, rc).rWash).toBeGreaterThan(rc);
+    expect(washDrivers(0.88, rc).washOpacity).toBe(1);
+    expect(washDrivers(1.0, rc)).toEqual({ ...washDrivers(0.97, rc), washOpacity: 1 });
+    expect(washDrivers(FILL2_START_P, rc).washOpacity).toBe(0);
+    let prev = -1; for (let p = 0.8; p <= 0.97; p += 0.01) { const r = washDrivers(p, rc).rWash; expect(r).toBeGreaterThanOrEqual(prev); prev = r; }
+  });
+
+  test('fill2Drivers: field on just before the fill, cover grows monotonically, hole covers corners at end', () => {
+    const rc = 1000;
+    expect(fill2Drivers(1.0, rc).fieldOn).toBe(false);
+    expect(fill2Drivers(FILL2_START_P - 0.004, rc).fieldOn).toBe(true);
+    expect(fill2Drivers(0.97, rc).coverOn).toBe(false);
+    expect(fill2Drivers(FILL2_START_P, rc).coverOn).toBe(true);
+    expect(fill2Drivers(FILL2_END_P, rc).coverOn).toBe(false);
+    expect(fill2Drivers(FILL2_START_P, rc).coverR).toBeCloseTo(120, 6);
+    expect(fill2Drivers(FILL2_END_P, rc).coverR).toBeCloseTo(2250, 6);
+    expect(0.45 * fill2Drivers(FILL2_END_P, rc).coverR).toBeGreaterThan(rc);
+    let prev = 0; for (let p = FILL2_START_P; p <= FILL2_END_P; p += 0.005) { const r = fill2Drivers(p, rc).coverR; expect(r).toBeGreaterThanOrEqual(prev); prev = r; }
+    // ring near mov 1.85s (u = .36): ring radius .62 R about 0.44 r_c within 6% (design tolerance)
+    const ring = 0.62 * fill2Drivers(FILL2_START_P + 0.36 * FILL2_SPAN_P, rc).coverR / rc;
+    expect(ring).toBeGreaterThan(0.44 * 0.94); expect(ring).toBeLessThan(0.44 * 1.06);
+  });
+
+  test('settle ramps over the settle span; hands hidden only after the fill', () => {
+    const rc = 800;
+    expect(fill2Drivers(FILL2_END_P, rc).settle).toBe(0);
+    expect(fill2Drivers(SETTLE_END_P, rc).settle).toBe(1);
+    expect(fill2Drivers(1.2, rc).settle).toBeGreaterThan(0.5);
+    expect(fill2Drivers(FILL2_END_P, rc).handsHidden).toBe(false);
+    expect(fill2Drivers(FILL2_END_P + 0.001, rc).handsHidden).toBe(true);
+    expect(fill2Drivers(0.9, rc).handsHidden).toBe(false);
+  });
+
+  test('familyOpacity reveals 1.19-1.26, holds, hides 1.38-1.46; keep never hides', () => {
+    expect(familyOpacity(1.0)).toBe(0); expect(familyOpacity(1.19)).toBe(0);
+    expect(familyOpacity(1.26)).toBe(1); expect(familyOpacity(1.3)).toBe(1);
+    expect(familyOpacity(1.225)).toBeGreaterThan(0.4); expect(familyOpacity(1.225)).toBeLessThan(0.6);
+    expect(familyOpacity(1.38)).toBe(1); expect(familyOpacity(1.46)).toBe(0); expect(familyOpacity(2.5)).toBe(0);
+    expect(familyOpacity(2.5, true)).toBe(1); expect(familyOpacity(1.4, true)).toBe(1);
+  });
+
+  test('P_END and runway stay in the formula', () => {
+    expect(RUNWAY_VH_STACK.desktop).toBe(Math.round(100 + P_END_STACK * BASE_SPAN_VH.desktop));
   });
 });

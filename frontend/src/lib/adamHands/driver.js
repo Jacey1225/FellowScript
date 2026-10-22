@@ -17,7 +17,37 @@ export const CANVAS = {
   mobile: { w: 900, h: 1600, tx: 450, ty: 736 },
 };
 
-export const RUNWAY_VH = { desktop: 320, mobile: 260 };
+// Scrub domain (design spec, task 20261022-hands-scroll-grain-gradient). p now runs
+// 0 .. P_END; every constant above 1.0 is new, everything at or below 1.0 is the
+// original hands/flood timeline and is unchanged (its drivers clamp, so they hold
+// their old end state for p > 1).
+export const BASE_SPAN_VH = { desktop: 220, mobile: 160 };
+export const WASH_START_P = 0.84;
+export const WHITE_HOLD_P = 0.05;
+export const FILL2_START_P = FLOOD_END_P + WHITE_HOLD_P; // 1.02: orb appears
+export const FILL2_DELAY_P = FILL2_START_P - TOUCH_P; // touch -> second fill (about 2 s of the mov)
+export const FILL2_SPAN_P = 0.09;
+export const FILL2_END_P = FILL2_START_P + FILL2_SPAN_P; // 1.11: corners navy
+export const SETTLE_SPAN_P = 0.16;
+export const SETTLE_END_P = FILL2_END_P + SETTLE_SPAN_P; // 1.27
+export const FAMILY_REVEAL_P = [1.19, 1.26];
+export const FAMILY_HIDE_P = [1.38, 1.46];
+export const VERSE_START_P = 1.40;
+export const VERSE_SPAN_P = { desktop: 1.20, mobile: 1.50 };
+const r6 = (x) => Math.round(x * 1e6) / 1e6;
+export const P_END = { desktop: r6(VERSE_START_P + VERSE_SPAN_P.desktop), mobile: r6(VERSE_START_P + VERSE_SPAN_P.mobile) };
+// Landscape-phone / stacked-verse mode: the pinned stage stops where the verses would start.
+export const P_END_STACK = VERSE_START_P;
+// Runway = one stage plus P_END base spans. Single place for the formula.
+export const runwayVh = (pEnd, baseSpanVh) => Math.round(100 + pEnd * baseSpanVh);
+export const RUNWAY_VH = {
+  desktop: runwayVh(P_END.desktop, BASE_SPAN_VH.desktop),
+  mobile: runwayVh(P_END.mobile, BASE_SPAN_VH.mobile),
+};
+export const RUNWAY_VH_STACK = {
+  desktop: runwayVh(P_END_STACK, BASE_SPAN_VH.desktop),
+  mobile: runwayVh(P_END_STACK, BASE_SPAN_VH.mobile),
+};
 // Scrub smoothing: time constant of the exponential chase. 0.2 s reaches 95% of
 // a jump in about 0.6 s ("scrub ~0.6").
 export const SMOOTH_TAU_S = 0.2;
@@ -182,12 +212,50 @@ export function eyebrowColor(c) {
   return a.map((v, i) => Math.round(lerp(v, b[i], c)));
 }
 
+// Cool-white wash over the warm flood (p .84 -> .97), then held white until the
+// second fill takes over at FILL2_START_P. rc = stage half-diagonal in px.
+export function washDrivers(p, rc) {
+  const w = smooth((p - WASH_START_P) / (FLOOD_END_P - WASH_START_P));
+  const on = p < FILL2_START_P;
+  return {
+    rWash: rc * (0.10 + 1.80 * w),
+    washOpacity: on ? smooth((p - 0.82) / 0.06) : 0,
+  };
+}
+
+// Ease-in-out (not the spec's 0.25/0.10/0.35/1): the mov's orb ring is about 0.43 r_c at
+// 1.85 s (u ~ .36), which an ease-out cannot reproduce (it gives ~0.8 r_c there).
+export const fillCurve = cubicBezier(0.42, 0, 0.58, 1);
+
+// Second light fill: a white cover with a growing hole reveals the live navy field.
+export function fill2Drivers(p, rc) {
+  const u = clamp((p - FILL2_START_P) / FILL2_SPAN_P);
+  return {
+    u,
+    coverR: rc * lerp(0.12, 2.25, fillCurve(u)),
+    coverOn: p >= FILL2_START_P && p < FILL2_END_P,
+    settle: smooth((p - FILL2_END_P) / SETTLE_SPAN_P),
+    fieldOn: p >= FILL2_START_P - 0.005,
+    handsHidden: p > FILL2_END_P,
+  };
+}
+
+// "Family" headline: reveal then hide before the first verse reaches mid-stage.
+// keep = true (stacked mode, no verses on the stage) never hides it.
+export function familyOpacity(p, keep = false) {
+  const [r0, r1] = FAMILY_REVEAL_P; const [h0, h1] = FAMILY_HIDE_P;
+  const reveal = smooth((p - r0) / (r1 - r0));
+  return keep ? reveal : reveal * (1 - smooth((p - h0) / (h1 - h0)));
+}
+
 // Scrub progress for a pinned section: distance scrolled into the runway over
-// the scrollable length (section height minus the pinned stage height).
-export function scrubProgress(rectTop, sectionHeight, stageHeight) {
-  const span = sectionHeight - stageHeight;
+// the base span (baseSpanVh of the stage height; equal to sectionHeight -
+// stageHeight for a runway of 100 + baseSpanVh), clamped to [0, pEnd]. Without
+// baseSpanVh it falls back to the original sectionHeight - stageHeight span.
+export function scrubProgress(rectTop, sectionHeight, stageHeight, baseSpanVh, pEnd = 1) {
+  const span = baseSpanVh ? (baseSpanVh / 100) * stageHeight : sectionHeight - stageHeight;
   if (span <= 0) return 0;
-  return clamp(-rectTop / span);
+  return clamp(-rectTop / span, 0, pEnd);
 }
 
 // Frame-rate independent exponential chase toward the target p.
