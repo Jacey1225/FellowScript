@@ -281,7 +281,7 @@ export default function Home() {
            which this block continues, so there is no seam). Recipe matches THE PROBLEM / SIMPLE PRICING;
            eyebrow is #8A5217 (5.9:1 on #FBF7F1) because #B4712C fails AA for
            11-12px text. */
-        .hm-fam { --fam-settle: clamp(480px, 75vh, 760px); position: relative; background-color: ${LIGHT_BG}; background-image: linear-gradient(180deg, ${FIELD_END} 0, ${LIGHT_BG} var(--fam-settle)); background-repeat: no-repeat; color: ${LIGHT_INK}; padding: clamp(72px, 10vh, 140px) clamp(20px, 5vw, 64px) clamp(56px, 8vh, 110px); }
+        .hm-fam { --fam-settle: clamp(160px, 24vh, 260px); position: relative; background-color: ${LIGHT_BG}; background-image: linear-gradient(180deg, ${FIELD_END} 0, ${LIGHT_BG} var(--fam-settle)); background-repeat: no-repeat; color: ${LIGHT_INK}; padding: calc(var(--fam-settle) + clamp(24px, 4vh, 56px)) clamp(20px, 5vw, 64px) clamp(56px, 8vh, 110px); }
         .hm-fam::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: var(--fam-settle); pointer-events: none; z-index: 0; background-image: ${FIELD_GRAIN_URL}, linear-gradient(180deg, ${FIELD_END} 0, ${LIGHT_BG} 100%); background-size: 220px 220px, 100% 100%; background-blend-mode: soft-light, normal; -webkit-mask-image: linear-gradient(180deg, #000 0%, #000 10%, transparent 100%); mask-image: linear-gradient(180deg, #000 0%, #000 10%, transparent 100%); }
         .hm-fam-inner { position: relative; z-index: 1; max-width: 1240px; margin: 0 auto; text-align: left; }
         .hm-fam-eyebrow { font-family: ${HEAD_FONT}; font-size: 11.5px; letter-spacing: 0.26em; text-transform: uppercase; color: #5C3509; position: relative; padding-bottom: 22px; margin-bottom: 56px; line-height: 1.6; }

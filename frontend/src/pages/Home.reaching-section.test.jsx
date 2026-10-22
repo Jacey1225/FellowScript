@@ -82,7 +82,9 @@ describe('Adam section: fallback (first render, reduced motion, no-JS equivalent
     expect(p.getAttribute('data-live')).toBe('false');
     expect(p.querySelector('.adam-canvas')).toBeNull();
     expect(p.querySelector('[data-adam="wash"]')).toBeNull();
+    expect(p.querySelector('[data-adam="cover"]')).toBeNull();
     expect(p.querySelector('[data-adam="field"]')).toBeNull();
+    expect(p.querySelector('[data-adam="verses"]')).toBeNull(); // no pinned descent
     const still = p.querySelector('img.adam-fb-img');
     expect(still).toBeTruthy();
     expect(still.getAttribute('src')).toBe('/adam/fallback-touch-desktop-1600x900.webp');
@@ -90,10 +92,12 @@ describe('Adam section: fallback (first render, reduced motion, no-JS equivalent
     expect(p.querySelector('.adam-grad')).toBeTruthy();
     const css = p.querySelector('style').textContent;
     // The runway height is only ever applied under data-live="true".
-    expect(css).toMatch(/\.adam-pin\[data-live="true"\] \{ height: 320vh; \}/);
+    expect(css).toMatch(/\.adam-pin\[data-live="true"\] \{ height: 672vh; \}/);
     expect(css).toMatch(/\.adam-grad \{ position: relative; height: 24svh;/);
-    expect(css).toMatch(/#17120F 0%, #2B1B0B 22%, #3F2610 50%, #5C3509 100%/);
-    expect(css).toMatch(/#EBC480 97%, #EBC480 100%/);
+    expect(css).toMatch(/#17120F 0%, #10192B 35%, #14294E 70%, #1B3B64 100%/);
+    expect(css).toMatch(/#0E2144 100%\)/);
+    // verses are readable in normal flow inside the section (reduced motion / no-JS)
+    expect(p.querySelector('[data-testid="verse-stack"]').querySelectorAll('blockquote').length).toBeGreaterThanOrEqual(3);
     expect(p.querySelector('[data-testid="adam-fallback-field"]').textContent).toBe('FamilyWelcoming scripture into a deeper comunity.');
   });
 
@@ -104,7 +108,7 @@ describe('Adam section: fallback (first render, reduced motion, no-JS equivalent
     expect(add.mock.calls.filter(([t, , o]) => t === 'scroll' && o && o.capture).length).toBe(0);
   });
 
-  test('motion allowed: goes live after mount, with a scroll listener (capture) and a 320vh runway attr', () => {
+  test('motion allowed: goes live after mount, with a scroll listener (capture) and a 672vh runway attr', () => {
     mockMotion(false);
     const add = vi.spyOn(document, 'addEventListener');
     const { container } = renderHome();
@@ -152,16 +156,21 @@ describe('Adam section: live stack is decorative and a11y-safe', () => {
     expect(n('feFuncR', 'intercept')).toBeCloseTo(-0.1, 4);
   });
 
-  test('final-frame type: Schibsted headline "Family" + Schibsted subtitle, grainy field layer and #EBC480 darken cap', () => {
+  test('final-frame type: Schibsted headline "Family" + Schibsted subtitle, grainy field layer, wash/cover layers and #FCFFFC darken cap', () => {
     mockMotion(false);
     const { container } = renderHome();
     const p = pin(container);
     expect(p.querySelector('.adam-final-h').textContent).toBe('Family');
-    expect(p.querySelector('[data-adam="wash"]')).toBeNull();
+    expect(p.querySelector('[data-adam="wash"]').getAttribute('aria-hidden')).toBe('true');
+    expect(p.querySelector('[data-adam="cover"]').getAttribute('aria-hidden')).toBe('true');
     expect(p.querySelector('[data-adam="field"]').getAttribute('aria-hidden')).toBe('true');
+    // pinned verse layer is aria-hidden; the same verses are exposed once via the sr-only list
+    expect(p.querySelector('[data-adam="verses"]').getAttribute('aria-hidden')).toBe('true');
+    expect(p.querySelectorAll('.verse-sr li').length).toBe(5);
+    expect(p.querySelector('[data-testid="verse-stack"]')).toBeNull();
     expect(p.querySelector('.adam-final-b').textContent).toBe('Welcoming scripture into a deeper comunity.');
     const cap = p.querySelector('[data-adam="cap"]');
-    expect(cap.style.background).toMatch(/rgb\(235, 196, 128\)|#EBC480/i);
+    expect(cap.style.background).toMatch(/rgb\(252, 255, 252\)|#FCFFFC/i);
     expect(cap.style.mixBlendMode).toBe('darken');
     const css = p.querySelector('style').textContent;
     expect(css).toMatch(/\.adam-final-h \{[^}]*Schibsted Grotesk[^}]*font-weight: 600/);
@@ -169,7 +178,7 @@ describe('Adam section: live stack is decorative and a11y-safe', () => {
     expect(css).not.toMatch(/Playfair|Inter\b/);
   });
 
-  test('mobile: 9:16 canvas, 1800px layers on 2x srcset, 260vh runway rule', () => {
+  test('mobile: 9:16 canvas, 1800px layers on 2x srcset, 564vh runway rule', () => {
     mockMotion(false, true);
     const { container } = renderHome();
     const p = pin(container);
@@ -179,7 +188,7 @@ describe('Adam section: live stack is decorative and a11y-safe', () => {
     expect(cv.style.height).toBe('1600px');
     const hand = p.querySelector('[data-adam="hand-img"]');
     expect(hand.getAttribute('srcset')).toMatch(/-900x1600\.webp 1x, .*-1800x3200\.webp 2x/);
-    expect(p.querySelector('style').textContent).toMatch(/height: 260vh/);
+    expect(p.querySelector('style').textContent).toMatch(/height: 564vh/);
   });
 
   test('image fallback: eyebrow text stays in the DOM even if the still fails', () => {
