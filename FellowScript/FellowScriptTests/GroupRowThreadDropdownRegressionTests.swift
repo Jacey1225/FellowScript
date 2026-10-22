@@ -19,17 +19,20 @@ final class GroupRowThreadDropdownRegressionTests: XCTestCase {
         return try String(contentsOf: root.appendingPathComponent(rel), encoding: .utf8)
     }
 
-    func test_chevron_isGatedOnThreadsCapability_andFailsClosed() throws {
+    func test_threadsFolder_isGatedOnThreadsCapability_andFailsClosed() throws {
         let s = try source("Chat/GroupRowThreadsView.swift")
         XCTAssertTrue(s.contains("appState.capabilities.isEnabled(\"threads\")"))
-        XCTAssertTrue(s.contains("if threadsEnabled { chevron }"))
-        XCTAssertTrue(s.contains("if threadsEnabled && expanded"))
+        XCTAssertTrue(s.contains("if threadsEnabled { tray }"))
+        // Panel lives inside the tray, so it is gated with it; flag-off also collapses.
+        XCTAssertTrue(s.contains("if !on { expanded = false }"))
         XCTAssertFalse(FSCapabilities.allOff.isEnabled("threads"))
     }
 
-    func test_chevron_a11y_44pt_reduceMotion_andLabels() throws {
+    func test_folderRow_a11y_44pt_reduceMotion_andLabels() throws {
         let s = try source("Chat/GroupRowThreadsView.swift")
-        XCTAssertTrue(s.contains(".frame(width: 44, height: 44)"))
+        XCTAssertTrue(s.contains(".frame(maxWidth: .infinity, minHeight: 44)"))
+        XCTAssertTrue(s.contains("group-row-threads-toggle"))
+        XCTAssertFalse(s.contains("group-row-threads-chevron"), "old card chevron identifier must be gone")
         XCTAssertTrue(s.contains("\"Hide threads\" : \"Show threads\""))
         XCTAssertTrue(s.contains(".accessibilityValue(expanded ? \"Expanded\" : \"Collapsed\")"))
         XCTAssertTrue(s.contains(".accessibilityAddTraits(.isButton)"))
@@ -37,13 +40,29 @@ final class GroupRowThreadDropdownRegressionTests: XCTestCase {
         XCTAssertTrue(s.contains("@Environment(\\.accessibilityReduceMotion)"))
     }
 
-    func test_threadRows_areFlush_noBackgroundBorderOrGlass() throws {
+    // State change (task 20261022-ios-group-threads-folder): the old test
+    // asserted thread rows are flush on the page background with no glass. The
+    // new design intentionally puts them in a glass tray matching the group
+    // card, so that assertion is replaced, not weakened: the tray owns the one
+    // glass container and thread rows themselves add no fill/border of their own.
+    func test_folderTray_usesGlassCard_threadRowsAddNoOwnChrome_leadingAligned_hairlinesBetweenOnly() throws {
         let s = try source("Chat/GroupRowThreadsView.swift")
+        XCTAssertTrue(s.contains(".glassCard(cornerRadius: 14)"), "tray must reuse the card material")
+        XCTAssertEqual(s.components(separatedBy: ".glassCard").count - 1, 1, "exactly one glass container")
+        XCTAssertTrue(s.contains("Text(\"Threads\")"))
+        XCTAssertTrue(s.contains("rotationEffect(.degrees(expanded ? 180 : 0))"))
+        XCTAssertTrue(s.contains("if index > 0 { hairline }"), "dividers between threads only")
+        XCTAssertTrue(s.contains("frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)"), "titles leading aligned")
         guard let r = s.range(of: "private var threadList: some View {") else { return XCTFail("threadList missing") }
         let list = String(s[r.lowerBound...])
-        for banned in [".glassCard", ".background(", ".overlay(", ".stroke", ".border(", "RoundedRectangle", ".cornerRadius", ".fill("] {
-            XCTAssertFalse(list.contains(banned), "thread list must stay flush; found \(banned)")
+        for banned in [".glassCard", ".background(", ".overlay(", ".stroke", ".border(", "RoundedRectangle", ".cornerRadius", ".fill(", "threadIndent"] {
+            XCTAssertFalse(list.contains(banned), "thread rows must not add own chrome; found \(banned)")
         }
+    }
+
+    func test_cardNoLongerReservesChevronSpace() throws {
+        let s = try source("Chat/ChatRootView.swift")
+        XCTAssertFalse(s.contains("trailingReserve"))
     }
 
     func test_groupsList_usesRow_swipeActionsKept_tapMovedOffTheWholeRow() throws {
