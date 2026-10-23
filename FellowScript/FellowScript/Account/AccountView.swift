@@ -111,6 +111,24 @@ struct AccountView: View {
     @State var deleteConfirm  = ""
     @State var showDeleteAlert = false
     @State var deleteAccountError: String? = nil
+    @State var showDeleteSheet = false
+
+    // Tier-1 undo (spec 9.2 / SX6): agent and scheduled-devotion deletes hide the row,
+    // show a 6-second "Undo" snackbar, and only call the server when it expires.
+    @State var hiddenAgentIds: Set<String> = []
+    @State var hiddenEventIds: Set<String> = []
+    @State var undoMessage: String? = nil
+    @State var undoCommit: (() -> Void)? = nil
+    @State var undoRestore: (() -> Void)? = nil
+
+    /// Starts a tier-1 undoable delete. Any earlier pending delete is committed first.
+    func deferDelete(message: String, hide: @escaping () -> Void, restore: @escaping () -> Void, commit: @escaping () -> Void) {
+        undoCommit?(); undoCommit = nil; undoRestore = nil
+        hide()
+        undoCommit = commit
+        undoRestore = restore
+        undoMessage = message
+    }
 
     var body: some View {
         NavigationStack {
@@ -220,6 +238,15 @@ struct AccountView: View {
         // 20260831-interaction-polish-conventions) — covers every TextField
         // in this screen's Edit Profile / Danger Zone sections below.
         .dismissesKeyboardOnScrollAndTap()
+        .fsUndoSnackbar(message: $undoMessage,
+                        onUndo: { undoRestore?(); undoCommit = nil; undoRestore = nil },
+                        onExpire: { undoCommit?(); undoCommit = nil; undoRestore = nil })
+        .sheet(isPresented: $showDeleteSheet) {
+            DeleteAccountSheet(username: appState.currentUser?.username ?? "",
+                               userId: appState.currentUser?.user_id ?? "",
+                               onFailure: { deleteAccountError = $0 })
+                .environmentObject(appState)
+        }
         // A blocked action means the meters just changed (e.g. now full): refresh them.
         .onChange(of: upgradeCenter.blockCount) { _, _ in
             Task { await vm.refreshUsage() }

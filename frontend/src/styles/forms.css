@@ -193,3 +193,8 @@ textarea.ff-input { resize: vertical; min-height: 96px; padding: 0; line-height:
 .note-title-input { font-size: 22px; font-weight: 800; }
 .note-editor-save { background: linear-gradient(135deg, #F0AE40, #D4922A, #B07820); color: #1A100A; }
 .note-editor-cancel { border: 1px solid rgba(212,146,42,0.32); color: #D4922A; }
+
+/* Undo snackbar (tier-1 destructive) */
+.ff-snackbar { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); z-index: 1100; display: flex; align-items: center; gap: 16px;
+  min-height: 48px; padding: 0 16px; border-radius: 12px; background: rgba(18,13,8,0.97); border: 1px solid rgba(255,255,255,0.14); color: #F5EAD0; font-size: 14px; }
+.ff-title { margin: 0; }

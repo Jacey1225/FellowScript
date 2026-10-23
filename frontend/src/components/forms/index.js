@@ -5,3 +5,5 @@ export { ConfirmDialog } from './ConfirmDialog.jsx';
 export { AuthPage, CodeField } from './AuthPage.jsx';
 export { TermsReaccept } from './TermsReaccept.jsx';
 export { FormSkin, FORM_CARD_STYLE } from './FormSkin.jsx';
+export { useUndoDelete } from './useUndoDelete.jsx';
+export { DeleteAccountDialog } from './DeleteAccountDialog.jsx';

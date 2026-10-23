@@ -18,7 +18,7 @@ import AppNav from '../components/AppNav.jsx';
 import { useWarmCanvas } from '../hooks/useWarmCanvas.js';
 import AppBloom from '../components/AppBloom.jsx';
 import SubscriptionCard from '../components/SubscriptionCard.jsx';
-import { FormSkin, FORM_CARD_STYLE } from '../components/forms/index.js';
+import { FormSkin, FORM_CARD_STYLE, useUndoDelete, DeleteAccountDialog } from '../components/forms/index.js';
 import RewardNotice from '../components/RewardNotice.jsx';
 import EmailVerifyNotice from '../components/EmailVerifyNotice.jsx';
 import DonationButton from '../components/DonationButton.jsx';
@@ -190,6 +190,8 @@ export default function Account() {
   const [photoJustUpdated, setPhotoJustUpdated] = useState(false); // brief crossfade flag (Q18), not a persistent state
   const photoInputRef = useRef(null);
 
+  const undo = useUndoDelete();
+  const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleteConfirm,  setDeleteConfirm]  = useState('');
   const [deleteLoading,  setDeleteLoading]  = useState(false);
   const [deleteMsg,      setDeleteMsg]      = useState(null);
@@ -432,14 +434,23 @@ export default function Account() {
     }
   };
 
-  const handleDeleteAgent = async (agentId) => {
-    try {
-      const res = await fetch(`${API}/agent/${user.user_id}/${agentId}`, { method: 'DELETE' });
-      if (res.ok || res.status === 204) {
+  const handleDeleteAgent = (agentId) => {
+    const prevAgents = agents;
+    const prevEvents = events;
+    undo.schedule({
+      message: 'Agent deleted.',
+      hide: () => {
         setAgents(prev => prev.filter(a => a.id !== agentId));
         setEvents(prev => prev.filter(e => e.agent_id !== agentId));
-      }
-    } catch {}
+      },
+      restore: () => { setAgents(prevAgents); setEvents(prevEvents); },
+      commit: async () => {
+        try {
+          const res = await fetch(`${API}/agent/${user.user_id}/${agentId}`, { method: 'DELETE' });
+          if (!(res.ok || res.status === 204)) { setAgents(prevAgents); setEvents(prevEvents); }
+        } catch { setAgents(prevAgents); setEvents(prevEvents); }
+      },
+    });
   };
 
   // ── Event handlers ────────────────────────────────────────────────────────
@@ -525,11 +536,18 @@ export default function Account() {
     } catch {} finally { setEvSaving(false); }
   };
 
-  const handleDeleteEvent = async (event) => {
-    setEvents(prev => prev.filter(e => e._id !== event._id));
-    try {
-      await fetch(`${API}/agent/${user.user_id}/${event.agent_id}/heartbeat/${event._id}`, { method: 'DELETE' });
-    } catch {}
+  const handleDeleteEvent = (event) => {
+    const prevEvents = events;
+    undo.schedule({
+      message: 'Scheduled devotion deleted.',
+      hide: () => setEvents(prev => prev.filter(e => e._id !== event._id)),
+      restore: () => setEvents(prevEvents),
+      commit: async () => {
+        try {
+          await fetch(`${API}/agent/${user.user_id}/${event.agent_id}/heartbeat/${event._id}`, { method: 'DELETE' });
+        } catch {}
+      },
+    });
   };
 
   // ── Profile / account handlers ────────────────────────────────────────────
@@ -1411,20 +1429,16 @@ export default function Account() {
             Permanently deletes your account, all notes, highlights, and removes you from all groups and friend lists. This cannot be undone.
           </Paragraph>
           {deleteMsg && <Alert type={deleteMsg.type} message={deleteMsg.text} showIcon style={{ marginBottom: 12, borderRadius: 8 }} />}
-          <div style={{ marginBottom: '0.8rem' }}>
-            <Text style={{ fontFamily: "inherit", fontSize: '0.72rem', color: 'rgba(244,228,193,0.5)', display: 'block', marginBottom: '0.4rem' }}>
-              Type your username to confirm
-            </Text>
-            <Input value={deleteConfirm} onChange={e => setDeleteConfirm(e.target.value)}
-              placeholder={profileData?.username || user?.username || 'yourname'}
-              style={{ maxWidth: 260, borderRadius: 8 }} />
-          </div>
-          <Button danger shape="round" icon={<DeleteOutlined />} loading={deleteLoading} onClick={handleDelete}
+          <Button danger shape="round" icon={<DeleteOutlined />} onClick={() => setDeleteOpen(true)}
             style={{ fontFamily: "inherit" }}>
             Delete My Account
           </Button>
+          <DeleteAccountDialog open={deleteOpen} username={profileData?.username || user?.username} userId={user?.user_id}
+            onClose={() => setDeleteOpen(false)} onError={(text) => setDeleteMsg({ type: 'error', text })}
+            onDeleted={() => { setDeleteOpen(false); signOut(); navigate('/signin'); }} />
         </Card>
       </Content>
+      {undo.snackbar}
       </FormSkin>
     </Layout>
   );

@@ -94,14 +94,14 @@ extension AccountView {
                     .font(.system(size: Theme.fontSM))
                     .foregroundColor(Theme.textMuted)
             } else {
-                ForEach(vm.events) { event in
+                ForEach(vm.events.filter { !hiddenEventIds.contains($0.id) }) { event in
                     Divider().background(Theme.borderGray)
                     EventRow(
                         event:     event,
                         agentName: agentName(for: event.agent_id),
                         isFiring:  vm.firingHeartbeatIds.contains(event.id),
                         onEdit:    { activeSheet = .editEvent(event) },
-                        onDelete:  { vm.removeEvent(event) },
+                        onDelete:  { undoableDeleteEvent(event) },
                         onFire:    { Task { await vm.fireHeartbeatNow(event) } }
                     )
                 }
@@ -127,5 +127,14 @@ extension AccountView {
 
     func agentName(for agentId: String) -> String {
         vm.agents.first(where: { $0.id == agentId })?.displayLabel ?? "Agent"
+    }
+}
+
+extension AccountView {
+    func undoableDeleteEvent(_ event: FSHeartbeat) {
+        deferDelete(message: "Scheduled devotion deleted.",
+                    hide: { hiddenEventIds.insert(event.id) },
+                    restore: { hiddenEventIds.remove(event.id) },
+                    commit: { vm.removeEvent(event); hiddenEventIds.remove(event.id) })
     }
 }

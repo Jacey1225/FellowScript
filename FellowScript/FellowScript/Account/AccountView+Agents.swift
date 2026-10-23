@@ -34,7 +34,7 @@ extension AccountView {
                 // Sourcing the Toggle's binding via agentEnabledBinding(id:), keyed by
                 // agent.id and re-resolved against vm.agents on every get/set, removes
                 // the dangling-index hazard structurally instead of just timing around it.
-                ForEach(vm.agents) { agent in
+                ForEach(vm.agents.filter { !hiddenAgentIds.contains($0.id) }) { agent in
                     Divider().background(Theme.borderGray)
                     HStack(spacing: Theme.spacingMD) {
                         ZStack {
@@ -72,7 +72,7 @@ extension AccountView {
                             renameText    = agent.name.isEmpty ? agent.displayLabel : agent.name
                             renameAgentId = agent.id
                         }) { Label("Rename", systemImage: "pencil") }
-                        Button(role: .destructive, action: { vm.deleteAgent(id: agent.id) }) {
+                        Button(role: .destructive, action: { undoableDeleteAgent(agent) }) {
                             Label("Delete", systemImage: "trash")
                         }
                     }
@@ -83,7 +83,7 @@ extension AccountView {
                         renameText    = agent.name.isEmpty ? agent.displayLabel : agent.name
                         renameAgentId = agent.id
                     }
-                    .accessibilityAction(named: "Delete agent") { vm.deleteAgent(id: agent.id) }
+                    .accessibilityAction(named: "Delete agent") { undoableDeleteAgent(agent) }
                 }
             }
 
@@ -107,5 +107,14 @@ extension AccountView {
             get: { vm.agents.first(where: { $0.id == id })?.enabled ?? false },
             set: { vm.toggleAgent(id: id, enabled: $0) }
         )
+    }
+}
+
+extension AccountView {
+    func undoableDeleteAgent(_ agent: FSAgent) {
+        deferDelete(message: "Agent deleted.",
+                    hide: { hiddenAgentIds.insert(agent.id) },
+                    restore: { hiddenAgentIds.remove(agent.id) },
+                    commit: { vm.deleteAgent(id: agent.id); hiddenAgentIds.remove(agent.id) })
     }
 }

@@ -115,50 +115,23 @@ extension AccountView {
     var dangerZone: some View {
         VStack(alignment: .leading, spacing: Theme.spacingSM) {
             Text("Danger Zone")
-                .font(.system(size: Theme.fontXXS)).tracking(4)
-                .foregroundColor(Theme.error.opacity(0.65))
+                .font(.system(size: 11, weight: .semibold)).tracking(1)
+                .foregroundColor(Theme.error.opacity(0.85))
 
             Text("Permanently deletes your account, all notes, highlights, and removes you from all groups and friend lists. This cannot be undone.")
                 .font(.system(size: Theme.fontSM))
-                .foregroundColor(Theme.textMuted)
+                .foregroundColor(Theme.textSecondary)
                 .fixedSize(horizontal: false, vertical: true)
 
-            FSField(label: "Type your username to confirm",
-                    text: $deleteConfirm, placeholder: appState.currentUser?.username ?? "yourname",
-                    leadingSymbol: "person",
-                    accessibilityName: "Type your username to confirm deletion",
-                    capitalization: .never, autocorrect: false)
-
-            Button(action: {
-                // Explicit empty-field branch (Architecture Q26/Q27): an empty
-                // confirmation field is genuinely ambiguous -- silently doing
-                // nothing left users with no idea why the button "didn't
-                // work" -- so it now surfaces a friendly nudge via the same
-                // deleteAccountError alert plumbing used elsewhere on this
-                // screen, rather than relying on disabled-button silence.
-                // The non-empty-but-mismatched case stays exactly as before:
-                // still blocked below by `.disabled`, so this branch is
-                // unreachable for it and intentionally has no explicit case
-                // here.
-                if deleteConfirm.isEmpty {
-                    deleteAccountError = "Type your username to confirm you want to delete your account."
-                } else if deleteConfirm == (appState.currentUser?.username ?? "") {
-                    showDeleteAlert = true
-                }
-            }) {
+            Button(action: { showDeleteSheet = true }) {
                 HStack(spacing: 6) {
                     Image(systemName: "trash")
-                    Text("Delete My Account").font(.system(size: Theme.fontSM))
+                    Text("Delete My Account").font(.system(size: Theme.fontSM, weight: .semibold))
                 }
                 .foregroundColor(Theme.error)
-                .padding(.horizontal, 16).padding(.vertical, 8)
-                .overlay(Capsule().stroke(Theme.error.opacity(0.4), lineWidth: 1))
+                .padding(.horizontal, 16).frame(minHeight: 44)
+                .overlay(Capsule().stroke(Theme.errorStrong, lineWidth: 1))
             }
-            // Only disabled for the non-empty-but-mismatched case (unchanged
-            // from before); left enabled when the field is empty so the tap
-            // above can reach its empty-field branch instead of silently
-            // no-oping.
-            .disabled(!deleteConfirm.isEmpty && deleteConfirm != (appState.currentUser?.username ?? ""))
             .accessibilityLabel("Delete account button")
         }
         .padding(.horizontal, 18).padding(.vertical, 16)
