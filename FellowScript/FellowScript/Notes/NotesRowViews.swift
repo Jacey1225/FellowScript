@@ -89,13 +89,13 @@ struct NoteRow: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 4) {
                 Text(note.title.isEmpty ? "Untitled" : note.title)
-                    .font(.inter(Theme.fontSM, weight: .bold))
+                    .font(.system(size: Theme.fontSM, weight: .bold))
                     .foregroundColor(Theme.parchment)
                     .lineLimit(1)
                 Spacer(minLength: 4)
                 if showsAuthorChip {
                     Text(note.username)
-                        .font(.inter(Theme.fontXXS, weight: .bold))
+                        .font(.system(size: Theme.fontXXS, weight: .bold))
                         .foregroundColor(Theme.parchment.opacity(0.75)).lineLimit(1)
                 }
                 cardIcon("paperplane", "Send in chat", onSend)
@@ -117,13 +117,13 @@ struct NoteRow: View {
                 }
             }
             Text(note.preview.isEmpty ? "No content" : note.preview)
-                .font(.inter(Theme.fontSM))
+                .font(.system(size: Theme.fontSM))
                 .foregroundColor(Theme.textSecondary)
                 .lineLimit(3)
             HStack {
                 Spacer()
                 Text(note.formattedTimestamp)
-                    .font(.inter(Theme.fontXS))
+                    .font(.system(size: Theme.fontXS))
                     .foregroundColor(Theme.textSecondary)
             }
         }
@@ -254,7 +254,7 @@ struct HighlightRow: View {
                 .foregroundColor(Theme.goldLight)
             Spacer()
             if let name = highlight.username {
-                Text(name).font(.inter(Theme.fontXXS)).foregroundColor(Theme.gold.opacity(0.8))
+                Text(name).font(.system(size: Theme.fontXXS)).foregroundColor(Theme.gold.opacity(0.8))
             }
         }
         .padding(.horizontal, 12)
@@ -275,7 +275,7 @@ struct HighlightRow: View {
             Spacer()
             if let name = highlight.username {
                 Text(name)
-                    .font(.inter(Theme.fontXXS))
+                    .font(.system(size: Theme.fontXXS))
                     .foregroundColor(Theme.gold.opacity(0.65))
                     .padding(.horizontal, 6)
                     .padding(.vertical, 2)

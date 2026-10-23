@@ -379,6 +379,6 @@ final class SubmenuVisualRedesignRegressionTests: XCTestCase {
 
         let reportSource = try readSource("FellowScript/Chat/ReportUserSheet.swift")
         XCTAssertFalse(reportSource.contains(".warmBloomBackground()"), "ReportUserSheet was not named in scope and must not have been restyled")
-        XCTAssertTrue(reportSource.contains("Form {"), "ReportUserSheet must keep its native Form, unchanged")
+        XCTAssertTrue(reportSource.contains("FSFormScaffold("), "ReportUserSheet is restyled onto the FSForm scaffold (forms restyle 20261023)")
     }
 }

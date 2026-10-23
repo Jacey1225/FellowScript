@@ -62,7 +62,7 @@ private struct LinkTextButton: View {
     let action: () -> Void
     var body: some View {
         Button(action: action) {
-            Text(title).font(.inter(Theme.fontSM, weight: .semibold)).foregroundColor(Theme.gold)
+            Text(title).font(.system(size: Theme.fontSM, weight: .semibold)).foregroundColor(Theme.gold)
                 .frame(minWidth: 88, minHeight: 44)
         }
     }
@@ -107,7 +107,7 @@ struct FriendLinkConfirmView: View {
             VStack(spacing: Theme.spacingMD) {
                 heading("That's your own link")
                 Text("Share it with a friend so they can send you a request.")
-                    .font(.inter(Theme.fontSM)).foregroundColor(Theme.textSecondary).multilineTextAlignment(.center)
+                    .font(.system(size: Theme.fontSM)).foregroundColor(Theme.textSecondary).multilineTextAlignment(.center)
                 LinkPrimaryButton(title: "Done", busy: false, action: onClose)
             }
         } else {
@@ -116,10 +116,10 @@ struct FriendLinkConfirmView: View {
                 VStack(spacing: Theme.spacingMD) {
                     heading("Send a friend request to \(username)?")
                     if case .failed(let msg) = phase {
-                        Text(msg).font(.inter(Theme.fontSM)).foregroundColor(Theme.error).multilineTextAlignment(.center)
+                        Text(msg).font(.system(size: Theme.fontSM)).foregroundColor(Theme.error).multilineTextAlignment(.center)
                     } else {
                         Text("They get a request and choose whether to accept.")
-                            .font(.inter(Theme.fontSM)).foregroundColor(Theme.textSecondary).multilineTextAlignment(.center)
+                            .font(.system(size: Theme.fontSM)).foregroundColor(Theme.textSecondary).multilineTextAlignment(.center)
                     }
                     LinkPrimaryButton(title: "Send request", busy: phase == .sending) { Task { await send() } }
                     LinkTextButton(title: "Cancel", action: onClose).disabled(phase == .sending)
@@ -128,7 +128,7 @@ struct FriendLinkConfirmView: View {
                 VStack(spacing: Theme.spacingMD) {
                     heading("Request sent")
                     Text("You will be friends once they accept.")
-                        .font(.inter(Theme.fontSM)).foregroundColor(Theme.textSecondary).multilineTextAlignment(.center)
+                        .font(.system(size: Theme.fontSM)).foregroundColor(Theme.textSecondary).multilineTextAlignment(.center)
                     LinkPrimaryButton(title: "Done", busy: false, action: onClose)
                 }
             }
@@ -136,7 +136,7 @@ struct FriendLinkConfirmView: View {
     }
 
     private func heading(_ s: String) -> some View {
-        Text(s).font(.playfair(Theme.fontDisplayMD)).foregroundColor(Theme.parchment)
+        Text(s).font(.system(size: Theme.fontDisplayMD, weight: .heavy)).foregroundColor(Theme.parchment)
             .multilineTextAlignment(.center)
             .accessibilityAddTraits(.isHeader)
             .accessibilityFocused($headingFocused)
@@ -196,14 +196,14 @@ struct GroupLinkRequestView: View {
         case .loading:
             VStack(spacing: Theme.spacingSM) {
                 ProgressView().tint(Theme.gold)
-                Text("Checking this link...").font(.inter(Theme.fontXS)).foregroundColor(Theme.textSecondary)
+                Text("Checking this link...").font(.system(size: Theme.fontXS)).foregroundColor(Theme.textSecondary)
             }
             .accessibilityElement(children: .combine)
         case .unavailable:
             VStack(spacing: Theme.spacingMD) {
                 heading("This group isn't available right now")
                 Text("The link may be out of date, or the group isn't taking requests.")
-                    .font(.inter(Theme.fontSM)).foregroundColor(Theme.textSecondary).multilineTextAlignment(.center)
+                    .font(.system(size: Theme.fontSM)).foregroundColor(Theme.textSecondary).multilineTextAlignment(.center)
                 LinkPrimaryButton(title: "Back to FellowScript", busy: false, action: onClose)
             }
         case .ready(let p), .sending(let p), .failed(let p, _):
@@ -214,16 +214,16 @@ struct GroupLinkRequestView: View {
                     if let church = p.churchName, !church.isEmpty { Text(church) }
                     if let place = p.locationLine { Text(place) }
                 }
-                .font(.inter(Theme.fontSM)).foregroundColor(Theme.textSecondary)
+                .font(.system(size: Theme.fontSM)).foregroundColor(Theme.textSecondary)
                 if let s = p.summary, !s.isEmpty {
-                    Text(s).font(.inter(Theme.fontSM)).foregroundColor(Theme.textSecondary)
+                    Text(s).font(.system(size: Theme.fontSM)).foregroundColor(Theme.textSecondary)
                         .multilineTextAlignment(.center).lineLimit(6)
                 }
                 if case .failed(_, let msg) = phase {
-                    Text(msg).font(.inter(Theme.fontSM)).foregroundColor(Theme.error).multilineTextAlignment(.center)
+                    Text(msg).font(.system(size: Theme.fontSM)).foregroundColor(Theme.error).multilineTextAlignment(.center)
                 } else {
                     Text("The host approves each request before anyone joins.")
-                        .font(.inter(Theme.fontXS)).foregroundColor(Theme.textMuted).multilineTextAlignment(.center)
+                        .font(.system(size: Theme.fontXS)).foregroundColor(Theme.textMuted).multilineTextAlignment(.center)
                 }
                 LinkPrimaryButton(title: "Request to join", busy: isSending) { Task { await send(p) } }
                 LinkTextButton(title: "Cancel", action: onClose).disabled(isSending)
@@ -232,7 +232,7 @@ struct GroupLinkRequestView: View {
             VStack(spacing: Theme.spacingMD) {
                 heading("Request sent")
                 Text("The host has to approve it before you can join.")
-                    .font(.inter(Theme.fontSM)).foregroundColor(Theme.textSecondary).multilineTextAlignment(.center)
+                    .font(.system(size: Theme.fontSM)).foregroundColor(Theme.textSecondary).multilineTextAlignment(.center)
                 LinkPrimaryButton(title: "Done", busy: false, action: onClose)
             }
         case .alreadyMember:
@@ -246,7 +246,7 @@ struct GroupLinkRequestView: View {
     private var isSending: Bool { if case .sending = phase { return true } else { return false } }
 
     private func heading(_ s: String) -> some View {
-        Text(s).font(.playfair(Theme.fontDisplayMD)).foregroundColor(Theme.parchment)
+        Text(s).font(.system(size: Theme.fontDisplayMD, weight: .heavy)).foregroundColor(Theme.parchment)
             .multilineTextAlignment(.center)
             .accessibilityAddTraits(.isHeader)
             .accessibilityFocused($headingFocused)

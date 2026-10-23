@@ -260,7 +260,7 @@ struct ChatRootView: View {
 
     private func sectionLabel(_ title: String) -> some View {
         Text(title)
-            .font(.inter(Theme.fontXXS, weight: .bold)).tracking(3)
+            .font(.system(size: Theme.fontXXS, weight: .bold)).tracking(3)
             .foregroundColor(Theme.goldLight)
             .accessibilityAddTraits(.isHeader)
     }
@@ -304,7 +304,7 @@ struct ChatRootView: View {
                 if !collapsedSections.contains(.friends) {
                     if vm.friends.isEmpty {
                         Text("No friends yet.")
-                            .font(.inter(Theme.fontSM)).foregroundColor(Theme.textSecondary)
+                            .font(.system(size: Theme.fontSM)).foregroundColor(Theme.textSecondary)
                             .padding(.vertical, 8)
                     }
                     ForEach(vm.friends) { contact in
@@ -323,7 +323,7 @@ struct ChatRootView: View {
                     }
                     if vm.groups.isEmpty {
                         Text("No groups yet.")
-                            .font(.inter(Theme.fontSM)).foregroundColor(Theme.textSecondary)
+                            .font(.system(size: Theme.fontSM)).foregroundColor(Theme.textSecondary)
                             .padding(.vertical, 8)
                     }
                     ForEach(vm.groups) { contact in
@@ -858,10 +858,10 @@ struct ChatRootView: View {
                 .font(.system(size: 40, weight: .light))
                 .foregroundColor(Theme.gold.opacity(0.30))
             Text(message)
-                .font(.inter(Theme.fontBody))
+                .font(.system(size: Theme.fontBody))
                 .foregroundColor(Theme.textSecondary)
             Text(hint)
-                .font(.inter(Theme.fontSM))
+                .font(.system(size: Theme.fontSM))
                 .foregroundColor(Theme.textMuted)
                 .multilineTextAlignment(.center)
             Spacer()
@@ -877,7 +877,7 @@ struct ChatRootView: View {
                 .font(.system(size: 34, weight: .light))
                 .foregroundColor(Theme.gold.opacity(0.30))
             Text("No matches for \u{201C}\(searchQuery)\u{201D}")
-                .font(.inter(Theme.fontBody))
+                .font(.system(size: Theme.fontBody))
                 .foregroundColor(Theme.textSecondary)
                 .multilineTextAlignment(.center)
             Spacer()
@@ -1219,7 +1219,7 @@ struct ContactRow: View {
             .overlay(alignment: .topTrailing) { JoinRequestRowDot(contact: contact, size: 10) }
             .accessibilityHidden(true)
             Text(contact.name)
-                .font(.inter(Theme.fontSM, weight: .semibold))
+                .font(.system(size: Theme.fontSM, weight: .semibold))
                 .foregroundColor(Theme.parchment)
                 .lineLimit(1)
             Spacer(minLength: 0)
@@ -1444,75 +1444,32 @@ struct AddFriendSheet: View {
     @State private var username = ""
 
     var body: some View {
-        NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: Theme.spacingSM) {
-                    Text("SEARCH BY USERNAME")
-                        .font(.inter(Theme.fontXXS)).tracking(4)
-                        .foregroundColor(Theme.textGoldMuted)
-                    TextField("Username", text: $username)
-                        .font(.inter(Theme.fontBody))
-                        .foregroundColor(Theme.parchment)
-                        .autocapitalization(.none)
-                        .accessibilityLabel("Enter username to add as friend")
+        FSFormScaffold(
+            title: "Add Friend",
+            dirty: !username.isEmpty,
+            onClose: { dismiss() },
+            content: {
+                FSFormCard(title: "Search by username") {
+                    FSField(label: "Username", required: true, text: $username,
+                            accessibilityName: "Enter username to add as friend",
+                            contentType: .username, capitalization: .never, autocorrect: false,
+                            submitLabel: .send,
+                            onSubmit: { if !username.isEmpty { onSend(username); dismiss() } })
                 }
-                .widgetCard()
-                .padding(Theme.spacingLG)
+            },
+            bar: {
+                FSPinnedActionBar(secondaryTitle: "Cancel", onSecondary: { dismiss() },
+                                  primaryTitle: "Send Request", primaryDimmed: username.isEmpty,
+                                  onPrimary: { if !username.isEmpty { onSend(username); dismiss() } })
             }
-            .warmBloomBackground()
-            // Shared keyboard-dismiss convention (task
-            // 20260831-interaction-polish-conventions).
-            .dismissesKeyboardOnScrollAndTap()
-            .navigationTitle("Add Friend")
-            .navigationBarTitleDisplayMode(.inline)
-            // Follow-up polish (task 20260902-submenu-followup-polish):
-            // plain system-styled toolbar Buttons picked up iOS's automatic
-            // Liquid Glass capsule chrome instead of this app's own button
-            // language. Cancel gets the established ghost-chip dismiss
-            // recipe (NoteEditorView.cancelChip / NotesListView.ghostPill),
-            // Send Request reuses PillButton's amber-gradient recipe
-            // directly. A `.principal` title item centers "Add Friend"
-            // independent of these two items' widths -- the default inline
-            // title only centers within the leading/trailing gap, which the
-            // old asymmetric Cancel/Send-Request widths visibly threw off.
-            // `.sharedBackgroundVisibility(.hidden)` on both custom items
-            // avoids the doubled Liquid Glass + own-stroke outline
-            // NotesListView's ghostPill/gradientPill toolbar items already
-            // had to work around.
-            .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Button(action: { dismiss() }) { sheetGhostCancelLabel }
-                        .buttonStyle(.plain)
-                }
-                .suppressAutomaticGlassChrome()
-                ToolbarItem(placement: .principal) {
-                    Text("Add Friend")
-                        .font(.system(size: 17, weight: .semibold))
-                        .foregroundColor(Theme.parchment)
-                }
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    PillButton(title: "Send Request") {
-                        onSend(username)
-                        dismiss()
-                    }
-                    .disabled(username.isEmpty)
-                }
-                .suppressAutomaticGlassChrome()
-            }
-        }
+        )
+        .dismissesKeyboardOnScrollAndTap()
         .presentationDetents([.medium])
         .presentationDragIndicator(.visible)
         .preferredColorScheme(.dark)
     }
 }
 
-// ── Add group sheet (mirrors GroupModal in MessagingSidebar.jsx) ───────────────
-// Visual redesign (task 20260902-submenu-visual-redesign): same Form-to-
-// widgetCard() migration as AddFriendSheet above, with member rows moved from
-// a List into a plain VStack + Divider so the whole sheet sits on the shared
-// warm-bloom-ground background instead of native grouped-list chrome. Member
-// count is variable, so this gets [.medium, .large] rather than a fixed
-// detent, so a long member list isn't clipped.
 struct AddGroupSheet: View {
     let friends:  [FSContact]
     let onCreate: (String, [String]) -> Void
@@ -1521,108 +1478,58 @@ struct AddGroupSheet: View {
     @State private var selectedIds = Set<String>()
 
     var body: some View {
-        NavigationStack {
-            ScrollView {
-                VStack(spacing: Theme.spacingLG) {
-                    VStack(alignment: .leading, spacing: Theme.spacingSM) {
-                        Text("GROUP NAME")
-                            .font(.inter(Theme.fontXXS)).tracking(4)
-                            .foregroundColor(Theme.textGoldMuted)
-                        TextField("Study Group", text: $groupName)
-                            .font(.inter(Theme.fontBody))
-                            .foregroundColor(Theme.parchment)
-                            .accessibilityLabel("Group name field")
-                    }
-                    .widgetCard()
-
-                    VStack(alignment: .leading, spacing: Theme.spacingSM) {
-                        Text("MEMBERS")
-                            .font(.inter(Theme.fontXXS)).tracking(4)
-                            .foregroundColor(Theme.textGoldMuted)
-                        VStack(spacing: 0) {
-                            ForEach(Array(friends.enumerated()), id: \.element.id) { index, f in
-                                HStack {
-                                    Text(f.name)
-                                        .font(.inter(Theme.fontBody))
-                                        .foregroundColor(Theme.parchment.opacity(0.70))
-                                    Spacer()
+        FSFormScaffold(
+            title: "New Group",
+            dirty: !groupName.isEmpty || !selectedIds.isEmpty,
+            onClose: { dismiss() },
+            content: {
+                FSFormCard(title: "Group") {
+                    FSField(label: "Group name", required: true, text: $groupName, placeholder: "Study Group",
+                            maxLength: 255, accessibilityName: "Group name field")
+                }
+                FSFormCard(title: "Members") {
+                    VStack(spacing: 0) {
+                        ForEach(Array(friends.enumerated()), id: \.element.id) { index, f in
+                            HStack {
+                                Text(f.name)
+                                    .font(.fsBody)
+                                    .foregroundColor(Theme.textPrimary)
+                                Spacer()
+                                ZStack {
+                                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                        .strokeBorder(selectedIds.contains(f.id) ? Theme.gold : Theme.fieldBorder, lineWidth: 2)
+                                        .frame(width: 22, height: 22)
                                     if selectedIds.contains(f.id) {
-                                        Image(systemName: "checkmark")
-                                            .foregroundColor(Theme.gold)
+                                        Image(systemName: "checkmark").font(.system(size: 12, weight: .bold)).foregroundColor(Theme.gold)
                                     }
                                 }
-                                .padding(.vertical, Theme.spacingSM)
-                                .contentShape(Rectangle())
-                                .onTapGesture {
-                                    if selectedIds.contains(f.id) { selectedIds.remove(f.id) }
-                                    else                           { selectedIds.insert(f.id) }
-                                }
-                                .accessibilityLabel("\(f.name). \(selectedIds.contains(f.id) ? "Selected" : "Not selected")")
-                                .accessibilityAddTraits(selectedIds.contains(f.id) ? .isSelected : [])
+                            }
+                            .frame(minHeight: 48)
+                            .contentShape(Rectangle())
+                            .onTapGesture {
+                                if selectedIds.contains(f.id) { selectedIds.remove(f.id) }
+                                else                           { selectedIds.insert(f.id) }
+                            }
+                            .accessibilityLabel("\(f.name). \(selectedIds.contains(f.id) ? "Selected" : "Not selected")")
+                            .accessibilityAddTraits(selectedIds.contains(f.id) ? .isSelected : [])
 
-                                if index < friends.count - 1 {
-                                    Divider().opacity(0.15)
-                                }
+                            if index < friends.count - 1 {
+                                Divider().overlay(Theme.borderGray)
                             }
                         }
                     }
-                    .widgetCard()
                 }
-                .padding(Theme.spacingLG)
+            },
+            bar: {
+                FSPinnedActionBar(secondaryTitle: "Cancel", onSecondary: { dismiss() },
+                                  primaryTitle: "Create", primaryDimmed: groupName.isEmpty,
+                                  onPrimary: { if !groupName.isEmpty { onCreate(groupName, Array(selectedIds)); dismiss() } })
             }
-            .warmBloomBackground()
-            // Shared keyboard-dismiss convention (task
-            // 20260831-interaction-polish-conventions).
-            .dismissesKeyboardOnScrollAndTap()
-            .navigationTitle("New Group")
-            .navigationBarTitleDisplayMode(.inline)
-            // Follow-up polish (task 20260902-submenu-followup-polish): same
-            // ghost-chip-Cancel / PillButton-Create / centered-`.principal`-
-            // title treatment as AddFriendSheet above -- see its toolbar
-            // comment for the full rationale.
-            .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Button(action: { dismiss() }) { sheetGhostCancelLabel }
-                        .buttonStyle(.plain)
-                }
-                .suppressAutomaticGlassChrome()
-                ToolbarItem(placement: .principal) {
-                    Text("New Group")
-                        .font(.system(size: 17, weight: .semibold))
-                        .foregroundColor(Theme.parchment)
-                }
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    PillButton(title: "Create") {
-                        onCreate(groupName, Array(selectedIds))
-                        dismiss()
-                    }
-                    .disabled(groupName.isEmpty)
-                }
-                .suppressAutomaticGlassChrome()
-            }
-        }
+        )
+        .dismissesKeyboardOnScrollAndTap()
         .presentationDetents([.medium, .large])
         .presentationDragIndicator(.visible)
         .preferredColorScheme(.dark)
     }
 }
 
-// ── Shared ghost-chip Cancel label for this file's sheets (task
-// 20260902-submenu-followup-polish) -- matches the app's established
-// ghost-chip dismiss recipe (NoteEditorView.cancelChip's icon-chip variant,
-// NotesListView.ghostPill's text-chip variant): a faint parchment-tinted
-// capsule fill + stroke, muted text, rather than a second gold-filled pill,
-// so Cancel doesn't visually compete with each sheet's one true primary gold
-// action. `.fixedSize()` matches NotesListView.ghostPill's own fix for the
-// same problem -- the leading toolbar slot proposes a very narrow width on
-// iOS 26 that otherwise wraps/truncates the label.
-fileprivate var sheetGhostCancelLabel: some View {
-    Text("Cancel")
-        .font(.inter(Theme.fontSM))
-        .foregroundColor(Theme.textSecondary)
-        .fixedSize()
-        .padding(.horizontal, 16)
-        .frame(height: 36)
-        .background(Capsule().fill(Theme.parchment.opacity(0.06)))
-        .overlay(Capsule().stroke(Theme.parchment.opacity(0.12), lineWidth: 1))
-}

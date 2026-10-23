@@ -438,12 +438,12 @@ struct ShareToChatSheet: View {
                 VStack(alignment: .leading, spacing: Theme.spacingMD) {
                     HStack {
                         Text("Send in chat")
-                            .font(.playfair(Theme.fontDisplayMD))
+                            .font(.system(size: Theme.fontDisplayMD, weight: .heavy))
                             .foregroundColor(Theme.parchment)
                             .accessibilityAddTraits(.isHeader)
                         Spacer()
                         Button("Cancel") { dismiss() }
-                            .font(.inter(Theme.fontSM, weight: .semibold))
+                            .font(.system(size: Theme.fontSM, weight: .semibold))
                             .foregroundColor(Theme.gold)
                             .frame(minWidth: 44, minHeight: 44)
                     }
@@ -452,10 +452,10 @@ struct ShareToChatSheet: View {
                         HStack { Spacer(); ProgressView().tint(Theme.gold); Spacer() }.padding(.top, 24)
                     } else if failed {
                         Text("Couldn't load your chats. Try again in a moment.")
-                            .font(.inter(Theme.fontSM)).foregroundColor(Theme.textSecondary)
+                            .font(.system(size: Theme.fontSM)).foregroundColor(Theme.textSecondary)
                     } else if friends.isEmpty && groups.isEmpty {
                         Text("No chats yet")
-                            .font(.inter(Theme.fontSM)).foregroundColor(Theme.textSecondary)
+                            .font(.system(size: Theme.fontSM)).foregroundColor(Theme.textSecondary)
                             .frame(maxWidth: .infinity).padding(.top, 24)
                     } else {
                         section("Friends", friends)
@@ -488,7 +488,7 @@ struct ShareToChatSheet: View {
                     HStack(spacing: 12) {
                         AvatarView(initial: String(c.name.prefix(1)).uppercased(), photoURL: c.photoUrl,
                                    diameter: 36, fillColor: Theme.gold.opacity(0.14), textColor: Theme.goldLight)
-                        Text(c.name).font(.inter(Theme.fontBody, weight: .semibold))
+                        Text(c.name).font(.system(size: Theme.fontBody, weight: .semibold))
                             .foregroundColor(Theme.parchment).lineLimit(1)
                         Spacer()
                         Image(systemName: "paperplane").foregroundColor(Theme.gold)
