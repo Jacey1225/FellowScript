@@ -1512,8 +1512,9 @@ struct ChatThreadView: View {
                 // Task 20261023-group-info-row: groups only, directly under the header
                 // (replaces the announcement banner and the floating pin button).
                 if GroupInfoCategory.rowShows(isGroup: contact.type == .group, isThreadOpen: vm.isThreadOpen) {
-                    GroupInfoChipRow(categories: groupInfoCategories, selected: $infoCategory, pinCount: vm.pinCount) {
-                        sessionsPill
+                    GroupInfoChipRow(categories: groupInfoCategories, selected: $infoCategory, pinCount: vm.pinCount,
+                                     compact: !embedded) {
+                        sessionsChip
                     }
                 }
 
@@ -2546,6 +2547,25 @@ struct ChatThreadView: View {
             }
         }
         .accessibilityLabel("View and schedule study sessions")
+    }
+
+    /// Icon-only Sessions chip pinned at the right end of the group chip row (always visible).
+    private var sessionsChip: some View {
+        Button { openSessionsMenu() } label: {
+            Image(systemName: embedded ? "phone" : "calendar")
+                .font(.system(size: 15, weight: .bold))
+                .foregroundColor(embedded ? Theme.goldLight : Theme.ink)
+                .frame(width: 44, height: 38)
+                .background(embedded ? AnyShapeStyle(Theme.gold.opacity(0.12)) : AnyShapeStyle(Theme.goldGradient))
+                .clipShape(Capsule())
+                .overlay { if embedded { Capsule().stroke(Theme.borderGoldDim, lineWidth: 1) } }
+                .frame(minHeight: 44)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Sessions")
+        .accessibilityHint("View and schedule study sessions")
+        .accessibilityIdentifier("group-info-sessions")
     }
 
     // ── Sessions submenu (task 20260920-chat-sessions-submenu) ────────────────
