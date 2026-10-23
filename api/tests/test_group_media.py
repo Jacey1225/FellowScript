@@ -153,7 +153,9 @@ def test_media(client):
         check("default limit is page_size", body["page"]["limit"] == cfg.page_size)
         rows = body["media"]
         check("item shape exact and no attachment_key", all(list(i) == ITEM_KEYS for i in rows)
-              and "secret/" not in r.text and "attachment_key" not in r.text)
+              and "attachment_key" not in r.text
+              # a presigned URL legitimately embeds the key in its path; the raw key must never be a bare field value
+              and not any(str(v).startswith("secret/") for i in rows for v in i.values()))
         check("only image/video/gif kinds", {i["kind"] for i in rows} <= {"image", "video", "gif"})
         check("newest first", [i["created_at"] for i in rows] == sorted((i["created_at"] for i in rows), reverse=True))
         gif_item = next(i for i in rows if i["kind"] == "gif")
