@@ -13,48 +13,26 @@ struct MfaSetupSheet: View {
     let onCancel: () -> Void
 
     var body: some View {
-        NavigationStack {
-            VStack(spacing: Theme.spacingMD) {
-                Text("Enter the 6-digit code we just emailed you to confirm two-factor authentication.")
-                    .font(.inter(Theme.fontSM))
-                    .foregroundColor(Theme.textMuted)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, Theme.spacingLG)
-
-                TextField("123456", text: $code)
-                    .keyboardType(.numberPad)
-                    .multilineTextAlignment(.center)
-                    .font(.system(size: 24, weight: .semibold, design: .monospaced))
-                    .foregroundColor(Theme.parchment)
-                    .padding(Theme.spacingMD)
-                    .background(Theme.inputBg)
-                    .clipShape(RoundedRectangle(cornerRadius: Theme.radius))
-                    .padding(.horizontal, Theme.spacingLG)
-
-                Spacer()
-            }
-            .padding(.top, Theme.spacingLG)
-            .background(Theme.bgPage)
-            // Shared keyboard-dismiss convention (task
-            // 20260831-interaction-polish-conventions).
-            .dismissesKeyboardOnScrollAndTap()
-            .navigationTitle("Confirm 2FA")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Button("Cancel", action: onCancel).foregroundColor(Theme.textGoldMuted)
+        FSFormScaffold(
+            title: "Confirm 2FA",
+            onClose: onCancel,
+            content: {
+                FSFormCard {
+                    Text("Enter the 6-digit code we just emailed you to confirm two-factor authentication.")
+                        .font(.system(size: 14))
+                        .foregroundColor(Theme.textSecondary)
+                    FSCodeField(label: "Verification code", code: $code)
                 }
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    if isLoading {
-                        ProgressView()
-                    } else {
-                        Button("Confirm", action: onConfirm)
-                            .foregroundColor(Theme.gold)
-                            .disabled(code.isEmpty)
-                    }
-                }
+            },
+            bar: {
+                FSPinnedActionBar(secondaryTitle: "Cancel", onSecondary: onCancel,
+                                  primaryTitle: "Confirm", primaryDimmed: code.isEmpty,
+                                  saving: isLoading,
+                                  onPrimary: { if !code.isEmpty && !isLoading { onConfirm() } })
             }
-        }
+        )
+        // Shared keyboard-dismiss convention (task 20260831-interaction-polish-conventions).
+        .dismissesKeyboardOnScrollAndTap()
         .preferredColorScheme(.dark)
     }
 }
@@ -66,46 +44,29 @@ struct MfaDisableSheet: View {
     let onCancel: () -> Void
 
     var body: some View {
-        NavigationStack {
-            VStack(spacing: Theme.spacingMD) {
-                Text("Enter your current password to turn off two-factor authentication.")
-                    .font(.inter(Theme.fontSM))
-                    .foregroundColor(Theme.textMuted)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, Theme.spacingLG)
-
-                SecureField("Current password", text: $password)
-                    .font(.inter(Theme.fontBody))
-                    .foregroundColor(Theme.parchment)
-                    .padding(Theme.spacingMD)
-                    .background(Theme.inputBg)
-                    .clipShape(RoundedRectangle(cornerRadius: Theme.radius))
-                    .padding(.horizontal, Theme.spacingLG)
-
-                Spacer()
-            }
-            .padding(.top, Theme.spacingLG)
-            .background(Theme.bgPage)
-            // Shared keyboard-dismiss convention (task
-            // 20260831-interaction-polish-conventions).
-            .dismissesKeyboardOnScrollAndTap()
-            .navigationTitle("Turn Off 2FA")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Button("Cancel", action: onCancel).foregroundColor(Theme.textGoldMuted)
+        FSFormScaffold(
+            title: "Turn Off 2FA",
+            onClose: onCancel,
+            content: {
+                FSFormCard {
+                    Text("Enter your current password to turn off two-factor authentication.")
+                        .font(.system(size: 14))
+                        .foregroundColor(Theme.textSecondary)
+                    FSField(label: "Current password", required: true, text: $password,
+                            secure: true, contentType: .password,
+                            capitalization: .never, autocorrect: false,
+                            onSubmit: { if !password.isEmpty && !isLoading { onConfirm() } })
                 }
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    if isLoading {
-                        ProgressView()
-                    } else {
-                        Button("Turn Off", action: onConfirm)
-                            .foregroundColor(.red)
-                            .disabled(password.isEmpty)
-                    }
-                }
+            },
+            bar: {
+                FSPinnedActionBar(secondaryTitle: "Cancel", onSecondary: onCancel,
+                                  primaryTitle: "Turn Off", primaryDimmed: password.isEmpty,
+                                  primaryDestructive: true, saving: isLoading,
+                                  onPrimary: { if !password.isEmpty && !isLoading { onConfirm() } })
             }
-        }
+        )
+        // Shared keyboard-dismiss convention (task 20260831-interaction-polish-conventions).
+        .dismissesKeyboardOnScrollAndTap()
         .preferredColorScheme(.dark)
     }
 }

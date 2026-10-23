@@ -55,3 +55,26 @@ extension FSFormCard where Trailing == EmptyView {
         self.content = content
     }
 }
+
+extension View {
+    /// Gray-glass card chrome (cardGlassGray + borderGray, radius 20) for views that
+    /// already own their own padding/layout. Use instead of `.widgetCard()` in forms.
+    func fsCard(padding: CGFloat = 16) -> some View {
+        self
+            .padding(padding)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(RoundedRectangle(cornerRadius: Theme.formCardRadius, style: .continuous).fill(Theme.cardGlassGray))
+            .overlay(RoundedRectangle(cornerRadius: Theme.formCardRadius, style: .continuous).strokeBorder(Theme.borderGray, lineWidth: 1))
+    }
+}
+
+/// Gold 11pt uppercase eyebrow for card headings (replaces the 10pt gold@60% `SectionEyebrow`).
+struct FSEyebrow: View {
+    let title: String
+    var body: some View {
+        Text(title.uppercased())
+            .font(.system(size: 11, weight: .semibold)).tracking(1)
+            .foregroundColor(Theme.gold.opacity(0.85))
+            .accessibilityAddTraits(.isHeader)
+    }
+}

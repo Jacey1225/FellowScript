@@ -14,7 +14,7 @@ extension AccountView {
             sectionLabel("Scheduled devotions")
 
             Text("Pick a time and a prompt. Every day at that time your AI study partner writes a devotion for you and saves it as a note, even when the app is closed. Try a morning devotion, an evening prayer prompt, a weekly recap, or a reading-plan check-in.")
-                .font(.inter(Theme.fontSM))
+                .font(.system(size: Theme.fontSM))
                 .foregroundColor(Theme.textMuted)
 
             // Manual "execute now" confirmation (task
@@ -26,7 +26,7 @@ extension AccountView {
                 HStack(spacing: Theme.spacingSM) {
                     Image(systemName: msg.type == .success ? "checkmark.circle.fill" : "clock.arrow.circlepath")
                     Text(msg.text)
-                        .font(.inter(Theme.fontSM))
+                        .font(.system(size: Theme.fontSM))
                 }
                 .foregroundColor(msg.type == .success ? Theme.success : Theme.gold)
                 .padding(.horizontal, Theme.spacingSM).padding(.vertical, Theme.spacingXS + 2)
@@ -66,11 +66,11 @@ extension AccountView {
             // this view's), it only stops the view from asserting "you
             // have no events" while that's not actually known yet.
             if vm.events.isEmpty && vm.isLoading {
-                Divider().background(Theme.borderGoldFaint)
+                Divider().background(Theme.borderGray)
                 HStack(spacing: Theme.spacingSM) {
                     ProgressView().tint(Theme.gold)
                     Text("Loading your scheduled devotions…")
-                        .font(.inter(Theme.fontSM))
+                        .font(.system(size: Theme.fontSM))
                         .foregroundColor(Theme.textMuted)
                 }
             } else if vm.events.isEmpty && !vm.eventsLoaded {
@@ -84,18 +84,18 @@ extension AccountView {
                 // the existing retry path. Distinct from the loading row
                 // above (a round is still running) and from the confirmed-
                 // empty copy below (a clean round established emptiness).
-                Divider().background(Theme.borderGoldFaint)
+                Divider().background(Theme.borderGray)
                 Text("Your scheduled devotions haven't loaded yet. Pull down to refresh.")
-                    .font(.inter(Theme.fontSM))
+                    .font(.system(size: Theme.fontSM))
                     .foregroundColor(Theme.textMuted)
             } else if vm.events.isEmpty {
-                Divider().background(Theme.borderGoldFaint)
+                Divider().background(Theme.borderGray)
                 Text("No scheduled devotions yet. Tap + to add one and wake up to a devotion each day.")
-                    .font(.inter(Theme.fontSM))
+                    .font(.system(size: Theme.fontSM))
                     .foregroundColor(Theme.textMuted)
             } else {
                 ForEach(vm.events) { event in
-                    Divider().background(Theme.borderGoldFaint)
+                    Divider().background(Theme.borderGray)
                     EventRow(
                         event:     event,
                         agentName: agentName(for: event.agent_id),
@@ -107,7 +107,7 @@ extension AccountView {
                 }
             }
 
-            Divider().background(Theme.borderGoldFaint)
+            Divider().background(Theme.borderGray)
             Button(action: {
                 guard !vm.agents.isEmpty else { return }
                 // Explicit user action (scheduling a devotion): lifts any

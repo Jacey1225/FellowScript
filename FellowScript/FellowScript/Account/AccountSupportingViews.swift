@@ -15,10 +15,10 @@ struct StatBox: View {
     var body: some View {
         VStack(spacing: 4) {
             Text("\(value)")
-                .font(.playfair(Theme.fontDisplayLG))
+                .font(.system(size: Theme.fontDisplayLG, weight: .heavy))
                 .foregroundColor(Theme.gold)
             Text(label)
-                .font(.inter(Theme.fontXXS)).tracking(3).textCase(.uppercase)
+                .font(.system(size: Theme.fontXXS)).tracking(3).textCase(.uppercase)
                 .foregroundColor(Theme.textMuted)
         }
         .frame(maxWidth: .infinity)
@@ -39,76 +39,30 @@ struct NewAgentSheet: View {
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
-        NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: Theme.spacingSM) {
-                    Text("CUSTOM ROLE (OPTIONAL)")
-                        .font(.inter(Theme.fontXXS)).tracking(4).foregroundColor(Theme.textGoldMuted)
-
-                    VStack(alignment: .leading, spacing: Theme.spacingSM) {
-                        Text("Optionally give this agent a custom role. Leave blank to use the default spiritual guide role.")
-                            .font(.inter(Theme.fontSM))
-                            .foregroundColor(Theme.textSecondary)
-                        TextEditor(text: $role)
-                            .font(.inter(Theme.fontBody))
-                            .foregroundColor(Theme.parchment)
-                            .scrollContentBackground(.hidden)
-                            .frame(minHeight: 80)
-                            .accessibilityLabel("Agent role description")
-                    }
-                    .widgetCard()
+        FSFormScaffold(
+            title: "New Agent",
+            dirty: !role.isEmpty,
+            onClose: { dismiss() },
+            content: {
+                FSFormCard(title: "Custom role") {
+                    FSField(label: "Role description", optional: true, text: $role,
+                            helper: "Optionally give this agent a custom role. Leave blank to use the default spiritual guide role.",
+                            accessibilityName: "Agent role description",
+                            multiline: true, minLines: 4)
                 }
-                .padding(Theme.spacingLG)
+            },
+            bar: {
+                FSPinnedActionBar(secondaryTitle: "Cancel", onSecondary: { dismiss() },
+                                  primaryTitle: "Create", onPrimary: { onCreate(); dismiss() })
             }
-            .warmBloomBackground()
-            // Shared keyboard-dismiss convention (task
-            // 20260831-interaction-polish-conventions).
-            .dismissesKeyboardOnScrollAndTap()
-            .navigationTitle("New Agent")
-            .navigationBarTitleDisplayMode(.inline)
-            // Follow-up polish (task 20260902-submenu-followup-polish): same
-            // ghost-chip-Cancel / PillButton-Create / centered-`.principal`-
-            // title treatment as ChatRootView's AddFriendSheet/AddGroupSheet
-            // -- see AddFriendSheet's toolbar comment for the full rationale.
-            .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Button(action: { dismiss() }) { cancelGhostChip }
-                        .buttonStyle(.plain)
-                }
-                .suppressAutomaticGlassChrome()
-                ToolbarItem(placement: .principal) {
-                    Text("New Agent")
-                        .font(.system(size: 17, weight: .semibold))
-                        .foregroundColor(Theme.parchment)
-                }
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    PillButton(title: "Create") { onCreate(); dismiss() }
-                }
-                .suppressAutomaticGlassChrome()
-            }
-        }
-        .presentationDetents([.medium])
+        )
+        // Shared keyboard-dismiss convention (task 20260831-interaction-polish-conventions).
+        .dismissesKeyboardOnScrollAndTap()
+        .presentationDetents([.medium, .large])
         .preferredColorScheme(.dark)
-    }
-
-    // Ghost-chip Cancel label (see ChatRootView.swift's sheetGhostCancelLabel
-    // for the shared recipe/rationale comment -- bespoke per-sheet copy here
-    // rather than a new cross-file shared component per this task's spec).
-    private var cancelGhostChip: some View {
-        Text("Cancel")
-            .font(.inter(Theme.fontSM))
-            .foregroundColor(Theme.textSecondary)
-            .fixedSize()
-            .padding(.horizontal, 16)
-            .frame(height: 36)
-            .background(Capsule().fill(Theme.parchment.opacity(0.06)))
-            .overlay(Capsule().stroke(Theme.parchment.opacity(0.12), lineWidth: 1))
     }
 }
 
-// ── Timezone picker sheet ───────────────────────────────────────────────────
-// Full IANA timezone list via Foundation (mirrors the web Account page's use
-// of Intl.supportedValuesOf('timeZone')); searchable since there are 400+.
 struct TimeZonePickerSheet: View {
     let selected: String
     let onPick: (String) -> Void
@@ -122,38 +76,46 @@ struct TimeZonePickerSheet: View {
     }
 
     var body: some View {
-        NavigationStack {
-            List(filtered, id: \.self) { tz in
-                Button(action: { onPick(tz); dismiss() }) {
-                    HStack {
-                        Text(tz)
-                            .font(.inter(Theme.fontBody))
-                            .foregroundColor(Theme.parchment)
-                        Spacer()
-                        if tz == selected {
-                            Image(systemName: "checkmark").foregroundColor(Theme.gold)
+        FSFormScaffold(
+            title: "Timezone",
+            onClose: { dismiss() },
+            content: {
+                FSField(label: "Search", text: $query, placeholder: "Search timezones",
+                        leadingSymbol: "magnifyingglass", capitalization: .never, autocorrect: false)
+                FSFormCard {
+                    LazyVStack(spacing: 0) {
+                        ForEach(Array(filtered.enumerated()), id: \.element) { idx, tz in
+                            Button(action: { onPick(tz); dismiss() }) {
+                                HStack(spacing: 12) {
+                                    Text(tz)
+                                        .font(.fsBody)
+                                        .foregroundColor(Theme.textPrimary)
+                                    Spacer()
+                                    ZStack {
+                                        Circle().strokeBorder(tz == selected ? Theme.gold : Theme.fieldBorder, lineWidth: 2)
+                                            .frame(width: 22, height: 22)
+                                        if tz == selected { Circle().fill(Theme.gold).frame(width: 12, height: 12) }
+                                    }
+                                }
+                                .frame(minHeight: 48)
+                                .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel(tz == selected ? "\(tz), selected" : tz)
+                            if idx < filtered.count - 1 { Divider().overlay(Theme.borderGray) }
                         }
                     }
                 }
-                .listRowBackground(Theme.cardBg)
-                .accessibilityLabel(tz == selected ? "\(tz), selected" : tz)
+            },
+            bar: {
+                FSPinnedActionBar(primaryTitle: "Done", onPrimary: { dismiss() })
             }
-            .scrollContentBackground(.hidden)
-            .background(Theme.bgPage)
-            .searchable(text: $query, prompt: "Search timezones")
-            .navigationTitle("Timezone")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Button("Cancel") { dismiss() }.foregroundColor(Theme.textGoldMuted)
-                }
-            }
-        }
+        )
+        .dismissesKeyboardOnScrollAndTap()
         .preferredColorScheme(.dark)
     }
 }
 
-// ── Event row (shown in Events section) ───────────────────────────────────────
 struct EventRow: View {
     let event:     FSHeartbeat
     let agentName: String
@@ -171,7 +133,7 @@ struct EventRow: View {
             }
             VStack(alignment: .leading, spacing: 2) {
                 Text(event.prompt.isEmpty ? "Untitled devotion" : String(event.prompt.prefix(50)))
-                    .font(.inter(Theme.fontBody))
+                    .font(.system(size: Theme.fontBody))
                     .foregroundColor(Theme.parchment)
                     .lineLimit(1)
                 HStack(spacing: 4) {
@@ -179,7 +141,7 @@ struct EventRow: View {
                     Text("·")
                     Text(agentName)
                 }
-                .font(.inter(Theme.fontXS))
+                .font(.system(size: Theme.fontXS))
                 .foregroundColor(Theme.textMuted)
             }
             Spacer()

@@ -363,7 +363,7 @@ struct AccountView: View {
     // outline pill and ghost icon+label pill mirror NoteEditorView's header chips) ─
     func gradientPill(_ title: String, compact: Bool = false) -> some View {
         Text(title)
-            .font(.inter(compact ? Theme.fontXS : Theme.fontSM, weight: .semibold))
+            .font(.system(size: compact ? Theme.fontXS : Theme.fontSM, weight: .semibold))
             .foregroundColor(Color(hex: "#24170A"))
             .padding(.horizontal, compact ? 14 : 20)
             .frame(height: compact ? 32 : 36)
@@ -378,7 +378,7 @@ struct AccountView: View {
                    labelColor: Color = Theme.textSecondary,
                    strokeColor: Color = Theme.parchment.opacity(0.14)) -> some View {
         Text(title)
-            .font(.inter(compact ? Theme.fontXS : Theme.fontSM))
+            .font(.system(size: compact ? Theme.fontXS : Theme.fontSM))
             .foregroundColor(labelColor)
             .padding(.horizontal, compact ? 12 : 16)
             .frame(height: compact ? 32 : 36)
@@ -388,7 +388,7 @@ struct AccountView: View {
     func ghostLabelPill(icon: String, _ title: String, color: Color = Theme.gold) -> some View {
         HStack(spacing: 6) {
             Image(systemName: icon)
-            Text(title).font(.inter(Theme.fontSM))
+            Text(title).font(.system(size: Theme.fontSM))
         }
         .foregroundColor(color)
         .padding(.horizontal, 16).padding(.vertical, 8)

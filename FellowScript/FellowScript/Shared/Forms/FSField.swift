@@ -25,6 +25,7 @@ struct FSField: View {
     /// Accessibility label override (UI tests key on e.g. "Username field").
     var accessibilityName: String? = nil
     var accessibilityId: String? = nil
+    var errorAccessibilityId: String? = nil
     var secure: Bool = false
     var multiline: Bool = false
     var minLines: Int = 1
@@ -139,6 +140,7 @@ struct FSField: View {
                     }
                     .foregroundColor(Theme.error)
                     .accessibilityElement(children: .combine)
+                    .accessibilityIdentifier(errorAccessibilityId ?? "")
                 case .disabled(let why):
                     if let why { Text(why).foregroundColor(Theme.textSecondary) }
                 case .normal:

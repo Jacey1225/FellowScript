@@ -201,3 +201,24 @@ struct FSNumberStepper: View {
         .accessibilityLabel(symbol == "plus" ? "Increase" : "Decrease")
     }
 }
+
+/// Chip face for grid pickers (weekday / day-of-month) where the surrounding
+/// view owns the tap: selected = gold gradient + ink, unselected = field fill + border.
+struct FSChipLabel: View {
+    let title: String
+    var selected: Bool
+    var compact: Bool = false
+    var body: some View {
+        Text(title)
+            .font(.system(size: 14, weight: .semibold))
+            .foregroundColor(selected ? Theme.ink : Theme.textSecondary)
+            .frame(maxWidth: .infinity, minHeight: 44)
+            .background {
+                if selected { RoundedRectangle(cornerRadius: compact ? Theme.radiusSM : 22, style: .continuous).fill(Theme.goldGradient) }
+                else { RoundedRectangle(cornerRadius: compact ? Theme.radiusSM : 22, style: .continuous).fill(Theme.fieldFill) }
+            }
+            .overlay {
+                if !selected { RoundedRectangle(cornerRadius: compact ? Theme.radiusSM : 22, style: .continuous).strokeBorder(Theme.fieldBorder, lineWidth: 1) }
+            }
+    }
+}

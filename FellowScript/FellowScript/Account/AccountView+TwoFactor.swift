@@ -15,7 +15,7 @@ extension AccountView {
 
             if !mfaMsg.isEmpty {
                 Text(mfaMsg)
-                    .font(.inter(Theme.fontXS))
+                    .font(.system(size: Theme.fontXS))
                     .foregroundColor(mfaMsgIsError ? .red : Theme.gold)
             }
             Toggle(isOn: Binding(
@@ -24,10 +24,10 @@ extension AccountView {
             )) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Two-Factor Authentication")
-                        .font(.inter(Theme.fontBody))
+                        .font(.system(size: Theme.fontBody))
                         .foregroundColor(Theme.parchment)
                     Text("Emails a 6-digit code to \(appState.currentUser?.email ?? "your email") every time you sign in.")
-                        .font(.inter(Theme.fontXXS))
+                        .font(.system(size: Theme.fontXXS))
                         .foregroundColor(Theme.textMuted)
                 }
             }

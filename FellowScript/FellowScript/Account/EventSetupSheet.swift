@@ -120,12 +120,12 @@ struct EventSetupSheet: View {
         ScrollView {
             VStack(spacing: Theme.spacingLG) {
                 Text("How often?")
-                    .font(.playfair(Theme.fontDisplayMD))
+                    .font(.system(size: Theme.fontDisplayMD, weight: .heavy))
                     .foregroundColor(Theme.parchment)
                     .padding(.top, Theme.spacingXL)
 
                 Text("Choose how often this scheduled devotion should arrive.")
-                    .font(.inter(Theme.fontSM))
+                    .font(.system(size: Theme.fontSM))
                     .foregroundColor(Theme.textMuted)
                     .multilineTextAlignment(.center)
                     .padding(.horizontal, Theme.spacingLG)
@@ -183,17 +183,14 @@ struct EventSetupSheet: View {
                     Image(systemName: icon).foregroundColor(Theme.gold)
                 }
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(title).font(.inter(Theme.fontBody)).foregroundColor(Theme.parchment)
-                    Text(description).font(.inter(Theme.fontSM)).foregroundColor(Theme.textMuted)
+                    Text(title).font(.system(size: Theme.fontBody)).foregroundColor(Theme.parchment)
+                    Text(description).font(.system(size: Theme.fontSM)).foregroundColor(Theme.textMuted)
                 }
                 Spacer()
                 Image(systemName: "chevron.right")
                     .foregroundColor(Theme.textMuted).font(.caption)
             }
-            .padding(Theme.spacingMD)
-            .background(Theme.cardBg)
-            .clipShape(RoundedRectangle(cornerRadius: 12))
-            .overlay(RoundedRectangle(cornerRadius: 12).stroke(Theme.borderGold.opacity(0.3), lineWidth: 1))
+            .fsCard()
         }
         .buttonStyle(.plain)
     }
@@ -231,7 +228,7 @@ struct EventSetupSheet: View {
         ]
         return VStack(alignment: .leading, spacing: Theme.spacingMD) {
             Text("Which days of the week?")
-                .font(.playfair(Theme.fontDisplayMD))
+                .font(.system(size: Theme.fontDisplayMD, weight: .heavy))
                 .foregroundColor(Theme.parchment)
 
             LazyVGrid(columns: Array(repeating: .init(.flexible()), count: 4), spacing: 10) {
@@ -240,13 +237,7 @@ struct EventSetupSheet: View {
                     Button(action: {
                         if sel { selectedWeekdays.remove(day.1) } else { selectedWeekdays.insert(day.1) }
                     }) {
-                        Text(day.0)
-                            .font(.inter(Theme.fontSM))
-                            .foregroundColor(sel ? Theme.ink : Theme.parchment.opacity(0.7))
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 10)
-                            .background(sel ? Theme.gold : Theme.gold.opacity(0.10))
-                            .clipShape(RoundedRectangle(cornerRadius: 8))
+                        FSChipLabel(title: day.0, selected: sel)
                     }
                     .accessibilityAddTraits(sel ? .isSelected : [])
                 }
@@ -257,7 +248,7 @@ struct EventSetupSheet: View {
     private var monthDayPicker: some View {
         VStack(alignment: .leading, spacing: Theme.spacingMD) {
             Text("Which days of the month?")
-                .font(.playfair(Theme.fontDisplayMD))
+                .font(.system(size: Theme.fontDisplayMD, weight: .heavy))
                 .foregroundColor(Theme.parchment)
 
             // Sizing/style brought in line with BibleReaderView's
@@ -279,12 +270,7 @@ struct EventSetupSheet: View {
                     Button(action: {
                         if sel { selectedMonthDays.remove(day) } else { selectedMonthDays.insert(day) }
                     }) {
-                        Text("\(day)")
-                            .font(.inter(Theme.fontHeading))
-                            .foregroundColor(sel ? Theme.ink : Theme.parchment.opacity(0.7))
-                            .frame(maxWidth: .infinity, minHeight: 44)
-                            .background(sel ? Theme.gold : Theme.gold.opacity(0.10))
-                            .clipShape(RoundedRectangle(cornerRadius: Theme.radiusSM))
+                        FSChipLabel(title: "\(day)", selected: sel, compact: true)
                     }
                     .accessibilityLabel("Day \(day)")
                     .accessibilityAddTraits(sel ? .isSelected : [])
@@ -307,17 +293,16 @@ struct EventSetupSheet: View {
             VStack(alignment: .leading, spacing: Theme.spacingLG) {
                 if agents.count > 1 {
                     VStack(alignment: .leading, spacing: Theme.spacingSM) {
-                        Text("WRITTEN BY")
-                            .font(.inter(Theme.fontXXS)).tracking(4).foregroundColor(Theme.textGoldMuted)
+                        FSEyebrow(title: "WRITTEN BY")
                         Picker("Written by", selection: $selectedAgentId) {
                             ForEach(agents) { agent in
                                 Text(agent.displayLabel).tag(agent.id)
                             }
                         }
-                        .font(.inter(Theme.fontBody))
+                        .font(.system(size: Theme.fontBody))
                         .foregroundColor(Theme.parchment)
                     }
-                    .widgetCard()
+                    .fsCard()
                 }
 
                 // Follow-up polish (task 20260902-submenu-followup-polish,
@@ -328,7 +313,7 @@ struct EventSetupSheet: View {
                 // the group-picker Menu's content/logic (task
                 // 20260902-group-tagged-devotions) are moved verbatim, just
                 // re-parented into a shared HStack instead of two
-                // `.widgetCard()`s. Spacing between the two halves uses the
+                // `.fsCard()`s. Spacing between the two halves uses the
                 // existing Theme.spacingMD scale rather than an ad hoc value.
                 //
                 // Testing bounce fix (still 20260902-submenu-followup-polish):
@@ -340,10 +325,9 @@ struct EventSetupSheet: View {
                 // `maxWidth: .infinity`) absorbs the rest of the row's width.
                 HStack(alignment: .top, spacing: Theme.spacingMD) {
                     VStack(alignment: .leading, spacing: Theme.spacingSM) {
-                        Text("DEVOTION TIME")
-                            .font(.inter(Theme.fontXXS)).tracking(4).foregroundColor(Theme.textGoldMuted)
+                        FSEyebrow(title: "DEVOTION TIME")
                         DatePicker("Time", selection: $selectedTime, displayedComponents: .hourAndMinute)
-                            .font(.inter(Theme.fontBody))
+                            .font(.system(size: Theme.fontBody))
                             .labelsHidden()
                             .accentColor(Theme.gold)
                     }
@@ -358,8 +342,7 @@ struct EventSetupSheet: View {
                     // when it fires, the note it generates inherits this
                     // group_id automatically.
                     VStack(alignment: .leading, spacing: Theme.spacingSM) {
-                        Text("GROUP")
-                            .font(.inter(Theme.fontXXS)).tracking(4).foregroundColor(Theme.textGoldMuted)
+                        FSEyebrow(title: "GROUP")
                         HStack {
                             Spacer()
                             Menu {
@@ -397,12 +380,12 @@ struct EventSetupSheet: View {
                         }
                         .padding(.vertical, 4)
                         Text("Optionally tie this scheduled devotion's notes to one of your groups. Leave as No Group to keep it personal.")
-                            .font(.inter(Theme.fontXS))
+                            .font(.system(size: Theme.fontXS))
                             .foregroundColor(Theme.textMuted)
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }
-                .widgetCard()
+                .fsCard()
 
                 // Edit-permission control (task 20260903-notes-public-repurpose,
                 // step 6): only meaningful once this event is tied to a group --
@@ -412,36 +395,30 @@ struct EventSetupSheet: View {
                 // edit-permission toggle (hidden outside a group context).
                 if !selectedGroupId.isEmpty {
                     VStack(alignment: .leading, spacing: Theme.spacingSM) {
-                        Text("EDIT PERMISSION")
-                            .font(.inter(Theme.fontXXS)).tracking(4).foregroundColor(Theme.textGoldMuted)
+                        FSEyebrow(title: "EDIT PERMISSION")
                         Toggle(isOn: $notesPublic) {
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(notesPublic ? "Group Can Edit" : "Owner Only")
-                                    .font(.inter(Theme.fontBody))
+                                    .font(.system(size: Theme.fontBody))
                                     .foregroundColor(Theme.parchment)
                                 Text("Whether other members of \(selectedGroupLabel) may edit the notes this scheduled devotion writes.")
-                                    .font(.inter(Theme.fontXS))
+                                    .font(.system(size: Theme.fontXS))
                                     .foregroundColor(Theme.textMuted)
                             }
                         }
                         .tint(Theme.gold)
                     }
-                    .widgetCard()
+                    .fsCard()
                 }
 
                 VStack(alignment: .leading, spacing: Theme.spacingSM) {
-                    Text("PROMPT")
-                        .font(.inter(Theme.fontXXS)).tracking(4).foregroundColor(Theme.textGoldMuted)
+                    FSEyebrow(title: "PROMPT")
                     Text("Every day at your chosen time, your AI study partner writes a devotion from this prompt and saves it as a note, even when the app is closed.")
-                        .font(.inter(Theme.fontSM))
+                        .font(.system(size: Theme.fontSM))
                         .foregroundColor(Theme.textMuted)
-                    TextEditor(text: $prompt)
-                        .font(.inter(Theme.fontBody))
-                        .foregroundColor(Theme.parchment)
-                        .scrollContentBackground(.hidden)
-                        .frame(minHeight: 100)
+                    FSField(label: "Prompt", required: true, text: $prompt, multiline: true, minLines: 5)
                 }
-                .widgetCard()
+                .fsCard()
 
                 Spacer(minLength: Theme.spacingXL)
             }
@@ -456,42 +433,41 @@ struct EventSetupSheet: View {
         // title item keeps "Details" centered regardless of this now-wider
         // trailing pill's width against the automatic system back button on
         // the leading side.
-        .toolbar {
-            ToolbarItem(placement: .principal) {
-                Text("Details")
-                    .font(.system(size: 17, weight: .semibold))
-                    .foregroundColor(Theme.parchment)
-            }
-            ToolbarItem(placement: .navigationBarTrailing) {
-                PillButton(title: isEditing ? "Update" : "Save") {
-                    // In-flight guard (task
-                    // 20260905-heartbeat-timezone-duplicate-bugs, step 4):
-                    // bail out immediately if a save is already dispatched
-                    // for this attempt -- combined with .disabled(isSaving)
-                    // below, a rapid double-tap before dismiss() actually
-                    // removes the sheet can't fire onSave a second time.
-                    guard !isSaving else { return }
-                    isSaving = true
-                    // One token per attempt, generated here (not regenerated
-                    // on any internal retry of this same attempt) -- see the
-                    // onSave doc comment above.
-                    let idempotencyKey = UUID().uuidString
-                    onSave(selectedAgentId,
-                           prompt.trimmingCharacters(in: .whitespaces),
-                           buildTimestamps(),
-                           selectedGroupId.isEmpty ? nil : selectedGroupId,
-                           // Fail closed: an ungrouped event can't carry a
-                           // meaningful edit-permission grant regardless of
-                           // whatever the (hidden) toggle's stale state is.
-                           selectedGroupId.isEmpty ? false : notesPublic,
-                           idempotencyKey)
-                    dismiss()
-                }
-                .disabled(isSaving || prompt.trimmingCharacters(in: .whitespaces).isEmpty || selectedAgentId.isEmpty)
-            }
-            .suppressAutomaticGlassChrome()
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            FSPinnedActionBar(
+                primaryTitle: isEditing ? "Update" : "Save",
+                primaryDimmed: (isSaving || prompt.trimmingCharacters(in: .whitespaces).isEmpty || selectedAgentId.isEmpty),
+                saving: isSaving,
+                onPrimary: { if !(isSaving || prompt.trimmingCharacters(in: .whitespaces).isEmpty || selectedAgentId.isEmpty) { saveDevotion() } }
+            )
         }
     }
+
+    private func saveDevotion() {
+        // In-flight guard (task
+        // 20260905-heartbeat-timezone-duplicate-bugs, step 4):
+        // bail out immediately if a save is already dispatched
+        // for this attempt -- combined with .disabled(isSaving)
+        // below, a rapid double-tap before dismiss() actually
+        // removes the sheet can't fire onSave a second time.
+        guard !isSaving else { return }
+        isSaving = true
+        // One token per attempt, generated here (not regenerated
+        // on any internal retry of this same attempt) -- see the
+        // onSave doc comment above.
+        let idempotencyKey = UUID().uuidString
+        onSave(selectedAgentId,
+               prompt.trimmingCharacters(in: .whitespaces),
+               buildTimestamps(),
+               selectedGroupId.isEmpty ? nil : selectedGroupId,
+               // Fail closed: an ungrouped event can't carry a
+               // meaningful edit-permission grant regardless of
+               // whatever the (hidden) toggle's stale state is.
+               selectedGroupId.isEmpty ? false : notesPublic,
+               idempotencyKey)
+        dismiss()
+    }
+
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 
@@ -510,7 +486,7 @@ struct EventSetupSheet: View {
     // rather than a new cross-file shared component per this task's spec).
     private var cancelGhostChip: some View {
         Text("Cancel")
-            .font(.inter(Theme.fontSM))
+            .font(.system(size: Theme.fontSM))
             .foregroundColor(Theme.textSecondary)
             .fixedSize()
             .padding(.horizontal, 16)

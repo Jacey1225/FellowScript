@@ -13,6 +13,8 @@ struct FSPinnedActionBar: View {
     let primaryTitle: String
     var primaryTrailingIcon: String? = nil
     var primaryDimmed: Bool = false
+    /// Destructive primary (spec 9.2): danger fill + error text/border, never gold.
+    var primaryDestructive: Bool = false
     var primaryAccessibilityLabel: String? = nil
     var saving: Bool = false
     var tight: Bool = false
@@ -70,12 +72,15 @@ struct FSPinnedActionBar: View {
                     }
                 }
             }
-            .foregroundColor(primaryDimmed ? Theme.ink.opacity(0.5) : Theme.ink)
+            .foregroundColor(primaryDestructive ? Theme.error.opacity(primaryDimmed ? 0.5 : 1)
+                                                : (primaryDimmed ? Theme.ink.opacity(0.5) : Theme.ink))
             .frame(maxWidth: .infinity, minHeight: 52)
             .background {
-                if primaryDimmed { Capsule().fill(Theme.goldDim.opacity(0.4)) }
+                if primaryDestructive { Capsule().fill(Theme.dangerBg) }
+                else if primaryDimmed { Capsule().fill(Theme.goldDim.opacity(0.4)) }
                 else { Capsule().fill(Theme.goldGradient) }
             }
+            .overlay { if primaryDestructive { Capsule().strokeBorder(Theme.errorStrong.opacity(primaryDimmed ? 0.5 : 1), lineWidth: 1) } }
         }
         .buttonStyle(.plain)
         .accessibilityLabel(saving ? "Saving" : (primaryAccessibilityLabel ?? primaryTitle))
