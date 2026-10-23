@@ -245,17 +245,17 @@ struct InviteLinkSection: View {
     private var section: some View {
         VStack(alignment: .leading, spacing: Theme.spacingSM) {
             Text("Invite link")
-                .font(.inter(Theme.fontXXS, weight: .semibold)).tracking(3).textCase(.uppercase)
+                .font(.system(size: Theme.fontXXS, weight: .semibold)).tracking(3).textCase(.uppercase)
                 .foregroundColor(Theme.gold.opacity(0.7))
                 .accessibilityAddTraits(.isHeader)
 
             if vm.refreshFailed {
                 HStack {
                     Text("Couldn't refresh just now. Showing what we have.")
-                        .font(.inter(Theme.fontXS)).foregroundColor(Theme.parchment.opacity(0.85))
+                        .font(.system(size: Theme.fontXS)).foregroundColor(Theme.parchment.opacity(0.85))
                     Spacer()
                     Button("Try again") { Task { await vm.load() } }
-                        .font(.inter(Theme.fontXS, weight: .semibold)).foregroundColor(Theme.gold).frame(minHeight: 44)
+                        .font(.system(size: Theme.fontXS, weight: .semibold)).foregroundColor(Theme.gold).frame(minHeight: 44)
                 }
                 .padding(.horizontal, Theme.spacingSM)
                 .background(Theme.gold.opacity(0.08))
@@ -266,7 +266,7 @@ struct InviteLinkSection: View {
                 HStack {
                     errorText(err)
                     Button("Try again") { Task { await vm.load() } }
-                        .font(.inter(Theme.fontXS, weight: .semibold)).foregroundColor(Theme.gold).frame(minHeight: 44)
+                        .font(.system(size: Theme.fontXS, weight: .semibold)).foregroundColor(Theme.gold).frame(minHeight: 44)
                 }
             } else if vm.list == nil {
                 RoundedRectangle(cornerRadius: Theme.radius).fill(Color.white.opacity(0.08)).frame(height: 56)
@@ -278,7 +278,7 @@ struct InviteLinkSection: View {
                     Text(isSubscription
                          ? "Anyone with the link can ask to join your plan. You approve each request before they get access."
                          : "Anyone with the link can join this group until you revoke it.")
-                        .font(.inter(Theme.fontXS)).foregroundColor(Theme.textSecondary)
+                        .font(.system(size: Theme.fontXS)).foregroundColor(Theme.textSecondary)
                 }
 
                 if let url = vm.revealedURL {
@@ -290,7 +290,7 @@ struct InviteLinkSection: View {
                 if !list.invites.isEmpty {
                     if isSubscription {
                         Text("Links can't be shown again after they're created.")
-                            .font(.inter(Theme.fontXS)).foregroundColor(Theme.textSecondary)
+                            .font(.system(size: Theme.fontXS)).foregroundColor(Theme.textSecondary)
                     }
                     VStack(spacing: 0) {
                         ForEach(list.invites) { item in
@@ -303,14 +303,14 @@ struct InviteLinkSection: View {
                 if list.invites.count >= 2 {
                     Button { confirmReset = true } label: {
                         Text(vm.resetBusy ? "Resetting…" : "Reset all links")
-                            .font(.inter(Theme.fontSM, weight: .semibold)).foregroundColor(Theme.error)
+                            .font(.system(size: Theme.fontSM, weight: .semibold)).foregroundColor(Theme.error)
                             .frame(minHeight: 44)
                     }
                     .disabled(vm.resetBusy)
                 }
                 if let err = vm.resetError { errorText(err) }
                 if let status = vm.resetStatus {
-                    Text(status).font(.inter(Theme.fontXS)).foregroundColor(Theme.textSecondary)
+                    Text(status).font(.system(size: Theme.fontXS)).foregroundColor(Theme.textSecondary)
                         .accessibilityLabel(status)
                 }
             }
@@ -340,7 +340,7 @@ struct InviteLinkSection: View {
             let uses = vm.effectiveMaxUses ?? options.default_max_uses
             Button { optionsOpen.toggle() } label: {
                 Text("\(isSubscription ? "Expires in \(days) \(days == 1 ? "day" : "days") · " : "")Up to \(uses) \(isSubscription ? (uses == 1 ? "request" : "requests") : (uses == 1 ? "person" : "people"))")
-                    .font(.inter(Theme.fontXS)).foregroundColor(Theme.gold)
+                    .font(.system(size: Theme.fontXS)).foregroundColor(Theme.gold)
                     .frame(minHeight: 44, alignment: .leading)
             }
             .accessibilityHint(optionsOpen ? "Hide options" : (isSubscription ? "Change expiry and number of requests" : "Change number of people"))
@@ -364,7 +364,7 @@ struct InviteLinkSection: View {
                 ForEach(values, id: \.self) { v in
                     Button { pick(v) } label: {
                         Text(title(v))
-                            .font(.inter(Theme.fontXS, weight: .semibold))
+                            .font(.system(size: Theme.fontXS, weight: .semibold))
                             .foregroundColor(selected == v ? Theme.gold : Theme.parchment.opacity(0.8))
                             .padding(.horizontal, 14)
                             .frame(minHeight: 44)
@@ -383,7 +383,7 @@ struct InviteLinkSection: View {
     private func revealBlock(_ url: String) -> some View {
         VStack(alignment: .leading, spacing: Theme.spacingSM) {
             Text(url)
-                .font(.inter(Theme.fontSM)).foregroundColor(Theme.parchment)
+                .font(.system(size: Theme.fontSM)).foregroundColor(Theme.parchment)
                 .lineLimit(1).truncationMode(.middle)
                 .textSelection(.enabled)
                 .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
@@ -408,7 +408,7 @@ struct InviteLinkSection: View {
                 .buttonStyle(.plain)
                 if let shareURL = URL(string: url) {
                     ShareLink(item: shareURL) {
-                        Text("Share").font(.inter(Theme.fontSM, weight: .semibold)).foregroundColor(Theme.gold)
+                        Text("Share").font(.system(size: Theme.fontSM, weight: .semibold)).foregroundColor(Theme.gold)
                             .padding(.horizontal, 18).frame(minWidth: 88, minHeight: 44)
                             .overlay(Capsule().stroke(Theme.borderGoldDim, lineWidth: 1))
                     }
@@ -417,9 +417,9 @@ struct InviteLinkSection: View {
             Text(isSubscription
                  ? "This link is shown once. If you close this, make a new link to share again."
                  : "You can show this link again any time from the list below.")
-                .font(.inter(Theme.fontXS)).foregroundColor(Theme.textSecondary)
+                .font(.system(size: Theme.fontXS)).foregroundColor(Theme.textSecondary)
             Button("Done") { vm.revealedURL = nil; copied = false }
-                .font(.inter(Theme.fontSM, weight: .semibold)).foregroundColor(Theme.gold).frame(minHeight: 44)
+                .font(.system(size: Theme.fontSM, weight: .semibold)).foregroundColor(Theme.gold).frame(minHeight: 44)
         }
         .padding(Theme.spacingSM)
         .background(Theme.gold.opacity(0.08))
@@ -437,13 +437,13 @@ struct InviteLinkSection: View {
         return VStack(alignment: .leading, spacing: 2) {
             HStack(spacing: Theme.spacingSM) {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(label).font(.inter(Theme.fontSM)).foregroundColor(Theme.parchment)
+                    Text(label).font(.system(size: Theme.fontSM)).foregroundColor(Theme.parchment)
                     Text("\(item.remaining_uses) of \(item.max_uses) \(isSubscription ? "requests" : "spots") left · Created by \(who)")
-                        .font(.inter(Theme.fontXS)).foregroundColor(Theme.textSecondary)
+                        .font(.system(size: Theme.fontXS)).foregroundColor(Theme.textSecondary)
                 }
                 Spacer()
                 Button { revokeTarget = item } label: {
-                    Text("Revoke").font(.inter(Theme.fontSM, weight: .semibold)).foregroundColor(Theme.error)
+                    Text("Revoke").font(.system(size: Theme.fontSM, weight: .semibold)).foregroundColor(Theme.error)
                         .frame(minWidth: 44, minHeight: 44)
                 }
                 .accessibilityLabel("Revoke link \(label.lowercased()), created by \(who)")
@@ -460,18 +460,18 @@ struct InviteLinkSection: View {
     private func groupLinkControls(_ item: FSInviteItem, label: String, who: String) -> some View {
         if item.revealable == false {
             Text("This link was created before showing links was available, so it can't be shown. Create a new link to share it again.")
-                .font(.inter(Theme.fontXS)).foregroundColor(Theme.textSecondary)
+                .font(.system(size: Theme.fontXS)).foregroundColor(Theme.textSecondary)
             if vm.revealedURL == nil {
                 Button { Task { await vm.create() } } label: {
                     Text(vm.creating ? "Creating…" : "Create new link")
-                        .font(.inter(Theme.fontSM, weight: .semibold)).foregroundColor(Theme.gold)
+                        .font(.system(size: Theme.fontSM, weight: .semibold)).foregroundColor(Theme.gold)
                         .frame(minHeight: 44)
                 }
                 .disabled(vm.creating)
             }
         } else if let url = vm.shownURLs[item.invite_id] {
             Text(url)
-                .font(.inter(Theme.fontSM)).foregroundColor(Theme.parchment)
+                .font(.system(size: Theme.fontSM)).foregroundColor(Theme.parchment)
                 .lineLimit(1).truncationMode(.middle)
                 .textSelection(.enabled)
                 .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
@@ -494,12 +494,12 @@ struct InviteLinkSection: View {
                 }
                 .buttonStyle(.plain)
                 Button("Hide") { vm.hideLink(item.invite_id) }
-                    .font(.inter(Theme.fontSM, weight: .semibold)).foregroundColor(Theme.gold).frame(minHeight: 44)
+                    .font(.system(size: Theme.fontSM, weight: .semibold)).foregroundColor(Theme.gold).frame(minHeight: 44)
             }
         } else {
             Button { Task { await vm.showLink(item) } } label: {
                 Text(vm.showBusyId == item.invite_id ? "Showing…" : "Show link")
-                    .font(.inter(Theme.fontSM, weight: .semibold)).foregroundColor(Theme.gold)
+                    .font(.system(size: Theme.fontSM, weight: .semibold)).foregroundColor(Theme.gold)
                     .frame(minHeight: 44)
             }
             .disabled(vm.showBusyId == item.invite_id)
@@ -508,7 +508,7 @@ struct InviteLinkSection: View {
     }
 
     private func errorText(_ text: String) -> some View {
-        Text(text).font(.inter(Theme.fontXS)).foregroundColor(Theme.error)
+        Text(text).font(.system(size: Theme.fontXS)).foregroundColor(Theme.error)
             .accessibilityLabel(text)
     }
 

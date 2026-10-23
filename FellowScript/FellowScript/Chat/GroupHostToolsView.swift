@@ -25,59 +25,51 @@ enum GroupHostTools {
 /// Owner member-limit editor, extracted from GroupInfoSheet (behavior identical).
 struct GroupMemberLimitEditor: View {
     @ObservedObject var vm: GroupInfoViewModel
-    @State private var capDraft = ""
+    @State private var limitOn = false
+    @State private var capValue = 50
 
     var body: some View {
         if let info = vm.info, info.is_owner {
-            let current = info.max_members.map(String.init) ?? ""
-            VStack(alignment: .leading, spacing: Theme.spacingXS) {
-                label("Member limit")
-                Text("Most people allowed in this group. Leave blank for no limit.")
-                    .font(.inter(Theme.fontXS)).foregroundColor(Theme.textSecondary)
-                TextField("No limit", text: $capDraft)
-                    .keyboardType(.numberPad)
-                    .font(.inter(Theme.fontSM))
-                    .foregroundColor(Theme.parchment)
-                    .padding(.horizontal, Theme.spacingSM)
-                    .frame(minHeight: 44)
-                    .background(Theme.cardBg)
-                    .clipShape(RoundedRectangle(cornerRadius: Theme.radius))
-                    .overlay(RoundedRectangle(cornerRadius: Theme.radius).stroke(Theme.borderGoldDim, lineWidth: 1))
-                    .disabled(vm.savingCap)
-                    .onChange(of: capDraft) { _, v in
-                        let digits = String(v.filter(\.isNumber).prefix(6))
-                        if digits != v { capDraft = digits }
-                        vm.capError = nil; vm.capSaved = false
+            let current = info.max_members
+            let ceiling = info.max_members_ceiling ?? 999_999
+            let floor = max(1, info.member_count ?? info.members.count)
+            FSFormCard(title: "Member limit") {
+                FSToggleRow(title: "Limit members",
+                            helper: "Most people allowed in this group. Turn off for no limit.",
+                            isOn: $limitOn, disabled: vm.savingCap)
+                    .onChange(of: limitOn) { _, _ in vm.capError = nil; vm.capSaved = false }
+                if limitOn {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Max members").font(.fsLabel).foregroundColor(Theme.textPrimary)
+                        FSNumberStepper(value: $capValue, range: floor...max(floor, ceiling), unit: "members")
+                            .onChange(of: capValue) { _, _ in vm.capError = nil; vm.capSaved = false }
+                            .accessibilityLabel("Maximum members")
+                        if info.max_members_ceiling != nil {
+                            Text("Up to \(ceiling). Not lower than the \(floor) people here now.")
+                                .font(.fsHelper).foregroundColor(Theme.textSecondary)
+                        }
                     }
-                    .accessibilityLabel("Maximum members")
-                if let ceiling = info.max_members_ceiling {
-                    Text("Up to \(ceiling). Not lower than the \(info.member_count ?? info.members.count) people here now.")
-                        .font(.inter(Theme.fontXS)).foregroundColor(Theme.textSecondary)
                 }
                 if let err = vm.capError {
-                    Text(err).font(.inter(Theme.fontXS)).foregroundColor(Theme.error).accessibilityLabel(err)
+                    FSInlineError(message: err)
                 }
                 if vm.capSaved {
-                    Text("Limit saved.").font(.inter(Theme.fontXS)).foregroundColor(Theme.textSecondary)
+                    Text("Limit saved.").font(.fsHelper).foregroundColor(Theme.textSecondary)
                         .accessibilityLabel("Member limit saved")
                 }
                 PillButton(title: vm.savingCap ? "Saving…" : "Save limit") {
-                    let trimmed = capDraft.trimmingCharacters(in: .whitespaces)
-                    Task { _ = await vm.setMaxMembers(trimmed.isEmpty ? nil : Int(trimmed)) }
+                    Task { _ = await vm.setMaxMembers(limitOn ? capValue : nil) }
                 }
-                .disabled(vm.savingCap || capDraft.trimmingCharacters(in: .whitespaces) == current)
+                .disabled(vm.savingCap || (limitOn ? capValue == current : current == nil))
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .onAppear { capDraft = current }
-            .onChange(of: current) { _, v in capDraft = v }
+            .onAppear { sync(current) }
+            .onChange(of: current) { _, v in sync(v) }
         }
     }
 
-    private func label(_ text: String) -> some View {
-        Text(text)
-            .font(.inter(Theme.fontXXS, weight: .semibold)).tracking(3).textCase(.uppercase)
-            .foregroundColor(Theme.gold.opacity(0.7))
-            .accessibilityAddTraits(.isHeader)
+    private func sync(_ current: Int?) {
+        limitOn = current != nil
+        capValue = current ?? 50
     }
 }
 
@@ -101,7 +93,7 @@ struct GroupHostToolsView: View {
                 }
                 .accessibilityLabel("Back to group info")
                 Text("HOST TOOLS")
-                    .font(.inter(Theme.fontXS, weight: .bold)).tracking(3)
+                    .font(.system(size: Theme.fontXS, weight: .bold)).tracking(3)
                     .foregroundColor(Theme.gold.opacity(0.85))
                     .accessibilityAddTraits(.isHeader)
                 Spacer()

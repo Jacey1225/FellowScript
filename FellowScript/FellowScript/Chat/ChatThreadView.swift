@@ -3250,35 +3250,41 @@ struct AddGroupMembersSheet: View {
     @State private var selectedIds = Set<String>()
 
     var body: some View {
-        NavigationStack {
-            ZStack {
-                Theme.bgPage.ignoresSafeArea()
-
+        FSFormScaffold(
+            title: "Add Members",
+            dirty: !selectedIds.isEmpty,
+            onClose: { dismiss() },
+            content: {
                 if candidates.isEmpty {
-                    VStack(spacing: Theme.spacingMD) {
-                        Image(systemName: "person.2.slash")
-                            .font(.system(size: 36, weight: .light))
-                            .foregroundColor(Theme.gold.opacity(0.35))
-                        Text("All your friends are already in this group.")
-                            .font(.inter(Theme.fontSM))
-                            .foregroundColor(Theme.textMuted)
-                            .multilineTextAlignment(.center)
-                            .padding(.horizontal, Theme.spacingXL)
+                    FSFormCard {
+                        VStack(spacing: Theme.spacingMD) {
+                            Image(systemName: "person.2.slash")
+                                .font(.system(size: 36, weight: .light))
+                                .foregroundColor(Theme.gold.opacity(0.6))
+                            Text("All your friends are already in this group.")
+                                .font(.system(size: Theme.fontSM))
+                                .foregroundColor(Theme.textSecondary)
+                                .multilineTextAlignment(.center)
+                        }
+                        .frame(maxWidth: .infinity)
                     }
                 } else {
-                    Form {
-                        Section("Add friends") {
-                            ForEach(candidates) { f in
+                    FSFormCard(title: "Add friends") {
+                        VStack(spacing: 0) {
+                            ForEach(Array(candidates.enumerated()), id: \.element.id) { idx, f in
                                 HStack {
-                                    Text(f.name)
-                                        .font(.inter(Theme.fontBody))
-                                        .foregroundColor(Theme.parchment.opacity(0.70))
+                                    Text(f.name).font(.fsBody).foregroundColor(Theme.textPrimary)
                                     Spacer()
-                                    if selectedIds.contains(f.id) {
-                                        Image(systemName: "checkmark")
-                                            .foregroundColor(Theme.gold)
+                                    ZStack {
+                                        RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                            .strokeBorder(selectedIds.contains(f.id) ? Theme.gold : Theme.fieldBorder, lineWidth: 2)
+                                            .frame(width: 22, height: 22)
+                                        if selectedIds.contains(f.id) {
+                                            Image(systemName: "checkmark").font(.system(size: 12, weight: .bold)).foregroundColor(Theme.gold)
+                                        }
                                     }
                                 }
+                                .frame(minHeight: 48)
                                 .contentShape(Rectangle())
                                 .onTapGesture {
                                     if selectedIds.contains(f.id) { selectedIds.remove(f.id) }
@@ -3286,29 +3292,22 @@ struct AddGroupMembersSheet: View {
                                 }
                                 .accessibilityLabel("\(f.name). \(selectedIds.contains(f.id) ? "Selected" : "Not selected")")
                                 .accessibilityAddTraits(selectedIds.contains(f.id) ? .isSelected : [])
+                                if idx < candidates.count - 1 { Divider().overlay(Theme.borderGray) }
                             }
                         }
                     }
-                    .scrollContentBackground(.hidden)
-                    .background(Theme.bgPage)
                 }
+            },
+            bar: {
+                FSPinnedActionBar(secondaryTitle: "Cancel", onSecondary: { dismiss() },
+                                  primaryTitle: "Add", primaryDimmed: selectedIds.isEmpty,
+                                  onPrimary: {
+                                      guard !selectedIds.isEmpty else { return }
+                                      onAdd(candidates.filter { selectedIds.contains($0.id) })
+                                      dismiss()
+                                  })
             }
-            .navigationTitle("Add Members")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Button("Cancel") { dismiss() }.foregroundColor(Theme.textGoldMuted)
-                }
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("Add") {
-                        onAdd(candidates.filter { selectedIds.contains($0.id) })
-                        dismiss()
-                    }
-                    .foregroundColor(Theme.gold)
-                    .disabled(selectedIds.isEmpty)
-                }
-            }
-        }
+        )
         .preferredColorScheme(.dark)
     }
 }
@@ -3723,40 +3722,42 @@ struct SessionCreatorSheet: View {
         return SessionDuration.allCases.min(by: { abs($0.rawValue - minutes) < abs($1.rawValue - minutes) }) ?? .thirty
     }
 
+    @State private var step = 0
+    @State private var furthest = 0
+    @State private var dirty = false
+    private let stepNames = ["Basics", "Study", "Options"]
+    private var maxReachable: Int { isEditing ? stepNames.count - 1 : furthest }
+    private var titleValid: Bool { !title.trimmingCharacters(in: .whitespaces).isEmpty }
+    @State private var showErrors = false
+
     var body: some View {
-        ZStack {
-            Theme.bgPage.ignoresSafeArea()
-
-            VStack(spacing: 0) {
-                dragHandle
-                sheetHeader
-
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 26) {
-                        sessionTitleSection
-                        startTimeSection
-                        durationSection
-                        // Verses editing only exists in edit mode -- the
-                        // create path has never had a verses UI (session.verses
-                        // is always created empty) and this doesn't add one
-                        // there, per the intake spec's "don't alter create
-                        // behavior" scope.
-                        if isEditing {
-                            versesSection
-                        }
-                        discussionPromptsSection
-                        sessionOptionsSection
-                    }
-                    .padding(.top, 4)
-                    .padding(.bottom, Theme.spacingLG)
+        FSFormScaffold(
+            title: isEditing ? "Edit Session" : "Schedule",
+            dirty: dirty,
+            rail: AnyView(FSStepperRail(steps: stepNames, current: step, maxReachable: maxReachable) { i in
+                if i <= maxReachable { step = i }
+            }),
+            onClose: { dismiss() },
+            content: {
+                switch step {
+                case 0: basicsStep
+                case 1: studyStep
+                default: optionsStep
                 }
-            }
-            .padding(.horizontal, Theme.spacingLG)
-        }
+            },
+            bar: { actionBar }
+        )
         .presentationDetents([.large])
         .presentationDragIndicator(.hidden)
         .presentationCornerRadius(Theme.radiusXXL)
         .preferredColorScheme(.dark)
+        .onChange(of: title) { _, _ in dirty = true }
+        .onChange(of: startDate) { _, _ in dirty = true }
+        .onChange(of: duration) { _, _ in dirty = true }
+        .onChange(of: verses) { _, _ in dirty = true }
+        .onChange(of: prompts) { _, _ in dirty = true }
+        .onChange(of: recurring) { _, _ in dirty = true }
+        .onChange(of: summarize) { _, _ in dirty = true }
         .alert("Couldn't Save Changes", isPresented: Binding(
             get: { saveError != nil },
             set: { if !$0 { saveError = nil } }
@@ -3767,211 +3768,115 @@ struct SessionCreatorSheet: View {
         }
     }
 
-    // MARK: - Header
-
-    private var dragHandle: some View {
-        Capsule()
-            .fill(Color.white.opacity(0.2))
-            .frame(width: 36, height: 5)
-            .padding(.top, 8)
-            .padding(.bottom, 16)
-            .accessibilityHidden(true)
-    }
-
-    private var sheetHeader: some View {
-        HStack {
-            RoundIconButton(systemIcon: "xmark", diameter: 36) { dismiss() }
-                .accessibilityLabel("Cancel")
-
-            Spacer()
-
-            // isEditing branches to a distinct title rather than reusing
-            // "Schedule" for an edit -- the literal `Text("Schedule")` below
-            // stays reachable (and is still what renders) for the create
-            // path, unchanged.
-            if isEditing {
-                Text("Edit Session")
-                    .font(.inter(Theme.fontDisplayMD, weight: .bold))
-                    .foregroundColor(Theme.parchment)
-            } else {
-                Text("Schedule")
-                    .font(.inter(Theme.fontDisplayMD, weight: .bold))
-                    .foregroundColor(Theme.parchment)
-            }
-
-            Spacer()
-
-            // Small circular CTA (mirrors the composer's send-button
-            // treatment) rather than plain RoundIconButton styling, so this
-            // sheet's primary action keeps its solid-gold weight after
-            // losing its "Schedule" pill label.
-            Button(action: scheduleSession) {
-                Image(systemName: "calendar")
-                    .font(.system(size: 14, weight: .bold))
-                    .foregroundColor(Theme.ink)
-                    .frame(width: 36, height: 36)
-                    .background(Theme.goldGradient)
-                    .clipShape(Circle())
-                    .topEdgeHighlight(Circle())
-            }
-            .buttonStyle(.plain)
-            .disabled(title.isEmpty)
-            .opacity(title.isEmpty ? 0.4 : 1)
-            .accessibilityLabel("Schedule session")
+    // ── Steps (stepper: BASICS, STUDY, OPTIONS) ──────────────────────────────
+    @ViewBuilder private var basicsStep: some View {
+        FSFormCard(title: "Session") {
+            FSField(label: "Session title", required: true, text: $title, placeholder: "Evening Study",
+                    state: showErrors && !titleValid ? .error("Add a title.") : .normal,
+                    maxLength: 255, accessibilityName: "Session title")
         }
-        .padding(.bottom, 22)
-    }
-
-    // MARK: - Sections
-
-    private var sessionTitleSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            SectionEyebrow(title: "Session Title")
-            TextField("", text: $title, prompt: Text("Evening Study").foregroundColor(Theme.textSecondary))
-                .font(.inter(Theme.fontBody))
-                .foregroundColor(Theme.parchment)
-                .padding(.horizontal, 18)
-                .padding(.vertical, 14)
-                .background(Color.white.opacity(0.045))
-                .overlay(RoundedRectangle(cornerRadius: Theme.radiusXL).stroke(Theme.borderGoldDim, lineWidth: 1))
-                .clipShape(RoundedRectangle(cornerRadius: Theme.radiusXL))
-                .topEdgeHighlight(RoundedRectangle(cornerRadius: Theme.radiusXL))
-                .accessibilityLabel("Session title")
-        }
-    }
-
-    private var startTimeSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            SectionEyebrow(title: "Start Time")
+        FSFormCard(title: "Start time") {
             HStack(spacing: 10) {
                 DateTimeTile(systemIcon: "calendar", label: "Session start date",
                              date: $startDate, displayedComponents: .date)
                 DateTimeTile(systemIcon: "clock", label: "Session start time",
                              date: $startDate, displayedComponents: .hourAndMinute)
             }
-        }
-    }
-
-    private var durationSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            SectionEyebrow(title: "Duration")
-            SegmentedDurationControl(selection: $duration)
-        }
-    }
-
-    // Edit-mode only (see body's `if isEditing` gate above) -- mirrors
-    // discussionPromptsSection's own add/remove list pattern exactly so this
-    // doesn't invent a second list-editing style in the same sheet.
-    private var versesSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            SectionEyebrow(title: "Verses")
-
-            ForEach(Array(verses.enumerated()), id: \.offset) { i, v in
-                HStack {
-                    Text(v)
-                        .font(.inter(Theme.fontSM))
-                        .foregroundColor(Theme.parchment)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                    Button(action: { verses.remove(at: i) }) {
-                        Image(systemName: "xmark.circle.fill")
-                            .foregroundColor(Theme.textMuted)
-                    }
-                    .accessibilityLabel("Remove verse: \(v)")
-                }
-                .padding(.horizontal, 18)
-                .padding(.vertical, 12)
-                .background(Color.white.opacity(0.045))
-                .overlay(RoundedRectangle(cornerRadius: Theme.radiusXL).stroke(Theme.borderGoldDim, lineWidth: 1))
-                .clipShape(RoundedRectangle(cornerRadius: Theme.radiusXL))
-                .topEdgeHighlight(RoundedRectangle(cornerRadius: Theme.radiusXL))
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Duration").font(.fsLabel).foregroundColor(Theme.textPrimary)
+                SegmentedDurationControl(selection: $duration)
             }
-
-            HStack {
-                TextField("", text: $verseInput,
-                          prompt: Text("Add a verse reference…").foregroundColor(Theme.textSecondary))
-                    .font(.inter(Theme.fontBody))
-                    .foregroundColor(Theme.parchment)
-                    .accessibilityLabel("Verse reference input")
-
-                Button(action: addVerse) {
-                    Image(systemName: "plus")
-                        .font(.system(size: 14, weight: .bold))
-                        .foregroundColor(Theme.ink)
-                        .frame(width: 32, height: 32)
-                        .background(verseInput.isEmpty ? AnyShapeStyle(Theme.gold.opacity(0.35)) : AnyShapeStyle(Theme.goldGradient))
-                        .clipShape(Circle())
-                }
-                .disabled(verseInput.isEmpty)
-                .accessibilityLabel("Add verse")
-            }
-            .padding(.horizontal, 18)
-            .padding(.vertical, 12)
-            .background(Color.white.opacity(0.045))
-            .overlay(RoundedRectangle(cornerRadius: Theme.radiusXL).stroke(Theme.borderGoldDim, lineWidth: 1))
-            .clipShape(RoundedRectangle(cornerRadius: Theme.radiusXL))
-            .topEdgeHighlight(RoundedRectangle(cornerRadius: Theme.radiusXL))
         }
     }
 
-    private var discussionPromptsSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            SectionEyebrow(title: "Discussion Prompts")
-
+    @ViewBuilder private var studyStep: some View {
+        if isEditing {
+            FSFormCard(title: "Verses") {
+                ForEach(Array(verses.enumerated()), id: \.offset) { i, v in
+                    listRow(v, removeLabel: "Remove verse: \(v)") { verses.remove(at: i) }
+                }
+                addRow(text: $verseInput, placeholder: "Add a verse reference…", field: "Verse reference input",
+                       addLabel: "Add verse", action: addVerse)
+            }
+        }
+        FSFormCard(title: "Discussion prompts") {
             ForEach(Array(prompts.enumerated()), id: \.offset) { i, p in
-                HStack {
-                    Text(p)
-                        .font(.inter(Theme.fontSM))
-                        .foregroundColor(Theme.parchment)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                    Button(action: { prompts.remove(at: i) }) {
-                        Image(systemName: "xmark.circle.fill")
-                            .foregroundColor(Theme.textMuted)
-                    }
-                    .accessibilityLabel("Remove prompt: \(p)")
-                }
-                .padding(.horizontal, 18)
-                .padding(.vertical, 12)
-                .background(Color.white.opacity(0.045))
-                .overlay(RoundedRectangle(cornerRadius: Theme.radiusXL).stroke(Theme.borderGoldDim, lineWidth: 1))
-                .clipShape(RoundedRectangle(cornerRadius: Theme.radiusXL))
-                .topEdgeHighlight(RoundedRectangle(cornerRadius: Theme.radiusXL))
+                listRow(p, removeLabel: "Remove prompt: \(p)") { prompts.remove(at: i) }
             }
-
-            HStack {
-                TextField("", text: $promptInput,
-                          prompt: Text("Add a discussion question…").foregroundColor(Theme.textSecondary))
-                    .font(.inter(Theme.fontBody))
-                    .foregroundColor(Theme.parchment)
-                    .accessibilityLabel("Discussion prompt input")
-
-                Button(action: addPrompt) {
-                    Image(systemName: "plus")
-                        .font(.system(size: 14, weight: .bold))
-                        .foregroundColor(Theme.ink)
-                        .frame(width: 32, height: 32)
-                        .background(promptInput.isEmpty ? AnyShapeStyle(Theme.gold.opacity(0.35)) : AnyShapeStyle(Theme.goldGradient))
-                        .clipShape(Circle())
-                }
-                .disabled(promptInput.isEmpty)
-                .accessibilityLabel("Add prompt")
-            }
-            .padding(.horizontal, 18)
-            .padding(.vertical, 12)
-            .background(Color.white.opacity(0.045))
-            .overlay(RoundedRectangle(cornerRadius: Theme.radiusXL).stroke(Theme.borderGoldDim, lineWidth: 1))
-            .clipShape(RoundedRectangle(cornerRadius: Theme.radiusXL))
-            .topEdgeHighlight(RoundedRectangle(cornerRadius: Theme.radiusXL))
+            addRow(text: $promptInput, placeholder: "Add a discussion question…", field: "Discussion prompt input",
+                   addLabel: "Add prompt", action: addPrompt)
         }
     }
 
-    private var sessionOptionsSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            SectionEyebrow(title: "Session Options")
-            HStack(spacing: 10) {
-                ChipToggle(title: "Repeat weekly", isOn: $recurring)
-                ChipToggle(title: "Summarize", isOn: $summarize)
-            }
+    @ViewBuilder private var optionsStep: some View {
+        FSFormCard(title: "Session options") {
+            FSToggleRow(title: "Repeat weekly", helper: "Schedules the same session every week.", isOn: $recurring)
+            Divider().overlay(Theme.borderGray)
+            FSToggleRow(title: "Summarize with agent", helper: "An agent writes a summary after the session.", isOn: $summarize)
         }
+    }
+
+    private func listRow(_ text: String, removeLabel: String, remove: @escaping () -> Void) -> some View {
+        HStack {
+            Text(text).font(.system(size: Theme.fontSM)).foregroundColor(Theme.textPrimary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            Button(action: remove) {
+                Image(systemName: "xmark.circle.fill").foregroundColor(Theme.textSecondary).frame(width: 44, height: 44)
+            }
+            .accessibilityLabel(removeLabel)
+        }
+        .padding(.leading, 14)
+        .background(RoundedRectangle(cornerRadius: Theme.radius, style: .continuous).fill(Theme.fieldFill))
+        .overlay(RoundedRectangle(cornerRadius: Theme.radius, style: .continuous).strokeBorder(Theme.fieldBorder, lineWidth: 1))
+    }
+
+    private func addRow(text: Binding<String>, placeholder: String, field: String, addLabel: String, action: @escaping () -> Void) -> some View {
+        HStack {
+            TextField("", text: text, prompt: Text(placeholder).foregroundColor(Theme.textSecondary))
+                .font(.fsBody).foregroundColor(Theme.textPrimary)
+                .submitLabel(.done).onSubmit(action)
+                .accessibilityLabel(field)
+            Button(action: action) {
+                Image(systemName: "plus").font(.system(size: 14, weight: .bold)).foregroundColor(Theme.ink)
+                    .frame(width: 32, height: 32)
+                    .background(text.wrappedValue.isEmpty ? AnyShapeStyle(Theme.gold.opacity(0.35)) : AnyShapeStyle(Theme.goldGradient))
+                    .clipShape(Circle())
+                    .frame(width: 44, height: 44)
+            }
+            .disabled(text.wrappedValue.isEmpty)
+            .accessibilityLabel(addLabel)
+        }
+        .padding(.leading, 14)
+        .frame(minHeight: Theme.formFieldHeight)
+        .background(RoundedRectangle(cornerRadius: Theme.radius, style: .continuous).fill(Theme.fieldFill))
+        .overlay(RoundedRectangle(cornerRadius: Theme.radius, style: .continuous).strokeBorder(Theme.fieldBorder, lineWidth: 1))
+    }
+
+    @ViewBuilder private var actionBar: some View {
+        let last = step == stepNames.count - 1
+        let saveLabel = isEditing ? "Save" : "Schedule"
+        if isEditing && !last {
+            FSPinnedActionBar(secondaryTitle: "Next", onSecondary: { step += 1 },
+                              primaryTitle: saveLabel, primaryDimmed: !titleValid,
+                              primaryAccessibilityLabel: "Schedule session", saving: isSaving, onPrimary: { tapSave() })
+        } else if last {
+            FSPinnedActionBar(secondaryTitle: "Back", onSecondary: { step -= 1 },
+                              primaryTitle: saveLabel, primaryDimmed: !titleValid,
+                              primaryAccessibilityLabel: "Schedule session", saving: isSaving, onPrimary: { tapSave() })
+        } else if step == 0 {
+            FSPinnedActionBar(primaryTitle: "Next", primaryTrailingIcon: "arrow.right", primaryDimmed: !titleValid,
+                              onPrimary: { if titleValid { showErrors = false; furthest = max(furthest, 1); step = 1 } else { showErrors = true } })
+        } else {
+            FSPinnedActionBar(secondaryTitle: "Back", onSecondary: { step -= 1 },
+                              primaryTitle: "Next", primaryTrailingIcon: "arrow.right",
+                              onPrimary: { furthest = max(furthest, 2); step = 2 })
+        }
+    }
+
+    /// A dimmed primary still reacts (spec D8): jump back to the title and explain.
+    private func tapSave() {
+        if !titleValid { showErrors = true; step = 0; return }
+        scheduleSession()
     }
 
     private func addPrompt() {
