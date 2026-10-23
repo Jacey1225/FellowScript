@@ -160,15 +160,13 @@ describe('ChatThread integration: groups only', () => {
     videoEnabled: false, videoTiles: {}, onToggleVideo: vi.fn(), bindVideoTile: vi.fn(),
   });
 
-  test('group chat shows the widget directly after the header, before the transcript', async () => {
+  test('group chat no longer mounts the banner widget; announcements live behind the chip row (task 20261023-group-info-row)', async () => {
     api.fetchLatestAnnouncement.mockResolvedValue({ announcement: mk('g') });
-    const { container } = render(<ChatThread {...props({ id: 'g1', name: 'Study', type: 'group' })} />);
-    const widget = await screen.findByRole('region', { name: 'Latest announcement' });
-    expect(api.fetchLatestAnnouncement).toHaveBeenCalledWith('u1', 'g1');
-    const header = screen.getByText('Study');
-    // widget follows the header in document order
-    expect(header.compareDocumentPosition(widget) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(container.contains(widget)).toBe(true);
+    render(<ChatThread {...props({ id: 'g1', name: 'Study', type: 'group' })} />);
+    await new Promise(r => setTimeout(r, 20));
+    expect(api.fetchLatestAnnouncement).not.toHaveBeenCalled();
+    expect(screen.queryByRole('region', { name: 'Latest announcement' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Announcements' })).toBeInTheDocument();
   });
 
   test('DM (friend) chat never fetches or shows the widget', async () => {

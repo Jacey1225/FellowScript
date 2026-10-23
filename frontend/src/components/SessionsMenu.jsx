@@ -30,9 +30,10 @@ export default function SessionsMenu({
   onJoin, onLeave, onEdit, onDelete, onOpenSessionCreator,
   user, talkingUserId, onNavigateVerse,
   videoEnabled, videoTiles, onToggleVideo, bindVideoTile, ringCandidates,
-  muted, onToggleMute, friends,
+  muted, onToggleMute, friends, onOpenChange,
 }) {
   const [open, setOpen] = useState(false);
+  useEffect(() => { onOpenChange?.(open); }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
   const [pos, setPos] = useState(null);
   const btnRef = useRef(null);
   const closeRef = useRef(null);

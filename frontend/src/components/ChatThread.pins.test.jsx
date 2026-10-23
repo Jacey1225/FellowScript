@@ -45,56 +45,56 @@ const menuLabels = () => screen.getAllByRole('menuitem').map((e) => e.textConten
 describe('fail closed', () => {
   test('flag off: no header button, no Pin menu item, no glyph', () => {
     mount({ features: {}, messages: [msg('m1', { pinned: true })] });
-    expect(screen.queryByRole('button', { name: /Pinned messages/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: /^Pinned/ })).toBeNull();
     openMenu('m1');
     expect(menuLabels()).toEqual(['Copy']);
     expect(screen.queryByLabelText('Pinned')).toBeNull();
   });
   test('capability on but the hook says disabled (or no pins prop): still nothing', () => {
     mount({ pins: { enabled: false, list: READY() }, messages: [msg('m1')] });
-    expect(screen.queryByRole('button', { name: /Pinned messages/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: /^Pinned/ })).toBeNull();
     cleanup();
     mount({ pins: null, messages: [msg('m1')] });
-    expect(screen.queryByRole('button', { name: /Pinned messages/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: /^Pinned/ })).toBeNull();
   });
   test('never inside a thread view', () => {
     mount({ thread: { id: 't1', title: 'T' }, threadLoad: 'idle', messages: [msg('m1')] });
-    expect(screen.queryByRole('button', { name: /Pinned messages/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: /^Pinned/ })).toBeNull();
   });
 });
 
-describe('header button and list', () => {
-  test('icon button with count in its label; opens a dialog and loads the list', () => {
+describe('Pinned chip and list', () => {
+  test('chip with count in its label; opens a dialog and loads the list', () => {
     const pins = mount({ pins: { enabled: true, list: READY([pin('m1'), pin('m2')]), onLoad: vi.fn(), onUnpin: vi.fn(), onLoadMore: vi.fn() } });
-    const btn = screen.getByRole('button', { name: 'Pinned messages, 2' });
+    const btn = screen.getByRole('button', { name: 'Pinned, 2' });
     expect(btn).toHaveAttribute('aria-haspopup', 'dialog');
     expect(btn).toHaveAttribute('aria-expanded', 'false');
     fireEvent.click(btn);
     expect(pins.onLoad).toHaveBeenCalled();
-    const dlg = screen.getByRole('dialog', { name: 'Pinned messages' });
+    const dlg = screen.getByRole('dialog', { name: 'Pinned' });
     expect(within(dlg).getAllByText(/Pinned by bob/)).toHaveLength(2);
     expect(btn).toHaveAttribute('aria-expanded', 'true');
   });
   test('no count in the label at zero; empty state copy', () => {
     mount();
-    fireEvent.click(screen.getByRole('button', { name: 'Pinned messages' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Pinned' }));
     expect(screen.getByText('No pinned messages yet.')).toBeInTheDocument();
   });
   test('loading, error + Try again, show more', () => {
     const onLoad = vi.fn(); const onLoadMore = vi.fn();
     mount({ pins: { enabled: true, list: { pins: [], count: 0, hasMore: false, status: 'error', error: "Couldn't load pinned messages. Try again?" }, onLoad, onLoadMore, onUnpin: vi.fn() } });
-    fireEvent.click(screen.getByRole('button', { name: 'Pinned messages' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Pinned' }));
     fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
     expect(onLoad).toHaveBeenCalledTimes(2);
     cleanup();
     mount({ pins: { enabled: true, list: READY([pin('m1')], { hasMore: true }), onLoad, onLoadMore, onUnpin: vi.fn() } });
-    fireEvent.click(screen.getByRole('button', { name: 'Pinned messages, 1' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Pinned, 1' }));
     fireEvent.click(screen.getByRole('button', { name: 'Show more' }));
     expect(onLoadMore).toHaveBeenCalled();
   });
-  test('unpin button calls onUnpin with the id; Escape and Done close and return focus', () => {
+  test('unpin button calls onUnpin with the id; Escape and Close close and return focus', async () => {
     const pins = mount({ pins: { enabled: true, list: READY([pin('m1')]), onLoad: vi.fn(), onUnpin: vi.fn(), onLoadMore: vi.fn() } });
-    const btn = screen.getByRole('button', { name: 'Pinned messages, 1' });
+    const btn = screen.getByRole('button', { name: 'Pinned, 1' });
     fireEvent.click(btn);
     fireEvent.click(screen.getByRole('button', { name: 'Unpin message from ada' }));
     expect(pins.onUnpin).toHaveBeenCalledWith('m1');
@@ -102,8 +102,8 @@ describe('header button and list', () => {
     expect(screen.queryByRole('dialog')).toBeNull();
     expect(document.activeElement).toBe(btn);
     fireEvent.click(btn);
-    fireEvent.click(screen.getByRole('button', { name: 'Done' }));
-    expect(screen.queryByRole('dialog')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Close Pinned' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
   });
   test('flag dropping mid-session closes the open list', () => {
     const features = { message_pins: true };
@@ -116,18 +116,18 @@ describe('header button and list', () => {
       </CapabilitiesContext.Provider>
     );
     const { rerender } = render(tree(features, base));
-    fireEvent.click(screen.getByRole('button', { name: 'Pinned messages, 1' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Pinned, 1' }));
     expect(screen.getByRole('dialog')).toBeInTheDocument();
     rerender(tree({}, base));
     expect(screen.queryByRole('dialog')).toBeNull();
-    expect(screen.queryByRole('button', { name: /Pinned messages/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: /^Pinned/ })).toBeNull();
   });
 });
 
 describe('jump', () => {
   test('a loaded message: closes the list, scrolls and announces', () => {
     mount({ pins: { enabled: true, list: READY([pin('m1')]), onLoad: vi.fn(), onUnpin: vi.fn(), onLoadMore: vi.fn() }, messages: [msg('m1')] });
-    fireEvent.click(screen.getByRole('button', { name: 'Pinned messages, 1' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Pinned, 1' }));
     const row = screen.getByText('text-m1', { selector: '.pins-row-preview' });
     fireEvent.click(row);
     expect(screen.queryByRole('dialog')).toBeNull();
@@ -147,7 +147,7 @@ describe('jump', () => {
       </CapabilitiesContext.Provider>
     );
     const { rerender } = render(tree([msg('m9')]));
-    fireEvent.click(screen.getByRole('button', { name: 'Pinned messages, 1' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Pinned, 1' }));
     fireEvent.click(screen.getByText('text-m7', { selector: '.pins-row-preview' }));
     expect(ensureLoaded).toHaveBeenCalledWith('m7');
     expect(screen.getByText('Finding message…')).toBeInTheDocument();
@@ -158,7 +158,7 @@ describe('jump', () => {
   test('cannot be found: warm line, nothing removed', async () => {
     const ensureLoaded = vi.fn(async () => false);
     mount({ pins: { enabled: true, list: READY([pin('m7')]), onLoad: vi.fn(), onUnpin: vi.fn(), onLoadMore: vi.fn(), ensureLoaded }, messages: [msg('m9')] });
-    fireEvent.click(screen.getByRole('button', { name: 'Pinned messages, 1' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Pinned, 1' }));
     fireEvent.click(screen.getByText('text-m7', { selector: '.pins-row-preview' }));
     await waitFor(() => expect(screen.getByText("Couldn't find that message. It may have been removed.")).toBeInTheDocument());
   });
