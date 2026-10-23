@@ -35,7 +35,8 @@ export function visibleChips({ features = {}, pinsOn = false, hasUser = true } =
 export function GroupInfoRow({ chips = [], openId, onToggle, pinCount = 0, chipRefs, trailing = null }) {
   if (chips.length === 0 && !trailing) return null;
   return (
-    <div className="group-info-row" role="group" aria-label="Group sections">
+    <div className="group-info-row" data-testid="group-info-row">
+      <div className="group-info-row-scroll" role="group" aria-label="Group sections">
       {chips.map((id) => {
         const selected = openId === id;
         return (
@@ -57,6 +58,7 @@ export function GroupInfoRow({ chips = [], openId, onToggle, pinCount = 0, chipR
           </button>
         );
       })}
+      </div>
       {trailing && <div className="group-info-row-trailing">{trailing}</div>}
     </div>
   );

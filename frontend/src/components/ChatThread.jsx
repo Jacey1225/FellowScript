@@ -1310,6 +1310,7 @@ export default function ChatThread({
           onToggleMute={onToggleMute}
           friends={friends}
           ringCandidates={ringCandidates}
+          iconOnly={!inThread && isGroupChat}
           onOpenChange={(o) => { if (o) setOpenPanel(null); }}
         />
   );

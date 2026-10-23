@@ -77,10 +77,16 @@ describe('gating', () => {
     expect(visibleChips({ features: { group_media: true }, pinsOn: false })).toEqual(['announcements', 'media']);
     expect(visibleChips({ features: ALL, pinsOn: true, hasUser: false })).toEqual(['pinned']);
   });
-  test('group chat shows four chips in order then Sessions, Pinned carries its count', () => {
+  test('group chat shows four chips in order then an icon-only Sessions, Pinned carries its count', () => {
     mount();
     const row = screen.getByRole('group', { name: 'Group sections' });
-    expect(within(row).getAllByRole('button').map((b) => b.textContent)).toEqual(['Announcements', 'Threads', 'Pinned2', 'Media', 'Sessions']);
+    expect(within(row).getAllByRole('button').map((b) => b.textContent)).toEqual(['Announcements', 'Threads', 'Pinned2', 'Media']);
+    // Sessions is outside the scrolling area, trailing, icon-only.
+    const sessions = screen.getByRole('button', { name: /^Sessions/ });
+    expect(row.contains(sessions)).toBe(false);
+    expect(sessions.closest('[data-testid="group-info-row"]')).toBe(row.parentElement);
+    expect(sessions.textContent).toBe('');
+    expect(sessions).toHaveAttribute('title', 'Sessions');
     expect(chip('Pinned, 2')).toBeInTheDocument();
     expect(chip('Media')).toHaveAttribute('aria-controls', 'group-info-panel');
   });
@@ -92,7 +98,7 @@ describe('gating', () => {
   });
   test('absent in a DM and inside a thread view', () => {
     mount({ contact: DM });
-    expect(screen.queryByRole('group', { name: 'Group sections' })).toBeNull();
+    expect(screen.queryByTestId('group-info-row')).toBeNull();
     cleanup();
     mount({ thread: { id: 't1', title: 'T' } });
     expect(screen.queryByRole('group', { name: 'Group sections' })).toBeNull();
@@ -301,16 +307,17 @@ describe('Media grid', () => {
 });
 
 describe('Sessions button placement', () => {
-  test('group: Sessions is the trailing item of the row, not in the header; row renders even with no chips', () => {
+  test('group: Sessions is the trailing icon-only item outside the scroller; row renders even with no chips', () => {
     mount();
-    const row = screen.getByRole('group', { name: 'Group sections' });
-    const buttons = within(row).getAllByRole('button');
-    expect(buttons[buttons.length - 1].textContent).toContain('Sessions');
-    expect(buttons).toHaveLength(5);
+    const rowEl = screen.getByTestId('group-info-row');
+    const scroller = within(rowEl).getByRole('group', { name: 'Group sections' });
+    const sessions = within(rowEl).getByRole('button', { name: /^Sessions/ });
+    expect(scroller.contains(sessions)).toBe(false);
+    expect(rowEl.lastElementChild.contains(sessions)).toBe(true);
+    expect(within(scroller).getAllByRole('button')).toHaveLength(4);
     cleanup();
     mount({ features: {}, pins: null });
-    const row2 = screen.getByRole('group', { name: 'Group sections' });
-    expect(within(row2).getByRole('button', { name: /^Sessions/ })).toBeInTheDocument();
+    expect(within(screen.getByTestId('group-info-row')).getByRole('button', { name: /^Sessions/ })).toBeInTheDocument();
   });
   test('DM: Sessions stays in the header (no row)', () => {
     mount({ contact: DM });
