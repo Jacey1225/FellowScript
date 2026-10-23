@@ -93,13 +93,13 @@ enum AnnouncementTitleFont: String, CaseIterable, Identifiable {
     /// Title font. The default face is the unchanged fixed-size Inter SemiBold;
     /// the others scale with Dynamic Type relative to `textStyle`.
     func font(_ size: CGFloat, relativeTo textStyle: Font.TextStyle = .title3) -> Font {
-        guard let ps = postScriptName, isAvailable else { return .inter(size, weight: .semibold) }
+        guard let ps = postScriptName, isAvailable else { return .system(size: size, weight: .semibold) }
         return .custom(ps, size: size * sizeScale, relativeTo: textStyle)
     }
 
     /// Fixed-size variant for chip specimens (does not grow with Dynamic Type).
     func chipFont(_ size: CGFloat) -> Font {
-        guard let ps = postScriptName, isAvailable else { return .inter(size, weight: .semibold) }
+        guard let ps = postScriptName, isAvailable else { return .system(size: size, weight: .semibold) }
         return .custom(ps, fixedSize: size * sizeScale)
     }
 }

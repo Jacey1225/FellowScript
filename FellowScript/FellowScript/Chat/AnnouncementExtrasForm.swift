@@ -24,16 +24,16 @@ private struct ExtrasDisclosure<Content: View>: View {
             } label: {
                 HStack(spacing: Theme.spacingSM) {
                     Text(title)
-                        .font(.inter(prominent ? Theme.fontSM : Theme.fontSM, weight: .semibold))
+                        .font(.system(size: prominent ? Theme.fontSM : Theme.fontSM, weight: .semibold))
                         .foregroundColor(Theme.parchment)
                     if let summary {
                         Text(summary)
-                            .font(.inter(Theme.fontXS, weight: .semibold)).foregroundColor(Theme.bgPage)
+                            .font(.system(size: Theme.fontXS, weight: .semibold)).foregroundColor(Theme.bgPage)
                             .padding(.horizontal, 8).padding(.vertical, 2)
                             .background(Capsule().fill(Theme.gold))
                     }
                     if let warning {
-                        Text(warning).font(.inter(Theme.fontXS)).foregroundColor(Theme.error)
+                        Text(warning).font(.system(size: Theme.fontXS)).foregroundColor(Theme.error)
                     }
                     Spacer(minLength: 0)
                     Image(systemName: "chevron.down")
@@ -91,7 +91,7 @@ struct AnnouncementExtrasSection: View {
                     if rsvpOn { spotsRow }
                     if locationOn { locationRow }
                     if let blocking {
-                        Text(blocking).font(.inter(Theme.fontXS)).foregroundColor(Theme.error)
+                        Text(blocking).font(.system(size: Theme.fontXS)).foregroundColor(Theme.error)
                     }
                 }
                 .padding(.leading, Theme.spacingSM)
@@ -110,12 +110,12 @@ struct AnnouncementExtrasSection: View {
                             VStack(spacing: Theme.spacingXS) {
                                 TextField("Link", text: $row.url, prompt: Text("example.com/page").foregroundColor(Theme.parchment.opacity(0.65)))
                                     .textInputAutocapitalization(.never).autocorrectionDisabled().keyboardType(.URL)
-                                    .font(.inter(Theme.fontSM)).foregroundColor(Theme.parchment)
+                                    .font(.system(size: Theme.fontSM)).foregroundColor(Theme.parchment)
                                     .padding(.horizontal, Theme.spacingSM).frame(minHeight: 44)
                                     .announcementTranslucentField()
                                     .accessibilityLabel("Link address")
                                 TextField("Label", text: $row.label, prompt: Text("Label (optional)").foregroundColor(Theme.parchment.opacity(0.65)))
-                                    .font(.inter(Theme.fontSM)).foregroundColor(Theme.parchment)
+                                    .font(.system(size: Theme.fontSM)).foregroundColor(Theme.parchment)
                                     .padding(.horizontal, Theme.spacingSM).frame(minHeight: 44)
                                     .announcementTranslucentField()
                                     .onChange(of: row.label) { _, v in
@@ -132,18 +132,18 @@ struct AnnouncementExtrasSection: View {
                             .accessibilityLabel("Remove link")
                         }
                         if let e = extras.linkError(row) {
-                            Text(e).font(.inter(Theme.fontXS)).foregroundColor(Theme.error)
+                            Text(e).font(.system(size: Theme.fontXS)).foregroundColor(Theme.error)
                         }
                     }
                 }
                 if extras.links.count < AnnouncementExtrasLimits.maxLinks {
                     Button { extras.links.append(.init()); onChange() } label: {
                         Label("Add link", systemImage: "plus")
-                            .font(.inter(Theme.fontSM)).foregroundColor(Theme.gold).frame(minHeight: 44)
+                            .font(.system(size: Theme.fontSM)).foregroundColor(Theme.gold).frame(minHeight: 44)
                     }
                 }
                 Text("Up to \(AnnouncementExtrasLimits.maxLinks) web links. They open in Safari.")
-                    .font(.inter(Theme.fontXS)).foregroundColor(Theme.parchment.opacity(0.6))
+                    .font(.system(size: Theme.fontXS)).foregroundColor(Theme.parchment.opacity(0.6))
             }
         }
         .onChange(of: extras.links) { _, _ in onChange() }
@@ -164,16 +164,16 @@ struct AnnouncementExtrasSection: View {
                 if n < AnnouncementExtrasLimits.maxGallery {
                     PhotosPicker(selection: $picks, maxSelectionCount: max(1, AnnouncementExtrasLimits.maxGallery - n), matching: .images) {
                         Label(busy ? "Uploading…" : "Add photos", systemImage: "photo.on.rectangle.angled")
-                            .font(.inter(Theme.fontSM)).foregroundColor(Theme.gold).frame(minHeight: 44)
+                            .font(.system(size: Theme.fontSM)).foregroundColor(Theme.gold).frame(minHeight: 44)
                     }
                     .disabled(busy)
                     .onChange(of: picks) { _, items in if !items.isEmpty { Task { await addPicked(items) } } }
                 }
                 if let galleryError {
-                    Text(galleryError).font(.inter(Theme.fontXS)).foregroundColor(Theme.error)
+                    Text(galleryError).font(.system(size: Theme.fontXS)).foregroundColor(Theme.error)
                 }
                 Text("Up to \(AnnouncementExtrasLimits.maxGallery) photos, shown to the group in order.")
-                    .font(.inter(Theme.fontXS)).foregroundColor(Theme.parchment.opacity(0.6))
+                    .font(.system(size: Theme.fontXS)).foregroundColor(Theme.parchment.opacity(0.6))
             }
         }
     }
@@ -236,30 +236,30 @@ struct AnnouncementExtrasSection: View {
         ExtrasDisclosure(title: "Event payments", summary: extras.isEvent ? "On" : nil, isOpen: $openPayments) {
             VStack(alignment: .leading, spacing: Theme.spacingSM) {
                 Toggle(isOn: $extras.isEvent) {
-                    Text("This is an event").font(.inter(Theme.fontSM)).foregroundColor(Theme.parchment)
+                    Text("This is an event").font(.system(size: Theme.fontSM)).foregroundColor(Theme.parchment)
                 }
                 .tint(Theme.gold).frame(minHeight: 44)
                 .onChange(of: extras.isEvent) { _, _ in onChange() }
                 if extras.isEvent {
                     ForEach(AnnouncementPaymentProvider.allCases) { p in
                         VStack(alignment: .leading, spacing: 2) {
-                            Text(p.title).font(.inter(Theme.fontXS, weight: .semibold)).foregroundColor(Theme.parchment.opacity(0.8))
+                            Text(p.title).font(.system(size: Theme.fontXS, weight: .semibold)).foregroundColor(Theme.parchment.opacity(0.8))
                             TextField(p.title, text: Binding(get: { extras.handles[p.rawValue] ?? "" },
                                                              set: { extras.handles[p.rawValue] = $0; onChange() }),
                                       prompt: Text(p.placeholder).foregroundColor(Theme.parchment.opacity(0.65)))
                                 .textInputAutocapitalization(.never).autocorrectionDisabled()
-                                .font(.inter(Theme.fontSM)).foregroundColor(Theme.parchment)
+                                .font(.system(size: Theme.fontSM)).foregroundColor(Theme.parchment)
                                 .padding(.horizontal, Theme.spacingSM).frame(minHeight: 44)
                                 .announcementTranslucentField()
                                 .accessibilityLabel("\(p.title) handle")
                             if let e = extras.handleError(p) {
-                                Text(e).font(.inter(Theme.fontXS)).foregroundColor(Theme.error)
+                                Text(e).font(.system(size: Theme.fontXS)).foregroundColor(Theme.error)
                             }
                         }
                     }
                 }
                 Text(AnnouncementExtrasLimits.paymentDisclaimer)
-                    .font(.inter(Theme.fontXS)).foregroundColor(Theme.parchment.opacity(0.75))
+                    .font(.system(size: Theme.fontXS)).foregroundColor(Theme.parchment.opacity(0.75))
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
@@ -270,7 +270,7 @@ struct AnnouncementExtrasSection: View {
         ExtrasDisclosure(title: "Location", summary: extras.cleanedLocation.isEmpty ? nil : "1", isOpen: $openLocation) {
             VStack(alignment: .leading, spacing: Theme.spacingSM) {
                 TextField("Location", text: $extras.location, prompt: Text("Where is it? (optional)").foregroundColor(Theme.parchment.opacity(0.65)))
-                    .font(.inter(Theme.fontSM)).foregroundColor(Theme.parchment)
+                    .font(.system(size: Theme.fontSM)).foregroundColor(Theme.parchment)
                     .padding(.horizontal, Theme.spacingSM).frame(minHeight: 44)
                     .announcementTranslucentField()
                     .onChange(of: extras.location) { _, v in
@@ -280,7 +280,7 @@ struct AnnouncementExtrasSection: View {
                     .accessibilityLabel("Location")
                     .accessibilityHint("Optional. Up to \(AnnouncementExtrasLimits.maxLocationLength) characters.")
                 Text("A place name or address. Tapping it opens Apple Maps.")
-                    .font(.inter(Theme.fontXS)).foregroundColor(Theme.parchment.opacity(0.6))
+                    .font(.system(size: Theme.fontXS)).foregroundColor(Theme.parchment.opacity(0.6))
             }
         }
     }
@@ -290,13 +290,13 @@ struct AnnouncementExtrasSection: View {
         ExtrasDisclosure(title: "Spots", summary: extras.rsvpOn ? "\(extras.capacity)" : nil, isOpen: $openSpots) {
             VStack(alignment: .leading, spacing: Theme.spacingSM) {
                 Toggle(isOn: $extras.rsvpOn) {
-                    Text("Let members RSVP").font(.inter(Theme.fontSM)).foregroundColor(Theme.parchment)
+                    Text("Let members RSVP").font(.system(size: Theme.fontSM)).foregroundColor(Theme.parchment)
                 }
                 .tint(Theme.gold).frame(minHeight: 44)
                 .onChange(of: extras.rsvpOn) { _, _ in onChange() }
                 if extras.rsvpOn {
                     Stepper(value: $extras.capacity, in: AnnouncementExtrasLimits.capacityRange) {
-                        Text("\(extras.capacity) spots").font(.inter(Theme.fontSM)).foregroundColor(Theme.parchment)
+                        Text("\(extras.capacity) spots").font(.system(size: Theme.fontSM)).foregroundColor(Theme.parchment)
                     }
                     .frame(minHeight: 44)
                     .onChange(of: extras.capacity) { _, _ in onChange() }
@@ -304,7 +304,7 @@ struct AnnouncementExtrasSection: View {
                     .accessibilityValue("\(extras.capacity)")
                 }
                 Text("Members RSVP to this announcement. It doesn't add anyone to the group. Turning this off clears the RSVPs.")
-                    .font(.inter(Theme.fontXS)).foregroundColor(Theme.parchment.opacity(0.6))
+                    .font(.system(size: Theme.fontXS)).foregroundColor(Theme.parchment.opacity(0.6))
                     .fixedSize(horizontal: false, vertical: true)
             }
         }

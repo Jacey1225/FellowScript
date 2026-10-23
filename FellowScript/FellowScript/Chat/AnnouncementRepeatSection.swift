@@ -22,7 +22,7 @@ struct AnnouncementRepeatSection: View {
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.spacingXS) {
             Text("Repeat")
-                .font(.inter(Theme.fontXXS, weight: .semibold)).tracking(3).textCase(.uppercase)
+                .font(.system(size: Theme.fontXXS, weight: .semibold)).tracking(3).textCase(.uppercase)
                 .foregroundColor(Theme.gold.opacity(0.7))
                 .accessibilityAddTraits(.isHeader)
             HStack(spacing: Theme.spacingSM) {
@@ -39,9 +39,9 @@ struct AnnouncementRepeatSection: View {
             if draft.interval != nil {
                 endDate
                 Text("Members with announcement reminders on get a push each time. It stops by itself after 52 reminders or a year.")
-                    .font(.inter(Theme.fontXS)).foregroundColor(Theme.parchment.opacity(0.6))
+                    .font(.system(size: Theme.fontXS)).foregroundColor(Theme.parchment.opacity(0.6))
                 Text("Times follow your time zone, \(TimeZone.current.identifier).")
-                    .font(.inter(Theme.fontXS)).foregroundColor(Theme.parchment.opacity(0.6))
+                    .font(.system(size: Theme.fontXS)).foregroundColor(Theme.parchment.opacity(0.6))
             }
         }
         .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: draft.interval)
@@ -55,7 +55,7 @@ struct AnnouncementRepeatSection: View {
                     draft.until = on ? AnnouncementRepeatDraft.endOfDay(earliest) : nil
                     onChange()
                 })) {
-                Text("End date").font(.inter(Theme.fontSM)).foregroundColor(Theme.parchment)
+                Text("End date").font(.system(size: Theme.fontSM)).foregroundColor(Theme.parchment)
             }
             .tint(Theme.gold)
             .frame(minHeight: 44)
@@ -66,7 +66,7 @@ struct AnnouncementRepeatSection: View {
                            selection: Binding(get: { until }, set: { draft.until = AnnouncementRepeatDraft.endOfDay($0); onChange() }),
                            in: earliest...latest, displayedComponents: .date)
                     .datePickerStyle(.compact)
-                    .font(.inter(Theme.fontSM))
+                    .font(.system(size: Theme.fontSM))
                     .tint(Theme.gold)
                     .disabled(saving)
             }
@@ -76,7 +76,7 @@ struct AnnouncementRepeatSection: View {
     private func chip(_ title: String, selected: Bool, action: @escaping () -> Void) -> some View {
         Button { action(); onChange() } label: {
             Text(title)
-                .font(.inter(Theme.fontXS, weight: .semibold))
+                .font(.system(size: Theme.fontXS, weight: .semibold))
                 .foregroundColor(selected ? Theme.gold : Theme.parchment.opacity(0.8))
                 .padding(.horizontal, 14)
                 .frame(minHeight: 44)
@@ -95,7 +95,7 @@ struct AnnouncementRepeatSection: View {
 struct AnnouncementRepeatIndicator: View {
     let item: FSGroupAnnouncement
     var color: Color = Theme.parchment
-    var font: Font = .inter(Theme.fontXXS)
+    var font: Font = .system(size: Theme.fontXXS)
 
     var body: some View {
         if let text = item.repeatIndicator {

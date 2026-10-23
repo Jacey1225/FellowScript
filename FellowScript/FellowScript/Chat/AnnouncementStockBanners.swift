@@ -94,7 +94,7 @@ struct AnnouncementStockPicker: View {
                 chips
                 ScrollView {
                     if visible.isEmpty {
-                        Text("No photos here.").font(.inter(Theme.fontSM)).foregroundColor(Theme.parchment.opacity(0.7))
+                        Text("No photos here.").font(.system(size: Theme.fontSM)).foregroundColor(Theme.parchment.opacity(0.7))
                             .padding(Theme.spacingLG)
                     }
                     LazyVGrid(columns: columns, spacing: 8) {
@@ -128,7 +128,7 @@ struct AnnouncementStockPicker: View {
                     let on = category == c.key
                     Button { category = c.key } label: {
                         Text(c.title)
-                            .font(.inter(Theme.fontXS, weight: .semibold))
+                            .font(.system(size: Theme.fontXS, weight: .semibold))
                             .foregroundColor(on ? Theme.gold : Theme.parchment.opacity(0.8))
                             .padding(.horizontal, 14).frame(minHeight: 44)
                             .background(on ? Theme.gold.opacity(0.15) : Color.clear)
@@ -173,7 +173,7 @@ struct AnnouncementStockPicker: View {
         VStack(spacing: Theme.spacingXS) {
             if failed {
                 Text("Couldn't set that photo. Try again.")
-                    .font(.inter(Theme.fontXS)).foregroundColor(Theme.error)
+                    .font(.system(size: Theme.fontXS)).foregroundColor(Theme.error)
             }
             Button {
                 guard let p = photos.first(where: { $0.id == selectedId }) else { return }
@@ -184,7 +184,7 @@ struct AnnouncementStockPicker: View {
                 } catch { failed = true }
             } label: {
                 Text("Use photo")
-                    .font(.inter(Theme.fontSM, weight: .bold)).foregroundColor(Color(hex: "#1A1108"))
+                    .font(.system(size: Theme.fontSM, weight: .bold)).foregroundColor(Color(hex: "#1A1108"))
                     .frame(maxWidth: .infinity, minHeight: 48)
                     .background(selectedId == nil ? Theme.gold.opacity(0.35) : Theme.gold)
                     .clipShape(Capsule())
