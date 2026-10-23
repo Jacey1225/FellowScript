@@ -40,18 +40,28 @@ struct GroupRowWithThreads: View {
 
     private var threadsEnabled: Bool { appState.capabilities.isEnabled("threads") }
 
+    /// How far the group card overlaps the top of the Threads tray. The tray
+    /// adds the same amount of top padding inside itself so its label and
+    /// chevron sit in the visible (non-overlapped) part.
+    private let trayOverlap: CGFloat = 12
+    private let trayRadius: CGFloat = 14
+
     var body: some View {
+        // Layering lives inside the row (negative spacing + zIndex), not as an
+        // out-of-bounds offset, so List never clips it.
         VStack(spacing: 0) {
             ContactRow(contact: contact)
                 .onTapGesture { onOpenChat() }
                 .accessibilityLabel(accessibilityText)
-            if threadsEnabled { tray }
+                .zIndex(1)
+            if threadsEnabled { tray.zIndex(0) }
         }
         .onChange(of: threadsEnabled) { _, on in if !on { expanded = false } }
     }
 
-    /// Folder row + (expanded) panel in one glass container, inset so it reads
-    /// as tucked beneath the card. Same material as the card (glassCard).
+    /// Folder row + (expanded) panel as one continuous shape tucked beneath the
+    /// card: the card covers the tray's top edge, the tray is a darker inset of
+    /// the card's material with rounded bottom corners only.
     private var tray: some View {
         VStack(spacing: 0) {
             folderRow
@@ -63,10 +73,33 @@ struct GroupRowWithThreads: View {
                 .transition(.opacity.combined(with: .move(edge: .top)))
             }
         }
-        .clipped()
-        .glassCard(cornerRadius: 14)
-        .padding(.horizontal, 14)
-        .padding(.top, 6)
+        .padding(.top, trayOverlap)
+        .clipShape(trayShape)
+        .background(trayBackground)
+        .overlay(alignment: .top) {
+            // Shadow the card casts onto the tray.
+            LinearGradient(colors: [Color.black.opacity(0.28), Color.clear],
+                           startPoint: .top, endPoint: .bottom)
+                .frame(height: trayOverlap + 8)
+                .clipShape(trayShape)
+                .allowsHitTesting(false)
+        }
+        .padding(.horizontal, 18)
+        .padding(.top, -trayOverlap)
+    }
+
+    private var trayShape: UnevenRoundedRectangle {
+        UnevenRoundedRectangle(topLeadingRadius: 0, bottomLeadingRadius: trayRadius,
+                               bottomTrailingRadius: trayRadius, topTrailingRadius: 0,
+                               style: .continuous)
+    }
+
+    private var trayBackground: some View {
+        ZStack {
+            trayShape.fill(.ultraThinMaterial)
+            trayShape.fill(Color.black.opacity(0.32))
+            trayShape.strokeBorder(Theme.gold.opacity(0.12), lineWidth: 0.5)
+        }
     }
 
     private var hairline: some View {

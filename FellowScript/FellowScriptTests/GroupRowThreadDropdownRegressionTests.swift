@@ -47,8 +47,13 @@ final class GroupRowThreadDropdownRegressionTests: XCTestCase {
     // glass container and thread rows themselves add no fill/border of their own.
     func test_folderTray_usesGlassCard_threadRowsAddNoOwnChrome_leadingAligned_hairlinesBetweenOnly() throws {
         let s = try source("Chat/GroupRowThreadsView.swift")
-        XCTAssertTrue(s.contains(".glassCard(cornerRadius: 14)"), "tray must reuse the card material")
-        XCTAssertEqual(s.components(separatedBy: ".glassCard").count - 1, 1, "exactly one glass container")
+        // Changed by task 20261022-ios-threads-subfolder: the tray is no longer a
+        // second glassCard; it is a darker inset of the same material
+        // (ultraThinMaterial + black tint) with rounded bottom corners only,
+        // tucked beneath the card. Still exactly one tray container.
+        XCTAssertTrue(s.contains(".fill(.ultraThinMaterial)"), "tray must stay in the card's material family")
+        XCTAssertTrue(s.contains("UnevenRoundedRectangle(topLeadingRadius: 0"), "square top, rounded bottom corners")
+        XCTAssertFalse(s.contains(".glassCard"), "tray is a darker inset, not a second glass card")
         XCTAssertTrue(s.contains("Text(\"Threads\")"))
         XCTAssertTrue(s.contains("rotationEffect(.degrees(expanded ? 180 : 0))"))
         XCTAssertTrue(s.contains("if index > 0 { hairline }"), "dividers between threads only")
@@ -58,6 +63,19 @@ final class GroupRowThreadDropdownRegressionTests: XCTestCase {
         for banned in [".glassCard", ".background(", ".overlay(", ".stroke", ".border(", "RoundedRectangle", ".cornerRadius", ".fill(", "threadIndent"] {
             XCTAssertFalse(list.contains(banned), "thread rows must not add own chrome; found \(banned)")
         }
+    }
+
+    // New (task 20261022-ios-threads-subfolder): card overlaps the tray's top.
+    func test_tray_isTuckedUnderCard_viaNegativePaddingAndZIndex_withCompensatingInnerPadding() throws {
+        let s = try source("Chat/GroupRowThreadsView.swift")
+        XCTAssertTrue(s.contains("private let trayOverlap: CGFloat = 12"))
+        XCTAssertTrue(s.contains(".padding(.top, -trayOverlap)"), "tray must slide under the card")
+        XCTAssertTrue(s.contains(".padding(.top, trayOverlap)"), "label/chevron must be pushed below the overlap")
+        XCTAssertFalse(s.contains(".padding(.top, 6)"), "old 6pt gap must be gone")
+        XCTAssertTrue(s.contains(".zIndex(1)"), "card above tray")
+        XCTAssertTrue(s.contains("tray.zIndex(0)"))
+        XCTAssertFalse(s.contains(".offset("), "no out-of-bounds offsets that List would clip")
+        XCTAssertTrue(s.contains(".allowsHitTesting(false)"), "card shadow must not steal taps")
     }
 
     func test_cardNoLongerReservesChevronSpace() throws {
