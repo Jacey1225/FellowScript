@@ -3,7 +3,7 @@ import uuid
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Depends, Query, Request
 from backend.interactions.groups import (
-    GroupFullError, GroupsManager, InvalidMemberError, ListedGroupOwnerOnlyError, normalize_group_title,
+    GroupFullError, GroupsManager, MEDIA_KINDS, InvalidMemberError, ListedGroupOwnerOnlyError, normalize_group_title,
 )
 from backend.interactions.friends import  FriendsManager, is_nudge_enabled
 from backend.interactions.push import send_push
@@ -170,6 +170,69 @@ def fetch_group_messages(
         cursor = paging.decode_cursor(params, id_type="uuid", with_seq=True)
         page = manager.fetch_message_page(page_limit, cursor)
         return paging.envelope("messages", page["messages"], page_limit, page["has_more"], page["next_cursor"])
+    finally:
+        manager.close()
+
+
+def _parse_media_kinds(raw: str | None) -> list[str]:
+    """``kind`` query (comma list of ``MEDIA_KINDS``) -> de-duplicated list.
+    Omitted means all three. Empty, unknown or oversized is 422 (never
+    coerced, value not echoed)."""
+    if raw is None:
+        return list(MEDIA_KINDS)
+    parts = raw.split(",") if len(raw) <= 64 else []
+    if not parts or any(p not in MEDIA_KINDS for p in parts):
+        raise HTTPException(status_code=422, detail={"code": "invalid_kind"})
+    return list(dict.fromkeys(parts))
+
+
+@group_router.get("/{user_id}/{group_id}/media")
+@limiter.limit(lambda: get_pagination_config().rate_limits["messages_page"])
+def fetch_group_media(
+    request: Request,
+    user_id: str,
+    group_id: str,
+    kind: str | None = Query(default=None, description="Comma list of image, video, gif; omitted means all three."),
+    limit: str | None = Query(default=None, description="Page size; default is the configured page_size, above max_page_size is clamped."),
+    cursor_timestamp: str | None = Query(default=None, description="next_cursor_timestamp of the previous page."),
+    cursor_seq: str | None = Query(default=None, description="next_cursor_seq of the previous page (integer >= 0, optional)."),
+    cursor_id: str | None = Query(default=None, description="next_cursor_id of the previous page."),
+    _: str = Depends(require_match("user_id")),
+) -> dict:
+    """One page of the group's main-chat media (image, video, gif), newest first.
+
+    Authorization order: authenticate -> ``require_match`` -> flag (404 while
+    ``group_media`` is off for the caller, as if the route did not exist) ->
+    membership (403) -> validate ``kind``/``limit``/cursor (422, before any
+    SQL) -> query. Membership and the current-member/blocked author filter are
+    re-applied on every request. Thread media is not included.
+
+    Returns:
+        dict: ``{"media": [{message_id, kind, thumb_url, url, width, height,
+            duration, sender_id, sender_name, created_at}], "page": {limit,
+            has_more, next_cursor_timestamp, next_cursor_seq, next_cursor_id}}``.
+    """
+    if not flags.is_enabled("group_media", user_id):
+        raise HTTPException(status_code=404, detail="Not Found")
+    try:
+        uuid.UUID(group_id)
+    except ValueError:
+        raise HTTPException(status_code=403, detail="Not a member of this group")
+    manager = GroupsManager(user_id, group_id)
+    try:
+        if not manager.is_member():
+            raise HTTPException(status_code=403, detail="Not a member of this group")
+        cfg = get_pagination_config()
+        page_limit = cfg.page_size if limit is None else _parse_page_limit(limit, cfg.page_size, cfg.max_page_size)
+        kinds = _parse_media_kinds(kind)
+        params = {
+            k: v for k, v in (
+                ("cursor_timestamp", cursor_timestamp), ("cursor_seq", cursor_seq), ("cursor_id", cursor_id),
+            ) if v is not None
+        }
+        cursor = paging.decode_cursor(params, id_type="uuid", with_seq=True)
+        page = manager.fetch_media_page(kinds, page_limit, cursor)
+        return paging.envelope("media", page["items"], page_limit, page["has_more"], page["next_cursor"])
     finally:
         manager.close()
 
