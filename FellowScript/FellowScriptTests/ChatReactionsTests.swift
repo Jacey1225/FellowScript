@@ -335,6 +335,19 @@ final class ChatReactionsViewModelTests: XCTestCase {
         vm.disconnect()
     }
 
+    // Root cause of "chip only after reload": the view renders cached groups
+    // that recompute on count/ack/older/thread changes only. Reactions change
+    // in place, so the VM must publish reactionRevision on every change.
+    func test_reactionChanges_bumpReactionRevision_soViewRecomputesGroups() async throws {
+        let s = service(msgs: [m("m1", "2026-10-10T10:00:00Z")])
+        let user = uid("rev")
+        let vm = await loaded(s, user: user)
+        let r0 = vm.reactionRevision
+        try await vm.toggleReaction("👍", on: vm.messages[0], service: s, userId: user)
+        XCTAssertGreaterThanOrEqual(vm.reactionRevision, r0 + 2, "optimistic apply and server result both publish")
+        vm.disconnect()
+    }
+
     func test_toggle_workedInDM() async throws {
         let s = service(msgs: [m("d1", "2026-10-10T10:00:00Z")])
         let user = uid("dm")
