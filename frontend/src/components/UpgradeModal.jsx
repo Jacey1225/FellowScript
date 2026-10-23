@@ -1,3 +1,5 @@
+import { ConfigProvider } from 'antd';
+import { formTheme } from '../lib/formTokens.js';
 import React, { useEffect, useRef, useSyncExternalStore } from 'react';
 import { Modal, Button } from 'antd';
 import { CrownOutlined } from '@ant-design/icons';
@@ -47,6 +49,7 @@ export default function UpgradeModal() {
   };
 
   return (
+    <ConfigProvider theme={formTheme}>
     <Modal
       open={!!s}
       onCancel={() => close(true)}
@@ -74,5 +77,6 @@ export default function UpgradeModal() {
         </Button>
       </div>
     </Modal>
+    </ConfigProvider>
   );
 }

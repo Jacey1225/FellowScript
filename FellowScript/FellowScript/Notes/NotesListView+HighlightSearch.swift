@@ -24,12 +24,12 @@ extension NotesListView {
             VStack(spacing: Theme.spacingMD) {
                 Spacer()
                 Text(msg)
-                    .font(.inter(Theme.fontSM))
+                    .font(.system(size: Theme.fontSM))
                     .foregroundColor(Theme.error)
                     .multilineTextAlignment(.center)
                     .padding(.horizontal, Theme.spacingXL)
                 Button("Try again") { hsm.retry() }
-                    .font(.inter(Theme.fontSM))
+                    .font(.system(size: Theme.fontSM))
                     .foregroundColor(Theme.gold)
                 Spacer()
             }
@@ -40,12 +40,12 @@ extension NotesListView {
                     ProgressView().tint(Theme.gold)
                 } else {
                     Text("No highlights found for \u{201C}\(hsm.trimmedQuery)\u{201D}")
-                        .font(.playfair(Theme.fontBody))
+                        .font(.system(size: Theme.fontBody, weight: .heavy))
                         .foregroundColor(Theme.textSecondary)
                         .multilineTextAlignment(.center)
                         .padding(.horizontal, Theme.spacingXL)
                     Text("Try a book, a chapter like John 3, a verse like John 3:16, or a friend\u{2019}s username.")
-                        .font(.inter(Theme.fontSM))
+                        .font(.system(size: Theme.fontSM))
                         .foregroundColor(Theme.textMuted)
                         .multilineTextAlignment(.center)
                         .padding(.horizontal, Theme.spacingXL)
@@ -116,7 +116,7 @@ struct HighlightSearchRow: View {
                 Spacer()
                 if !result.is_self, let name = result.owner_username {
                     Text(name)
-                        .font(.inter(Theme.fontXXS))
+                        .font(.system(size: Theme.fontXXS))
                         .foregroundColor(Theme.gold.opacity(0.65))
                         .padding(.horizontal, 6)
                         .padding(.vertical, 2)
@@ -130,7 +130,7 @@ struct HighlightSearchRow: View {
             }
             if let text = result.verse_text, !text.isEmpty {
                 Text(text)
-                    .font(.inter(Theme.fontSM))
+                    .font(.system(size: Theme.fontSM))
                     .foregroundColor(Theme.textSecondary)
                     .lineLimit(3)
             }

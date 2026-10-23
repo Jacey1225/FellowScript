@@ -37,7 +37,7 @@ struct BlockedUsersView: View {
                         .font(.system(size: 40, weight: .light))
                         .foregroundColor(Theme.gold.opacity(0.30))
                     Text("You haven't blocked anyone.")
-                        .font(.inter(Theme.fontBody))
+                        .font(.system(size: Theme.fontBody))
                         .foregroundColor(Theme.textSecondary)
                     Spacer()
                 }
@@ -46,14 +46,14 @@ struct BlockedUsersView: View {
                 List(blocked) { user in
                     HStack {
                         Text(user.username.isEmpty ? user.user_id : user.username)
-                            .font(.inter(Theme.fontBody))
+                            .font(.system(size: Theme.fontBody))
                             .foregroundColor(Theme.parchment)
                         Spacer()
                         if unblockingId == user.user_id {
                             ProgressView().tint(Theme.gold)
                         } else {
                             Button("Unblock") { Task { await unblock(user) } }
-                                .font(.inter(Theme.fontSM))
+                                .font(.system(size: Theme.fontSM))
                                 .foregroundColor(Theme.gold)
                         }
                     }

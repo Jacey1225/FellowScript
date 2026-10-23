@@ -1,4 +1,5 @@
 import React from 'react';
+import { FormSkin } from './components/forms/index.js';
 import { HashRouter, Routes, Route, Navigate } from 'react-router-dom';
 import Home from './pages/Home.jsx';
 import Reader from './pages/Reader.jsx';
@@ -137,25 +138,25 @@ export default function App() {
           <Route path="/download"  element={<Download />} />
           <Route path="/account"   element={<Account />} />
           {/* Task 20261012-notification-settings: push-type toggles sub-page. */}
-          <Route path="/account/notifications" element={<NotificationSettings />} />
+          <Route path="/account/notifications" element={<FormSkin><NotificationSettings /></FormSkin>} />
           {/* Task 20260929-group-invite-links: join-by-link confirmation.
               Public (preview works signed out); allowed on desktop via
               desktopScope.js's DESKTOP_ALLOWED_ROUTE_PATTERNS. */}
-          <Route path="/join/:token" element={<JoinInvite />} />
+          <Route path="/join/:token" element={<FormSkin><JoinInvite /></FormSkin>} />
           {/* Task 20261001-promo-owner-rewards: signed-in user's invite link page. */}
           <Route path="/invite"    element={<InviteFriends />} />
-          <Route path="/affiliates" element={<Affiliates />} />
+          <Route path="/affiliates" element={<FormSkin><Affiliates /></FormSkin>} />
           {/* Task 20261001-explorer-listings step 9: public Explore browse
               pages (website only). Deliberately no MobileBlockGate (phones
               must reach it) and not on DESKTOP_ALLOWED_ROUTES. The Home/nav
               link to it is added client-side only after the signed-out
               GET /explorer/config probe says browse is on; the routes
               themselves answer a "not available" state when the flag is off. */}
-          <Route path="/explore"            element={<Explore />} />
+          <Route path="/explore"            element={<FormSkin><Explore /></FormSkin>} />
           {/* Step 10: owner publish/manage page (sign-in required, flag-gated). */}
-          <Route path="/explore/manage"     element={<ExploreManage />} />
-          <Route path="/explore/requests"   element={<ExploreRequests />} />
-          <Route path="/explore/:publicId"  element={<ExploreListing />} />
+          <Route path="/explore/manage"     element={<FormSkin><ExploreManage /></FormSkin>} />
+          <Route path="/explore/requests"   element={<FormSkin><ExploreRequests /></FormSkin>} />
+          <Route path="/explore/:publicId"  element={<FormSkin><ExploreListing /></FormSkin>} />
           <Route path="/signin"    element={<SignIn />} />
           <Route path="/forgot-password" element={<ForgotPassword />} />
           <Route path="/reset-password"  element={<ResetPassword />} />
@@ -171,13 +172,13 @@ export default function App() {
           <Route path="/admin" element={<AdminShell />}>
             <Route index element={<Navigate to="/admin/errors" replace />} />
             <Route path="trends" element={<AdminTrends />} />
-            <Route path="errors" element={<AdminDetections />} />
+            <Route path="errors" element={<FormSkin><AdminDetections /></FormSkin>} />
             <Route path="accounts" element={<AdminAccountActions />} />
             {/* Task 20261001-promo-owner-rewards: admin creator-code page (hidden,
                 admin-only server-side; 404 from the API = flag off). */}
-            <Route path="promo" element={<AdminPromoCodes />} />
-            <Route path="listings" element={<AdminListings />} />
-            <Route path="users" element={<AdminUserActions />} />
+            <Route path="promo" element={<FormSkin><AdminPromoCodes /></FormSkin>} />
+            <Route path="listings" element={<FormSkin><AdminListings /></FormSkin>} />
+            <Route path="users" element={<FormSkin><AdminUserActions /></FormSkin>} />
             <Route path="detections/:id" element={<AdminDetectionDetail />} />
           </Route>
           <Route path="*"          element={<Navigate to="/" replace />} />

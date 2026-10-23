@@ -17,55 +17,36 @@ struct ReportUserSheet: View {
     let contact: FSContact
     let onSubmit: (_ reason: String, _ detail: String) -> Void
     @Environment(\.dismiss) private var dismiss
-    @State private var reason = "harassment"
+    @State private var reason: String? = "harassment"
     @State private var detail = ""
 
     var body: some View {
-        NavigationStack {
-            Form {
-                Section("Reason") {
-                    ForEach(reportReasons, id: \.value) { r in
-                        Button(action: { reason = r.value }) {
-                            HStack {
-                                Text(r.label).foregroundColor(Theme.parchment)
-                                Spacer()
-                                if reason == r.value {
-                                    Image(systemName: "checkmark").foregroundColor(Theme.gold)
-                                }
-                            }
-                        }
-                    }
+        FSFormScaffold(
+            title: "Report \(contact.name)",
+            dirty: !detail.isEmpty,
+            onClose: { dismiss() },
+            content: {
+                FSFormCard(title: "Reason") {
+                    FSRadioList(options: reportReasons.map { (id: $0.value, title: $0.label, helper: nil as String?) },
+                                selection: $reason)
                 }
-                .listRowBackground(Theme.cardBg)
-
-                Section("Additional details (optional)") {
-                    TextEditor(text: $detail)
-                        .frame(minHeight: 80)
-                        .foregroundColor(Theme.parchment)
+                FSFormCard(title: "Details") {
+                    FSField(label: "Additional details", optional: true, text: $detail,
+                            helper: "Reports are private.", maxLength: 500, multiline: true, minLines: 4)
                 }
-                .listRowBackground(Theme.cardBg)
+            },
+            bar: {
+                // A report is a safety action, not a destructive one (spec D16): primary stays gold.
+                FSPinnedActionBar(secondaryTitle: "Cancel", onSecondary: { dismiss() },
+                                  primaryTitle: "Send report", primaryDimmed: reason == nil,
+                                  onPrimary: {
+                                      guard let reason else { return }
+                                      onSubmit(reason, detail)
+                                      dismiss()
+                                  })
             }
-            .scrollContentBackground(.hidden)
-            .background(Theme.bgPage)
-            // Shared keyboard-dismiss convention (task
-            // 20260831-interaction-polish-conventions) — covers the
-            // "Additional details" TextEditor.
-            .dismissesKeyboardOnScrollAndTap()
-            .navigationTitle("Report \(contact.name)")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Button("Cancel") { dismiss() }.foregroundColor(Theme.textGoldMuted)
-                }
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("Submit") {
-                        onSubmit(reason, detail)
-                        dismiss()
-                    }
-                    .foregroundColor(.red)
-                }
-            }
-        }
+        )
+        .dismissesKeyboardOnScrollAndTap()
         .preferredColorScheme(.dark)
     }
 }

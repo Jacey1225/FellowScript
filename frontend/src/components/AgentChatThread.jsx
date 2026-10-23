@@ -65,14 +65,14 @@ export default function AgentChatThread({ chatUi, agent, messages, user, onBack,
         <div style={{ width: 26, height: 26, borderRadius: '50%', background: 'rgba(255,198,26,0.12)', border: '1px solid rgba(255,255,255,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
           <RobotOutlined style={{ color: 'var(--gold)', fontSize: '0.78rem' }} />
         </div>
-        <Text strong style={{ fontFamily: "'Inter', sans-serif", fontSize: '0.88rem', color: 'var(--parchment)', flex: 1 }}>
+        <Text strong style={{ fontFamily: 'inherit', fontSize: '0.88rem', color: 'var(--parchment)', flex: 1 }}>
           {agentLabel(agent)}
         </Text>
         {chatUi && <AgentChatSwitcher chatUi={chatUi} agentName={agentLabel(agent)} />}
       </div>
 
       {chatUi && (chatUi.createChatError || chatUi.historyError) && (
-        <div role="status" aria-live="polite" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.35rem 1rem', fontSize: '0.72rem', fontFamily: "'Inter', sans-serif", color: 'rgba(242,242,242,0.75)', background: 'rgba(255,198,26,0.06)', borderBottom: '1px solid rgba(255,255,255,0.06)', flexShrink: 0 }}>
+        <div role="status" aria-live="polite" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.35rem 1rem', fontSize: '0.72rem', fontFamily: 'inherit', color: 'rgba(242,242,242,0.75)', background: 'rgba(255,198,26,0.06)', borderBottom: '1px solid rgba(255,255,255,0.06)', flexShrink: 0 }}>
           <span style={{ flex: 1 }}>{chatUi.createChatError || chatUi.historyError}</span>
           {chatUi.historyError && !chatUi.createChatError && chatUi.historyError !== 'That chat is no longer available.' && (
             <Button size="small" type="text" onClick={chatUi.onRetryHistory} style={{ color: 'rgba(255,198,26,0.8)' }}>Try again</Button>
@@ -93,7 +93,7 @@ export default function AgentChatThread({ chatUi, agent, messages, user, onBack,
             <div style={{ width: 42, height: 42, borderRadius: '50%', background: 'rgba(255,198,26,0.07)', border: '1px solid rgba(255,255,255,0.108)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               <RobotOutlined style={{ color: 'rgba(255,198,26,0.4)', fontSize: '1.1rem' }} />
             </div>
-            <Text style={{ fontSize: '0.72rem', color: 'rgba(242,242,242,0.22)', fontFamily: "'Inter', sans-serif", fontStyle: 'italic' }}>
+            <Text style={{ fontSize: '0.72rem', color: 'rgba(242,242,242,0.22)', fontFamily: 'inherit', fontStyle: 'italic' }}>
               {chatUi ? `Ask ${agentLabel(agent)} anything` : 'Your spiritual guide is ready. Ask anything.'}
             </Text>
           </div>
@@ -148,7 +148,7 @@ export default function AgentChatThread({ chatUi, agent, messages, user, onBack,
                 <div
                   key={note.id || i}
                   onClick={() => addNoteContext(note)}
-                  style={{ padding: '0.4rem 0.6rem', cursor: 'pointer', borderRadius: 5, fontSize: '0.72rem', fontFamily: "'Inter', sans-serif", color: 'rgba(242,242,242,0.7)', transition: 'background 0.12s' }}
+                  style={{ padding: '0.4rem 0.6rem', cursor: 'pointer', borderRadius: 5, fontSize: '0.72rem', fontFamily: 'inherit', color: 'rgba(242,242,242,0.7)', transition: 'background 0.12s' }}
                   onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,198,26,0.09)'}
                   onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
                 >
@@ -171,7 +171,7 @@ export default function AgentChatThread({ chatUi, agent, messages, user, onBack,
         </Button>
         {context.length > 0 && <Divider type="vertical" style={{ borderColor: 'rgba(255,255,255,0.09)', margin: '0 1px', height: 12 }} />}
         {context.map((c, i) => (
-          <span key={i} style={{ display: 'inline-flex', alignItems: 'center', gap: '0.2rem', padding: '0.1rem 0.38rem', background: 'rgba(255,198,26,0.1)', border: '1px solid rgba(255,255,255,0.132)', borderRadius: 3, fontSize: '0.58rem', color: 'rgba(242,242,242,0.75)', fontFamily: "'Inter', sans-serif", maxWidth: 130 }}>
+          <span key={i} style={{ display: 'inline-flex', alignItems: 'center', gap: '0.2rem', padding: '0.1rem 0.38rem', background: 'rgba(255,198,26,0.1)', border: '1px solid rgba(255,255,255,0.132)', borderRadius: 3, fontSize: '0.58rem', color: 'rgba(242,242,242,0.75)', fontFamily: 'inherit', maxWidth: 130 }}>
             <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>{c}</span>
             <CloseOutlined style={{ fontSize: '0.5rem', cursor: 'pointer', color: 'rgba(255,198,26,0.6)', flexShrink: 0 }} onClick={() => setContext(prev => prev.filter(x => x !== c))} />
           </span>

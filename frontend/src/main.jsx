@@ -6,6 +6,7 @@ import { AuthProvider } from './context/AuthContext.jsx';
 import { CapabilitiesProvider } from './context/CapabilitiesContext.jsx';
 import { fsTheme } from './theme.js';
 import './styles/global.css';
+import './styles/forms.css';
 import 'dockview-react/dist/styles/dockview.css';
 import './styles/reader-dock.css';
 import { captureCodeFromUrl } from './lib/promoCode.js';

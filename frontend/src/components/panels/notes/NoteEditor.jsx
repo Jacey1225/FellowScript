@@ -211,7 +211,7 @@ export default function NoteEditor({ note, noteId, user, currentGroupId, books, 
             <>
               <Switch size="small" checked={isPublic} onChange={setIsPublic}
                 style={{ background: isPublic ? 'rgba(255,198,26,0.8)' : undefined }} />
-              <span style={{ fontSize: '0.72rem', color: 'rgba(242,242,242,0.55)', fontFamily: "'Inter', sans-serif" }}>Allow group to edit</span>
+              <span style={{ fontSize: '0.72rem', color: 'rgba(242,242,242,0.55)', fontFamily: 'inherit' }}>Allow group to edit</span>
             </>
           )}
         </div>
@@ -238,20 +238,20 @@ export default function NoteEditor({ note, noteId, user, currentGroupId, books, 
 
       <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', padding: '0.55rem 0.85rem 0.5rem', flexWrap: 'wrap', borderBottom: '1px solid rgba(255,255,255,0.072)' }}>
         <FmtBtn title="Bold (click again to remove)" onMouseDown={fmt('bold')} active={activeFormats.bold}>
-          <strong style={{ fontFamily: "'Inter', sans-serif", fontSize: '1rem', letterSpacing: '0.01em' }}>B</strong>
+          <strong style={{ fontFamily: 'inherit', fontSize: '1rem', letterSpacing: '0.01em' }}>B</strong>
         </FmtBtn>
         <FmtBtn title="Italic (click again to remove)" onMouseDown={fmt('italic')} active={activeFormats.italic}>
-          <em style={{ fontFamily: "'Inter', sans-serif", fontSize: '1rem' }}>I</em>
+          <em style={{ fontFamily: 'inherit', fontSize: '1rem' }}>I</em>
         </FmtBtn>
         <FmtBtn title="Underline (click again to remove)" onMouseDown={fmt('underline')} active={activeFormats.underline}>
-          <span style={{ textDecoration: 'underline', textUnderlineOffset: 3, fontFamily: "'Inter', sans-serif", fontSize: '1rem' }}>U</span>
+          <span style={{ textDecoration: 'underline', textUnderlineOffset: 3, fontFamily: 'inherit', fontSize: '1rem' }}>U</span>
         </FmtBtn>
         <FmtBtn title="Highlight (click again to remove)" onMouseDown={toggleHighlight} active={activeFormats.highlight}>
-          <span style={{ background: activeFormats.highlight ? 'rgba(255,198,26,0.65)' : 'rgba(255,198,26,0.42)', borderRadius: 3, padding: '1px 5px', fontFamily: "'Inter', sans-serif", fontSize: '0.9rem' }}>H</span>
+          <span style={{ background: activeFormats.highlight ? 'rgba(255,198,26,0.65)' : 'rgba(255,198,26,0.42)', borderRadius: 3, padding: '1px 5px', fontFamily: 'inherit', fontSize: '0.9rem' }}>H</span>
         </FmtBtn>
         <div ref={colorWrapRef} style={{ position: 'relative' }}>
           <FmtBtn title={activeFormats.color ? 'Remove color' : 'Text color'} onMouseDown={onColorBtnMouseDown} active={activeFormats.color}>
-            <span style={{ borderBottom: `2.5px solid ${activeFormats.color ? 'var(--gold)' : 'var(--gold)'}`, paddingBottom: 2, fontFamily: "'Inter', sans-serif", fontSize: '1rem' }}>A</span>
+            <span style={{ borderBottom: `2.5px solid ${activeFormats.color ? 'var(--gold)' : 'var(--gold)'}`, paddingBottom: 2, fontFamily: 'inherit', fontSize: '1rem' }}>A</span>
           </FmtBtn>
           {showColors && (
             <div style={{
@@ -309,7 +309,7 @@ export default function NoteEditor({ note, noteId, user, currentGroupId, books, 
           className={`note-char-counter note-char-counter--${limitState}`}
           style={{
             padding: '0.4rem 0.85rem', display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '0.5rem',
-            borderTop: '1px solid rgba(255,255,255,0.072)', fontFamily: "'Inter', sans-serif", fontSize: '0.72rem',
+            borderTop: '1px solid rgba(255,255,255,0.072)', fontFamily: 'inherit', fontSize: '0.72rem',
             color: limitState === 'over' ? '#ff9c8f' : limitState === 'warn' ? 'var(--gold)' : 'rgba(242,242,242,0.55)',
           }}
         >

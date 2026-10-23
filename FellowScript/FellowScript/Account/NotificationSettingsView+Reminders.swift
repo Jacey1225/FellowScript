@@ -13,15 +13,15 @@ struct NotificationRemindersCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.spacingSM) {
             Text("DAILY REMINDERS")
-                .font(.inter(Theme.fontXS, weight: .semibold))
+                .font(.system(size: Theme.fontXS, weight: .semibold))
                 .foregroundColor(Theme.textMuted)
                 .accessibilityAddTraits(.isHeader)
             ForEach(Array(NotificationPushType.reminders.enumerated()), id: \.element.id) { idx, type in
-                if idx > 0 { Divider().background(Theme.borderGoldFaint) }
+                if idx > 0 { Divider().background(Theme.borderGray) }
                 row(type)
             }
             Text("Reminders arrive around your chosen time in your account time zone.")
-                .font(.inter(Theme.fontXS))
+                .font(.system(size: Theme.fontXS))
                 .foregroundColor(Theme.textMuted)
                 .padding(.top, Theme.spacingXS)
         }
@@ -37,8 +37,8 @@ struct NotificationRemindersCard: View {
                 get: { model.prefs[type.key] ?? false },
                 set: { v in Task { await model.set(type.key, v) } })) {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(type.label).font(.inter(Theme.fontBody)).foregroundColor(Theme.parchment)
-                    Text(type.detail).font(.inter(Theme.fontXS)).foregroundColor(Theme.textMuted)
+                    Text(type.label).font(.system(size: Theme.fontBody)).foregroundColor(Theme.parchment)
+                    Text(type.detail).font(.system(size: Theme.fontXS)).foregroundColor(Theme.textMuted)
                 }
             }
             .tint(Theme.gold)
@@ -67,7 +67,7 @@ struct NotificationRemindersCard: View {
             .disabled(model.savingKey != nil)
             .accessibilityLabel("\(label) reminder time")
         return VStack(alignment: .leading, spacing: 0) {
-            Divider().background(Theme.borderGoldFaint)
+            Divider().background(Theme.borderGray)
             Group {
                 if dynamicTypeSize.isAccessibilitySize {
                     VStack(alignment: .leading, spacing: Theme.spacingXS) { timeText; picker }
@@ -80,7 +80,7 @@ struct NotificationRemindersCard: View {
     }
 
     private var timeText: some View {
-        Text("Time").font(.inter(Theme.fontBody)).foregroundColor(Theme.parchment)
+        Text("Time").font(.system(size: Theme.fontBody)).foregroundColor(Theme.parchment)
             .accessibilityHidden(true)
     }
 }
@@ -97,19 +97,19 @@ struct NotificationAlwaysOnCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.spacingSM) {
             Text("ALWAYS ON")
-                .font(.inter(Theme.fontXS, weight: .semibold))
+                .font(.system(size: Theme.fontXS, weight: .semibold))
                 .foregroundColor(Theme.textMuted)
                 .accessibilityAddTraits(.isHeader)
             ForEach(Array(Self.lines.enumerated()), id: \.offset) { _, line in
                 HStack(alignment: .top, spacing: Theme.spacingSM + 4) {
                     Image(systemName: line.icon)
-                        .font(.inter(Theme.fontBody))
+                        .font(.system(size: Theme.fontBody))
                         .foregroundColor(Theme.gold)
                         .frame(width: 24)
                         .accessibilityHidden(true)
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(line.title).font(.inter(Theme.fontBody)).foregroundColor(Theme.parchment)
-                        Text(line.detail).font(.inter(Theme.fontXS)).foregroundColor(Theme.textMuted)
+                        Text(line.title).font(.system(size: Theme.fontBody)).foregroundColor(Theme.parchment)
+                        Text(line.detail).font(.system(size: Theme.fontXS)).foregroundColor(Theme.textMuted)
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)

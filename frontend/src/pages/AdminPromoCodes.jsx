@@ -22,10 +22,10 @@ const CARD_STYLE = {
   padding: '1.25rem 1.4rem',
 };
 const LABEL = {
-  fontFamily: "'Inter', sans-serif", fontWeight: 600, fontSize: '0.62rem', letterSpacing: '0.22em',
+  fontFamily: 'inherit', fontWeight: 600, fontSize: '0.62rem', letterSpacing: '0.22em',
   textTransform: 'uppercase', color: 'rgba(224,170,60,0.78)', display: 'block', marginBottom: 4,
 };
-const MUTED = { fontFamily: "'Inter', sans-serif", fontSize: '0.8rem', color: 'rgba(244,228,193,0.5)' };
+const MUTED = { fontFamily: 'inherit', fontSize: '0.8rem', color: 'rgba(244,228,193,0.5)' };
 const SR_ONLY = {
   position: 'absolute', width: 1, height: 1, padding: 0, margin: -1, overflow: 'hidden',
   clip: 'rect(0,0,0,0)', whiteSpace: 'nowrap', border: 0,

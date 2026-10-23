@@ -22,10 +22,10 @@ const CARD_STYLE = {
 };
 
 const LABEL = {
-  fontFamily: "'Inter', sans-serif", fontSize: '0.56rem', letterSpacing: '0.3em',
+  fontFamily: 'inherit', fontSize: '0.56rem', letterSpacing: '0.3em',
   textTransform: 'uppercase', color: 'rgba(200,134,26,0.5)', display: 'block',
 };
-const MUTED = { fontFamily: "'Inter', sans-serif", fontSize: '0.8rem', color: 'rgba(244,228,193,0.35)' };
+const MUTED = { fontFamily: 'inherit', fontSize: '0.8rem', color: 'rgba(244,228,193,0.35)' };
 
 // Server-authoritative price table (mirrors api/schemas/subscription.py GROUP_PRICE_CENTS).
 const GROUP_PRICE_CENTS = { 1: 499, 2: 810, 3: 1215, 4: 1620, 5: 2025, 6: 2430, 7: 2835, 8: 3240 };
@@ -53,9 +53,9 @@ const LIMIT_ROW = {
   display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 12, flexWrap: 'wrap',
   padding: '0.45rem 0', borderBottom: '1px solid rgba(255,225,170,0.08)',
 };
-const LIMIT_LABEL = { fontFamily: "'Lora', serif", fontSize: '0.85rem', color: 'rgba(244,228,193,0.9)' };
-const LIMIT_VALUE = { fontFamily: "'Lora', serif", fontSize: '0.85rem', color: 'var(--gold)', textAlign: 'right' };
-const LIMIT_CAPTION = { fontFamily: "'Inter', sans-serif", fontSize: '0.72rem', color: 'rgba(244,228,193,0.7)' };
+const LIMIT_LABEL = { fontFamily: 'inherit', fontSize: '0.85rem', color: 'rgba(244,228,193,0.9)' };
+const LIMIT_VALUE = { fontFamily: 'inherit', fontSize: '0.85rem', color: 'var(--gold)', textAlign: 'right' };
+const LIMIT_CAPTION = { fontFamily: 'inherit', fontSize: '0.72rem', color: 'rgba(244,228,193,0.7)' };
 
 export function FreePlanLimits({ usage }) {
   const r = usage?.resources;
@@ -379,7 +379,7 @@ export default function SubscriptionCard({ userId, onPlanChange, usage = null })
               </div>
               <div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <span style={{ fontFamily: "'DM Serif Display', serif", fontSize: '1.1rem', color: 'var(--parchment)' }}>Free Plan</span>
+                  <span style={{ fontFamily: 'inherit', fontSize: '1.1rem', color: 'var(--parchment)' }}>Free Plan</span>
                   <Tag color="default">Active</Tag>
                 </div>
               </div>
@@ -393,9 +393,9 @@ export default function SubscriptionCard({ userId, onPlanChange, usage = null })
           <div style={{ border: '1px solid rgba(200,134,26,0.2)', borderRadius: 12, padding: '1.1rem', maxWidth: 320 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6, color: 'var(--gold)' }}>
               <TeamOutlined />
-              <span style={{ fontFamily: "'DM Serif Display', serif", fontSize: '1.05rem', color: 'var(--parchment)' }}>Group</span>
+              <span style={{ fontFamily: 'inherit', fontSize: '1.05rem', color: 'var(--parchment)' }}>Group</span>
             </div>
-            <div style={{ fontFamily: "'DM Serif Display', serif", fontSize: '1.7rem', color: 'var(--gold)', lineHeight: 1 }}>
+            <div style={{ fontFamily: 'inherit', fontSize: '1.7rem', color: 'var(--gold)', lineHeight: 1 }}>
               {money(GROUP_PRICE_CENTS[selectedCount])}<span style={{ fontSize: '0.8rem', color: 'rgba(244,228,193,0.4)' }}>/mo</span>
             </div>
             <div style={{ ...MUTED, margin: '0.5rem 0 0.3rem' }}>Members</div>
@@ -404,7 +404,7 @@ export default function SubscriptionCard({ userId, onPlanChange, usage = null })
               onChange={(v) => setSelectedCount(v || 1)}
               style={{ width: '100%', marginBottom: '0.6rem' }}
             />
-            <div style={{ fontFamily: "'Inter', sans-serif", fontSize: '0.72rem', color: 'rgba(200,134,26,0.7)', marginBottom: '0.9rem' }}>
+            <div style={{ fontFamily: 'inherit', fontSize: '0.72rem', color: 'rgba(200,134,26,0.7)', marginBottom: '0.9rem' }}>
               {promo && selectedCount === 1
                 ? `First month ${money(Math.round(GROUP_PRICE_CENTS[1] * (100 - promo.percentOff) / 100))} (${promo.percentOff}% off), then ${money(GROUP_PRICE_CENTS[1])}/mo`
                 : `${money(GROUP_PRICE_CENTS[selectedCount])}/mo, billed today`}
@@ -436,7 +436,7 @@ export default function SubscriptionCard({ userId, onPlanChange, usage = null })
             )}
             <Button type="primary" block loading={busy === 'start'}
               onClick={() => startCheckout(selectedCount)}
-              style={{ borderRadius: 8, fontFamily: "'Inter', sans-serif" }}>
+              style={{ borderRadius: 8, fontFamily: 'inherit' }}>
               Subscribe
             </Button>
           </div>
@@ -453,7 +453,7 @@ export default function SubscriptionCard({ userId, onPlanChange, usage = null })
             </div>
             <div style={{ flex: 1 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <span style={{ fontFamily: "'DM Serif Display', serif", fontSize: '1.15rem', color: 'var(--parchment)' }}>
+                <span style={{ fontFamily: 'inherit', fontSize: '1.15rem', color: 'var(--parchment)' }}>
                   Group Plan
                 </span>
                 <Tag color={statusColor(plan.status)} style={{ textTransform: 'capitalize' }}>
@@ -470,7 +470,7 @@ export default function SubscriptionCard({ userId, onPlanChange, usage = null })
           {/* Trial / billing status */}
           {isHost && (plan.next_billing_date || plan.is_trial) && (
             <div style={{ marginTop: '0.7rem', padding: '0.6rem 0.8rem', borderRadius: 8, background: 'rgba(200,134,26,0.07)', border: '1px solid rgba(200,134,26,0.15)' }}>
-              <span style={{ fontFamily: "'Inter', sans-serif", fontSize: '0.78rem', color: 'rgba(244,228,193,0.7)' }}>
+              <span style={{ fontFamily: 'inherit', fontSize: '0.78rem', color: 'rgba(244,228,193,0.7)' }}>
                 {plan.is_trial ? (
                   <>🎁 Free trial · <span style={{ color: 'var(--gold)' }}>{plan.trial_days_remaining} day{plan.trial_days_remaining === 1 ? '' : 's'} left</span>. First billing {fmtDate(plan.next_billing_date)}.</>
                 ) : (
@@ -491,7 +491,7 @@ export default function SubscriptionCard({ userId, onPlanChange, usage = null })
               <span style={LABEL}>Plan size</span>
               {editCount === null ? (
                 <Button size="small" type="text" onClick={() => setEditCount(plan.max_members)}
-                  style={{ color: 'var(--gold)', fontFamily: "'Inter', sans-serif", fontSize: '0.78rem' }}>
+                  style={{ color: 'var(--gold)', fontFamily: 'inherit', fontSize: '0.78rem' }}>
                   Change ({plan.max_members} member{plan.max_members === 1 ? '' : 's'})
                 </Button>
               ) : (
@@ -517,7 +517,7 @@ export default function SubscriptionCard({ userId, onPlanChange, usage = null })
                   <Avatar size="small" style={{ background: 'rgba(200,134,26,0.15)', color: 'var(--gold)' }}>
                     {(m.username || '?')[0].toUpperCase()}
                   </Avatar>
-                  <span style={{ flex: 1, fontFamily: "'Inter', sans-serif", fontSize: '0.84rem', color: 'var(--parchment)' }}>
+                  <span style={{ flex: 1, fontFamily: 'inherit', fontSize: '0.84rem', color: 'var(--parchment)' }}>
                     {m.username}{m.user_id === userId && <span style={{ color: 'rgba(244,228,193,0.35)' }}> (you)</span>}
                   </span>
                   {m.user_id !== userId && (
@@ -537,7 +537,7 @@ export default function SubscriptionCard({ userId, onPlanChange, usage = null })
             <div style={{ marginTop: '1rem' }}>
               <InviteLinkSection kind="subscription" userId={userId} subscriptionId={plan.id} />
               <Button size="small" type="text" loading={busy === 'refresh-req'} onClick={refreshRequests}
-                style={{ color: 'var(--gold)', fontFamily: "'Inter', sans-serif", fontSize: '0.78rem', paddingLeft: 0 }}>
+                style={{ color: 'var(--gold)', fontFamily: 'inherit', fontSize: '0.78rem', paddingLeft: 0 }}>
                 Refresh join requests
               </Button>
             </div>
@@ -552,7 +552,7 @@ export default function SubscriptionCard({ userId, onPlanChange, usage = null })
                   <Avatar size="small" style={{ background: 'rgba(200,134,26,0.15)', color: 'var(--gold)' }}>
                     {(r.username || '?')[0].toUpperCase()}
                   </Avatar>
-                  <span style={{ flex: 1, fontFamily: "'Inter', sans-serif", fontSize: '0.84rem', color: 'var(--parchment)' }}>{r.username}</span>
+                  <span style={{ flex: 1, fontFamily: 'inherit', fontSize: '0.84rem', color: 'var(--parchment)' }}>{r.username}</span>
                   <Button size="small" type="primary" icon={<CheckOutlined />} loading={busy === `acc-${r.user_id}`}
                     onClick={() => acceptRequest(r.user_id)} style={{ borderRadius: 8 }}>Accept</Button>
                   <Button size="small" type="text" icon={<CloseOutlined />} loading={busy === `dec-${r.user_id}`}
@@ -567,12 +567,12 @@ export default function SubscriptionCard({ userId, onPlanChange, usage = null })
             {isHost ? (
               <Popconfirm title="Cancel this plan?" description="This ends the plan and removes all members." okText="Cancel plan" cancelText="Keep"
                 onConfirm={cancelPlan} okButtonProps={{ danger: true }}>
-                <Button danger loading={busy === 'cancel'} icon={<DeleteOutlined />} style={{ borderRadius: 8, fontFamily: "'Inter', sans-serif" }}>
+                <Button danger loading={busy === 'cancel'} icon={<DeleteOutlined />} style={{ borderRadius: 8, fontFamily: 'inherit' }}>
                   Cancel Plan
                 </Button>
               </Popconfirm>
             ) : (
-              <Button danger loading={busy === 'leave'} onClick={leavePlan} style={{ borderRadius: 8, fontFamily: "'Inter', sans-serif" }}>
+              <Button danger loading={busy === 'leave'} onClick={leavePlan} style={{ borderRadius: 8, fontFamily: 'inherit' }}>
                 Leave Plan
               </Button>
             )}
@@ -589,7 +589,7 @@ export default function SubscriptionCard({ userId, onPlanChange, usage = null })
           <span style={{ ...LABEL, marginBottom: '0.6rem' }}>Your Pending Requests</span>
           {myReqs.map(r => (
             <div key={r.subscription_id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '0.4rem 0' }}>
-              <span style={{ flex: 1, fontFamily: "'Inter', sans-serif", fontSize: '0.82rem', color: 'rgba(244,228,193,0.65)' }}>
+              <span style={{ flex: 1, fontFamily: 'inherit', fontSize: '0.82rem', color: 'rgba(244,228,193,0.65)' }}>
                 Requested to join a group plan
               </span>
               <Button size="small" type="text" loading={busy === `cxl-${r.subscription_id}`}
@@ -610,7 +610,7 @@ export default function SubscriptionCard({ userId, onPlanChange, usage = null })
                 <Avatar size="small" style={{ background: 'rgba(200,134,26,0.15)', color: 'var(--gold)' }}>
                   {(p.hostName || '?')[0].toUpperCase()}
                 </Avatar>
-                <span style={{ flex: 1, fontFamily: "'Inter', sans-serif", fontSize: '0.84rem', color: 'var(--parchment)' }}>
+                <span style={{ flex: 1, fontFamily: 'inherit', fontSize: '0.84rem', color: 'var(--parchment)' }}>
                   {p.hostName}'s Group
                   <span style={{ color: 'rgba(244,228,193,0.35)' }}> · {p.memberCount}/{p.max_members}</span>
                 </span>

@@ -40,7 +40,7 @@ extension AccountView {
                                                  startPoint: .topLeading, endPoint: .bottomTrailing))
                             .frame(width: 72, height: 72)
                         Text(appState.currentUser?.initials ?? "?")
-                            .font(.playfair(Theme.fontDisplayMD))
+                            .font(.system(size: Theme.fontDisplayMD, weight: .heavy))
                             .foregroundColor(Theme.goldLight)
                         if let photoURL = vm.profileData?.profile_photo_url, !photoURL.isEmpty,
                            let url = URL(string: photoURL) {
@@ -95,7 +95,7 @@ extension AccountView {
             if vm.profileData?.profile_photo_url != nil {
                 Button(action: removePhoto) {
                     Text("Remove photo")
-                        .font(.inter(Theme.fontXS))
+                        .font(.system(size: Theme.fontXS))
                         .foregroundColor(Theme.textSecondary)
                 }
                 .disabled(photoUploading)
@@ -105,7 +105,7 @@ extension AccountView {
             if let photoError {
                 HStack(spacing: 6) {
                     Image(systemName: "exclamationmark.circle.fill")
-                    Text(photoError).font(.inter(Theme.fontSM))
+                    Text(photoError).font(.system(size: Theme.fontSM))
                 }
                 .foregroundColor(Theme.error)
                 .padding(.horizontal, Theme.spacingSM).padding(.vertical, Theme.spacingXS + 2)
@@ -115,10 +115,10 @@ extension AccountView {
 
             VStack(spacing: 4) {
                 Text(vm.profileData?.username ?? "")
-                    .font(.playfair(Theme.fontDisplayMD))
+                    .font(.system(size: Theme.fontDisplayMD, weight: .heavy))
                     .foregroundColor(Theme.parchment)
                 Text(vm.profileData?.email ?? "")
-                    .font(.inter(Theme.fontSM))
+                    .font(.system(size: Theme.fontSM))
                     .foregroundColor(Theme.textMuted)
             }
             .padding(.top, Theme.spacingXS)
@@ -235,21 +235,21 @@ extension AccountView {
             VStack(alignment: .leading, spacing: Theme.spacingSM) {
                 sectionLabel("Plan Usage")
                 usageRow("Notes", usage.notes, hint: usage.windowPhrase, forceUnlimited: unlimited)
-                Divider().background(Theme.borderGoldFaint)
+                Divider().background(Theme.borderGray)
                 usageRow("Scheduled devotions", usage.agentEvents, hint: nil, forceUnlimited: unlimited)
                 if let hosting = usage.sessions {
-                    Divider().background(Theme.borderGoldFaint)
+                    Divider().background(Theme.borderGray)
                     usageRow("Hosting sessions", hosting, hint: "at a time", forceUnlimited: unlimited)
                 }
                 if !unlimited {
                     ForEach(usage.freePlanRows.filter { $0.locked }, id: \.label) { row in
-                        Divider().background(Theme.borderGoldFaint)
+                        Divider().background(Theme.borderGray)
                         freeLimitRow(FreePlanLimitRow(label: row.label == "Publish to Explorer" ? "Explorer publishing" : row.label,
                                                       value: row.value, caption: nil, locked: true))
                     }
-                    Divider().background(Theme.borderGoldFaint)
+                    Divider().background(Theme.borderGray)
                     Text("You're on the Free plan. Subscribe for unlimited notes, scheduled devotions and hosted sessions, plus session summaries and Explorer publishing.")
-                        .font(.inter(Theme.fontSM))
+                        .font(.system(size: Theme.fontSM))
                         .foregroundColor(Theme.textGoldMuted)
                 }
             }
@@ -263,16 +263,16 @@ extension AccountView {
         return VStack(alignment: .leading, spacing: Theme.spacingXS + 2) {
             HStack(spacing: Theme.spacingSM) {
                 Text(label)
-                    .font(.inter(Theme.fontBody))
+                    .font(.system(size: Theme.fontBody))
                     .foregroundColor(Theme.parchment)
                 if let hint, !unlimited {
                     Text(hint)
-                        .font(.inter(Theme.fontXS))
+                        .font(.system(size: Theme.fontXS))
                         .foregroundColor(Theme.textMuted)
                 }
                 Spacer()
                 Text(unlimited ? "Unlimited" : "\(r.used) / \(r.limit)" + (r.maxedOut ? " · Limit reached" : ""))
-                    .font(.inter(Theme.fontSM))
+                    .font(.system(size: Theme.fontSM))
                     .foregroundColor(unlimited ? Theme.gold : (r.maxedOut ? Theme.error : Theme.textGoldMuted))
             }
             if !unlimited {
@@ -299,7 +299,7 @@ extension AccountView {
                 HStack(spacing: Theme.spacingSM) {
                     Image(systemName: msg.type == .success ? "checkmark.circle.fill" : "exclamationmark.circle.fill")
                     Text(msg.text)
-                        .font(.inter(Theme.fontSM))
+                        .font(.system(size: Theme.fontSM))
                 }
                 .foregroundColor(msg.type == .success ? Theme.success : Theme.error)
                 .padding(.horizontal, Theme.spacingSM).padding(.vertical, Theme.spacingXS + 2)
@@ -307,58 +307,40 @@ extension AccountView {
                 .clipShape(RoundedRectangle(cornerRadius: Theme.radiusSM))
             }
 
-            // Username
-            HStack {
-                Image(systemName: "person").foregroundColor(Theme.textGoldMuted).frame(width: 22)
-                TextField("Username", text: $username)
-                    .font(.inter(Theme.fontBody))
-                    .foregroundColor(Theme.parchment)
-                    .autocapitalization(.none)
-                    .accessibilityLabel("Username field")
-            }
-            Divider().background(Theme.borderGoldFaint)
+            FSField(label: "Username", text: $username,
+                    leadingSymbol: "person", accessibilityName: "Username field",
+                    contentType: .username, capitalization: .never, autocorrect: false)
 
-            // Email
-            HStack {
-                Image(systemName: "envelope").foregroundColor(Theme.textGoldMuted).frame(width: 22)
-                TextField("Email", text: $email)
-                    .font(.inter(Theme.fontBody))
-                    .foregroundColor(Theme.parchment)
-                    .keyboardType(.emailAddress)
-                    .autocapitalization(.none)
-                    .accessibilityLabel("Email field")
-            }
-            Divider().background(Theme.borderGoldFaint)
+            FSField(label: "Email", text: $email,
+                    leadingSymbol: "envelope", accessibilityName: "Email field",
+                    contentType: .emailAddress, keyboard: .emailAddress,
+                    capitalization: .never, autocorrect: false)
 
             // Timezone — opens a searchable picker sheet; drives the nightly
             // backup schedule (it runs at this timezone's local 3am).
-            Button(action: { activeSheet = .timezonePicker }) {
-                HStack {
-                    Image(systemName: "clock").foregroundColor(Theme.textGoldMuted).frame(width: 22)
-                    Text("Timezone")
-                        .font(.inter(Theme.fontBody))
-                        .foregroundColor(Theme.parchment)
-                    Spacer()
-                    Text(timezone)
-                        .font(.inter(Theme.fontSM))
-                        .foregroundColor(Theme.textGoldMuted)
-                    Image(systemName: "chevron.right")
-                        .font(.system(size: 12))
-                        .foregroundColor(Theme.textGoldMuted)
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Timezone").font(.fsLabel).foregroundColor(Theme.textPrimary)
+                Button(action: { activeSheet = .timezonePicker }) {
+                    HStack(spacing: 10) {
+                        Image(systemName: "clock").foregroundColor(Theme.gold)
+                        Text(timezone).font(.fsBody).foregroundColor(Theme.textPrimary).lineLimit(1)
+                        Spacer()
+                        Image(systemName: "chevron.down").font(.system(size: 12)).foregroundColor(Theme.textSecondary)
+                    }
+                    .padding(.horizontal, 14)
+                    .frame(minHeight: Theme.formFieldHeight)
+                    .background(RoundedRectangle(cornerRadius: Theme.radius, style: .continuous).fill(Theme.fieldFill))
+                    .overlay(RoundedRectangle(cornerRadius: Theme.radius, style: .continuous).strokeBorder(Theme.fieldBorder, lineWidth: 1))
                 }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Timezone: \(timezone)")
             }
-            .accessibilityLabel("Timezone: \(timezone)")
-            Divider().background(Theme.borderGoldFaint)
 
-            // Password
-            HStack {
-                Image(systemName: "lock").foregroundColor(Theme.textGoldMuted).frame(width: 22)
-                SecureField("New Password (leave blank to keep)", text: $password)
-                    .font(.inter(Theme.fontBody))
-                    .foregroundColor(Theme.parchment)
-                    .accessibilityLabel("New password field")
-            }
-            Divider().background(Theme.borderGoldFaint)
+            FSField(label: "New password", optional: true, text: $password,
+                    helper: "Leave blank to keep your current password.",
+                    leadingSymbol: "lock", accessibilityName: "New password field",
+                    secure: true, contentType: .newPassword,
+                    capitalization: .never, autocorrect: false)
 
             Button(action: saveProfile) {
                 gradientPill("Save Changes")
@@ -375,7 +357,7 @@ extension AccountView {
 
             if let msg = vm.friendMsg {
                 Text(msg)
-                    .font(.inter(Theme.fontSM)).foregroundColor(Theme.error)
+                    .font(.system(size: Theme.fontSM)).foregroundColor(Theme.error)
                     .padding(.horizontal, Theme.spacingSM).padding(.vertical, Theme.spacingXS + 2)
                     .background(Theme.error.opacity(0.10))
                     .clipShape(RoundedRectangle(cornerRadius: Theme.radiusSM))
@@ -383,11 +365,11 @@ extension AccountView {
 
             if vm.friendRequests.isEmpty {
                 Text("No pending friend requests.")
-                    .font(.inter(Theme.fontSM))
+                    .font(.system(size: Theme.fontSM))
                     .foregroundColor(Theme.textMuted)
             } else {
                 ForEach(Array(vm.friendRequests.enumerated()), id: \.offset) { idx, req in
-                    if idx > 0 { Divider().background(Theme.borderGoldFaint) }
+                    if idx > 0 { Divider().background(Theme.borderGray) }
                     HStack {
                         // Task 20260905-profile-photo-avatar-gaps: friends.py's
                         // get_requests() already resolves profile_photo_url per
@@ -401,8 +383,8 @@ extension AccountView {
                             textColor: Theme.gold
                         )
                         VStack(alignment: .leading) {
-                            Text(req.username).font(.inter(Theme.fontBody)).foregroundColor(Theme.parchment)
-                            Text("Wants to be your friend").font(.inter(Theme.fontXS)).foregroundColor(Theme.textMuted)
+                            Text(req.username).font(.system(size: Theme.fontBody)).foregroundColor(Theme.parchment)
+                            Text("Wants to be your friend").font(.system(size: Theme.fontXS)).foregroundColor(Theme.textMuted)
                         }
                         Spacer()
                         Button {

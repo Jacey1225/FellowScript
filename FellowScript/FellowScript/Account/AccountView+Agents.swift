@@ -14,13 +14,13 @@ extension AccountView {
             sectionLabel("Agents")
 
             Text("Enabled agents participate in your chats and can summarize study sessions.")
-                .font(.inter(Theme.fontSM))
+                .font(.system(size: Theme.fontSM))
                 .foregroundColor(Theme.textMuted)
 
             if vm.agents.isEmpty {
-                Divider().background(Theme.borderGoldFaint)
+                Divider().background(Theme.borderGray)
                 Text("No agents yet. Tap + to create one.")
-                    .font(.inter(Theme.fontSM))
+                    .font(.system(size: Theme.fontSM))
                     .foregroundColor(Theme.textMuted)
             } else {
                 // Iterate over stable values (vm.agents), not ForEach($vm.agents) —
@@ -34,8 +34,8 @@ extension AccountView {
                 // Sourcing the Toggle's binding via agentEnabledBinding(id:), keyed by
                 // agent.id and re-resolved against vm.agents on every get/set, removes
                 // the dangling-index hazard structurally instead of just timing around it.
-                ForEach(vm.agents) { agent in
-                    Divider().background(Theme.borderGoldFaint)
+                ForEach(vm.agents.filter { !hiddenAgentIds.contains($0.id) }) { agent in
+                    Divider().background(Theme.borderGray)
                     HStack(spacing: Theme.spacingMD) {
                         ZStack {
                             Circle().fill(Theme.gold.opacity(0.12)).frame(width: 36, height: 36)
@@ -43,10 +43,10 @@ extension AccountView {
                         }
                         VStack(alignment: .leading, spacing: 2) {
                             Text(agent.displayLabel)
-                                .font(.inter(Theme.fontBody))
+                                .font(.system(size: Theme.fontBody))
                                 .foregroundColor(Theme.parchment)
                             Text(agent.role.isEmpty ? "Default spiritual guide role" : String(agent.role.prefix(60)))
-                                .font(.inter(Theme.fontXS))
+                                .font(.system(size: Theme.fontXS))
                                 .foregroundColor(Theme.textMuted)
                                 .lineLimit(1)
                         }
@@ -72,7 +72,7 @@ extension AccountView {
                             renameText    = agent.name.isEmpty ? agent.displayLabel : agent.name
                             renameAgentId = agent.id
                         }) { Label("Rename", systemImage: "pencil") }
-                        Button(role: .destructive, action: { vm.deleteAgent(id: agent.id) }) {
+                        Button(role: .destructive, action: { undoableDeleteAgent(agent) }) {
                             Label("Delete", systemImage: "trash")
                         }
                     }
@@ -83,11 +83,11 @@ extension AccountView {
                         renameText    = agent.name.isEmpty ? agent.displayLabel : agent.name
                         renameAgentId = agent.id
                     }
-                    .accessibilityAction(named: "Delete agent") { vm.deleteAgent(id: agent.id) }
+                    .accessibilityAction(named: "Delete agent") { undoableDeleteAgent(agent) }
                 }
             }
 
-            Divider().background(Theme.borderGoldFaint)
+            Divider().background(Theme.borderGray)
             Button(action: { activeSheet = .newAgent }) {
                 ghostLabelPill(icon: "plus", "New Agent")
             }
@@ -107,5 +107,14 @@ extension AccountView {
             get: { vm.agents.first(where: { $0.id == id })?.enabled ?? false },
             set: { vm.toggleAgent(id: id, enabled: $0) }
         )
+    }
+}
+
+extension AccountView {
+    func undoableDeleteAgent(_ agent: FSAgent) {
+        deferDelete(message: "Agent deleted.",
+                    hide: { hiddenAgentIds.insert(agent.id) },
+                    restore: { hiddenAgentIds.remove(agent.id) },
+                    commit: { vm.deleteAgent(id: agent.id); hiddenAgentIds.remove(agent.id) })
     }
 }

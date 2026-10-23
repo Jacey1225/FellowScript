@@ -51,8 +51,10 @@ final class PendingNoteDraftLifecycleTests: XCTestCase {
 final class PadGatingSourcePinTests: XCTestCase {
     func test_authView_gatesCardOnRegularHorizontalSizeClass() throws {
         let src = try padSource("Auth/AuthView.swift")
-        XCTAssertTrue(src.contains("if horizontalSizeClass == .regular { padCard } else { phoneBody }"))
-        XCTAssertFalse(src.contains("userInterfaceIdiom"), "gating must be size-class based so Slide Over falls back to phone")
+        // Forms restyle (20261023-forms-restyle): one kit-based layout for every size class.
+        XCTAssertTrue(src.contains("authCard"))
+        XCTAssertFalse(src.contains("phoneBody"))
+        XCTAssertFalse(src.contains("userInterfaceIdiom"), "no idiom gating; the layout is size-class independent")
     }
 
     func test_authCardView_isPresentationOnly_noNetworkOrLogging() throws {

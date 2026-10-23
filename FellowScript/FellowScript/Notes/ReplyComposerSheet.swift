@@ -126,7 +126,7 @@ struct ReplyComposerInline: View {
 
             VStack(alignment: .leading, spacing: Theme.spacingSM) {
                 Text("REPLY")
-                    .font(.interScaled(Theme.fontXXS)).tracking(4).foregroundColor(Theme.textGoldMuted)
+                    .font(.system(size: Theme.fontXXS)).tracking(4).foregroundColor(Theme.textGoldMuted)
                     .accessibilityHidden(true)
 
                 // Body — rich text editor. Same ZStack structure as
@@ -135,7 +135,7 @@ struct ReplyComposerInline: View {
                 // the UIViewRepresentable and resets htmlOutput.
                 ZStack(alignment: .topLeading) {
                     Text("Write a reply…")
-                        .font(.interScaled(Theme.fontBody))
+                        .font(.system(size: Theme.fontBody))
                         .foregroundColor(Theme.textMuted)
                         .padding(.top, 2)
                         .allowsHitTesting(false)
@@ -156,7 +156,7 @@ struct ReplyComposerInline: View {
 
             if let errorMessage {
                 Text(errorMessage)
-                    .font(.interScaled(Theme.fontSM))
+                    .font(.system(size: Theme.fontSM))
                     .foregroundColor(Theme.error)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -212,7 +212,7 @@ struct ReplyComposerInline: View {
     // EventSetupSheet's cancelGhostChip precedent).
     private var cancelGhostChip: some View {
         Text("Cancel")
-            .font(.interScaled(Theme.fontSM))
+            .font(.system(size: Theme.fontSM))
             .foregroundColor(Theme.textSecondary)
             .fixedSize()
             .padding(.horizontal, 16)

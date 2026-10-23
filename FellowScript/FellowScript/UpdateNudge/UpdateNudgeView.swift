@@ -47,7 +47,7 @@ struct UpdateNudgeView: View {
 
                 VStack(spacing: Theme.spacingSM) {
                     Text("A new version of FellowScript is here")
-                        .font(.playfair(Theme.fontDisplayMD))
+                        .font(.system(size: Theme.fontDisplayMD, weight: .heavy))
                         .foregroundColor(Theme.parchment)
                         .multilineTextAlignment(.center)
 
@@ -55,7 +55,7 @@ struct UpdateNudgeView: View {
                     // UI/UX Q17) — no version-compare jargon beyond the
                     // number itself.
                     Text("Update to version \(update.latestVersion) for the latest improvements and fixes.")
-                        .font(.inter(Theme.fontSM))
+                        .font(.system(size: Theme.fontSM))
                         .foregroundColor(Theme.textMuted)
                         .multilineTextAlignment(.center)
                         .padding(.horizontal, Theme.spacingLG)
@@ -70,7 +70,7 @@ struct UpdateNudgeView: View {
                 .accessibilityLabel("Update Now, opens the App Store")
 
                 Button("Not Now", action: onDismiss)
-                    .font(.inter(Theme.fontSM))
+                    .font(.system(size: Theme.fontSM))
                     .foregroundColor(Theme.textGoldMuted)
                     .padding(.bottom, Theme.spacingSM)
                     .accessibilityLabel("Not now, dismiss this update reminder")

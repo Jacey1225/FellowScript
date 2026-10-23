@@ -16,7 +16,7 @@ const CARD_STYLE = {
   marginBottom: '0.8rem',
   padding: '1rem 1.3rem',
 };
-const MUTED = { fontFamily: "'Inter', sans-serif", fontSize: '0.8rem', color: 'rgba(244,228,193,0.6)' };
+const MUTED = { fontFamily: 'inherit', fontSize: '0.8rem', color: 'rgba(244,228,193,0.6)' };
 const LABEL = { ...MUTED, display: 'block', marginBottom: '0.25rem' };
 const DEFAULT_MAX_LEN = 120;
 
@@ -178,7 +178,7 @@ export default function AdminHomeMessages() {
                 const confirming = pendingDelete === m.id;
                 return (
                   <li key={m.id} data-testid={`home-msg-${m.id}`} style={{ borderTop: '1px solid rgba(255,225,170,0.12)', padding: '0.7rem 0' }}>
-                    <p style={{ margin: 0, color: '#f4e4c1', fontFamily: "'Inter', sans-serif", fontSize: '0.9rem', overflowWrap: 'anywhere' }}>
+                    <p style={{ margin: 0, color: '#f4e4c1', fontFamily: 'inherit', fontSize: '0.9rem', overflowWrap: 'anywhere' }}>
                       {m.text}
                     </p>
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.6rem', alignItems: 'center', marginTop: '0.4rem' }}>

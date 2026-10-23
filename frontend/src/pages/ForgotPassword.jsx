@@ -1,11 +1,8 @@
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Card, Form, Input, Button, Typography, Alert } from 'antd';
-import { MailOutlined } from '@ant-design/icons';
 import { API } from '../config.js';
 import Seo from '../components/Seo.jsx';
-
-const { Title, Text } = Typography;
+import { AuthPage, Field, StickyActionBar } from '../components/forms/index.js';
 
 export default function ForgotPassword() {
   const [email,   setEmail]   = useState('');
@@ -13,7 +10,8 @@ export default function ForgotPassword() {
   const [sent,    setSent]    = useState(false);
   const [loading, setLoading] = useState(false);
 
-  const handleSubmit = async () => {
+  const handleSubmit = async (e) => {
+    e?.preventDefault?.();
     setError('');
     setLoading(true);
     try {
@@ -34,54 +32,31 @@ export default function ForgotPassword() {
   };
 
   return (
-    <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '2rem' }}>
+    <>
       <Seo
         title="Forgot Password — FellowScript"
         description="Reset the password for your FellowScript account."
         path="/forgot-password"
         noindex
       />
-      <Card style={{ width: '100%', maxWidth: 420, background: 'rgba(10,6,2,0.88)', border: '1px solid rgba(200,134,26,0.2)', backdropFilter: 'blur(12px)' }}>
-        <div style={{ textAlign: 'center', marginBottom: '1.5rem' }}>
-          <Title level={3} style={{ margin: 0, fontFamily: "'Playfair Display', serif" }}>
-            <span style={{ color: 'var(--parchment)' }}>Forgot</span>{' '}
-            <em style={{ color: 'var(--gold)' }}>password</em>
-          </Title>
-          <Text style={{ fontFamily: "'Lora', serif", fontSize: '0.82rem', color: 'rgba(244,228,193,0.5)' }}>
-            Enter your account email and we'll send a reset link.
-          </Text>
-        </div>
-
+      <AuthPage
+        title={sent ? 'Check your email' : 'Forgot password'}
+        subtitle={sent ? null : "Enter your account email and we'll send a reset link."}
+        footer={<div className="ff-link-row"><Link to="/signin" className="ff-link">Back to sign in</Link></div>}
+      >
         {sent ? (
-          <Alert
-            type="success"
-            showIcon
-            message="Check your email"
-            description="If an account with that email exists, a password reset link has been sent. It expires in 30 minutes."
-          />
+          <div className="ff-info" role="status">
+            If an account with that email exists, a password reset link has been sent. It expires in 30 minutes.
+          </div>
         ) : (
-          <Form layout="vertical" onFinish={handleSubmit} style={{ marginTop: 8 }}>
-            {error && <Alert message={error} type="error" showIcon style={{ marginBottom: 16 }} />}
-            <Form.Item>
-              <Input
-                prefix={<MailOutlined />}
-                placeholder="you@example.com"
-                type="email"
-                value={email}
-                onChange={e => setEmail(e.target.value)}
-                autoFocus
-              />
-            </Form.Item>
-            <Button type="primary" htmlType="submit" loading={loading} block>Send reset link</Button>
-          </Form>
+          <form onSubmit={handleSubmit} noValidate className="ff-formstack">
+            {error && <div className="ff-alert" role="alert"><div className="ff-alert__title">{error}</div></div>}
+            <Field label="Email" required type="email" placeholder="you@example.com" value={email}
+              autoComplete="email" autoCapitalize="none" spellCheck={false} autoFocus onChange={setEmail} />
+            <StickyActionBar variant="page" primaryType="submit" primaryLabel="Send reset link" saving={loading} onPrimary={() => {}} />
+          </form>
         )}
-
-        <div style={{ textAlign: 'center', marginTop: '1.25rem' }}>
-          <Link to="/signin" style={{ fontFamily: "'Lora', serif", fontSize: '0.78rem', color: 'rgba(244,228,193,0.4)' }}>
-            Back to sign in
-          </Link>
-        </div>
-      </Card>
-    </div>
+      </AuthPage>
+    </>
   );
 }

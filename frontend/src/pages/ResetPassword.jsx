@@ -1,11 +1,8 @@
 import React, { useState } from 'react';
 import { useLocation, Link } from 'react-router-dom';
-import { Card, Form, Input, Button, Typography, Alert } from 'antd';
-import { LockOutlined } from '@ant-design/icons';
 import { API } from '../config.js';
 import Seo from '../components/Seo.jsx';
-
-const { Title, Text } = Typography;
+import { AuthPage, Field, StickyActionBar } from '../components/forms/index.js';
 
 export default function ResetPassword() {
   const location = useLocation();
@@ -17,18 +14,19 @@ export default function ResetPassword() {
 
   if (!token) {
     return (
-      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '2rem' }}>
+      <>
         <Seo title="Reset Password — FellowScript" path="/reset-password" noindex />
-        <Card style={{ width: '100%', maxWidth: 420, background: 'rgba(10,6,2,0.88)', border: '1px solid rgba(200,134,26,0.2)' }}>
-          <Text style={{ fontFamily: "'Lora', serif", color: 'rgba(244,228,193,0.6)' }}>
-            This reset link is missing its token. <Link to="/forgot-password" style={{ color: 'var(--gold)' }}>Request a new one</Link>.
-          </Text>
-        </Card>
-      </div>
+        <AuthPage>
+          <p className="ff-helper" style={{ fontSize: 14 }}>
+            This reset link is missing its token. <Link to="/forgot-password" className="ff-link">Request a new one</Link>.
+          </p>
+        </AuthPage>
+      </>
     );
   }
 
-  const handleSubmit = async () => {
+  const handleSubmit = async (e) => {
+    e?.preventDefault?.();
     setError('');
     setLoading(true);
     try {
@@ -47,48 +45,29 @@ export default function ResetPassword() {
   };
 
   return (
-    <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '2rem' }}>
+    <>
       <Seo
         title="Reset Password — FellowScript"
         description="Choose a new password for your FellowScript account."
         path="/reset-password"
         noindex
       />
-      <Card style={{ width: '100%', maxWidth: 420, background: 'rgba(10,6,2,0.88)', border: '1px solid rgba(200,134,26,0.2)', backdropFilter: 'blur(12px)' }}>
-        <div style={{ textAlign: 'center', marginBottom: '1.5rem' }}>
-          <Title level={3} style={{ margin: 0, fontFamily: "'Playfair Display', serif" }}>
-            <span style={{ color: 'var(--parchment)' }}>Reset</span>{' '}
-            <em style={{ color: 'var(--gold)' }}>password</em>
-          </Title>
-        </div>
-
+      <AuthPage title="Reset password">
         {done ? (
           <>
-            <Alert
-              type="success"
-              showIcon
-              message="Password updated"
-              description="You've been signed out everywhere for security. Sign in with your new password."
-              style={{ marginBottom: 16 }}
-            />
-            <Link to="/signin"><Button type="primary" block>Go to sign in</Button></Link>
+            <div className="ff-info" role="status">
+              <strong>Password updated.</strong> You've been signed out everywhere for security. Sign in with your new password.
+            </div>
+            <Link to="/signin" className="ff-btn ff-btn--primary ff-btn--block" style={{ textAlign: 'center', textDecoration: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>Go to sign in</Link>
           </>
         ) : (
-          <Form layout="vertical" onFinish={handleSubmit} style={{ marginTop: 8 }}>
-            {error && <Alert message={error} type="error" showIcon style={{ marginBottom: 16 }} />}
-            <Form.Item label="New password">
-              <Input.Password
-                prefix={<LockOutlined />}
-                placeholder="New password"
-                value={password}
-                onChange={e => setPassword(e.target.value)}
-                autoFocus
-              />
-            </Form.Item>
-            <Button type="primary" htmlType="submit" loading={loading} block>Reset password</Button>
-          </Form>
+          <form onSubmit={handleSubmit} noValidate className="ff-formstack">
+            {error && <div className="ff-alert" role="alert"><div className="ff-alert__title">{error}</div></div>}
+            <Field label="New password" required secure value={password} autoComplete="new-password" autoFocus onChange={setPassword} />
+            <StickyActionBar variant="page" primaryType="submit" primaryLabel="Reset password" saving={loading} onPrimary={() => {}} />
+          </form>
         )}
-      </Card>
-    </div>
+      </AuthPage>
+    </>
   );
 }

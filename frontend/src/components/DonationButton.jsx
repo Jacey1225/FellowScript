@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Button, Modal, Input, Alert } from 'antd';
+import { Button, Modal, Alert } from 'antd';
+import { FormSkin, Field, ChipGroup, StickyActionBar } from './forms/index.js';
 import { HeartFilled } from '@ant-design/icons';
 import { API } from '../config.js';
 
@@ -42,7 +43,7 @@ export default function DonationButton({ email }) {
   };
 
   return (
-    <>
+    <FormSkin>
       {thanks && (
         <Alert type="success" showIcon
           message="Thank you for supporting FellowScript! 🙏"
@@ -52,8 +53,7 @@ export default function DonationButton({ email }) {
       <Button block icon={<HeartFilled style={{ color: '#e0698a' }} />} onClick={() => setOpen(true)}
         style={{
           marginBottom: '1.5rem', height: 46, borderRadius: 12,
-          fontFamily: "'Inter', sans-serif", letterSpacing: '0.06em',
-          background: 'rgba(200,134,26,0.06)', border: '1px solid rgba(200,134,26,0.2)',
+          background: 'rgba(154,154,154,0.16)', border: '1px solid rgba(255,255,255,0.14)',
           color: 'var(--parchment)',
         }}>
         Support FellowScript
@@ -63,48 +63,32 @@ export default function DonationButton({ email }) {
         open={open}
         onCancel={() => setOpen(false)}
         footer={null}
-        title={<span style={{ fontFamily: "'DM Serif Display', serif", color: 'var(--parchment)' }}>
-          Support FellowScript
-        </span>}
+        title="Support FellowScript"
         destroyOnClose
       >
-        <p style={{ fontFamily: "'Inter', sans-serif", fontSize: '0.85rem', color: 'rgba(244,228,193,0.55)', lineHeight: 1.65, marginBottom: 16 }}>
-          FellowScript is built with love. If it has been a blessing to you, a one-time gift helps keep it growing and freely available. Thank you 🙏
-        </p>
-        {err && <Alert type="error" message={err} showIcon style={{ marginBottom: 12, borderRadius: 8 }} />}
+        <div className="ff-formstack">
+          <p className="ff-helper" style={{ fontSize: 14, margin: 0 }}>
+            FellowScript is built with love. If it has been a blessing to you, a one-time gift helps keep it growing and freely available. Thank you 🙏
+          </p>
+          {err && <div className="ff-alert" role="alert"><div className="ff-alert__title">{err}</div></div>}
 
-        <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
-          {PRESETS.map(v => {
-            const sel = custom === '' && amount === v;
-            return (
-              <button key={v} onClick={() => { setAmount(v); setCustom(''); }}
-                style={{
-                  flex: 1, minWidth: 64, padding: '10px 0', borderRadius: 10, cursor: 'pointer',
-                  border: `1px solid ${sel ? 'var(--gold)' : 'rgba(200,134,26,0.25)'}`,
-                  background: sel ? 'rgba(200,134,26,0.18)' : 'transparent',
-                  color: sel ? 'var(--gold)' : 'rgba(244,228,193,0.7)',
-                  fontFamily: "'Inter', sans-serif", fontSize: '0.95rem',
-                }}>
-                ${v}
-              </button>
-            );
-          })}
+          <div className="ff-field">
+            <span className="ff-label" id="ff-donate-amount">Amount</span>
+            <ChipGroup label="Donation amount" options={PRESETS.map(v => ({ value: v, label: `$${v}` }))}
+              value={custom === '' ? amount : null}
+              onChange={(v) => { setAmount(v); setCustom(''); }} />
+          </div>
+
+          <Field label="Other amount" value={custom} placeholder="0.00" inputMode="decimal" autoComplete="off"
+            leading={<span aria-hidden="true">$</span>}
+            onChange={(v) => setCustom(v.replace(/[^\d.]/g, ''))} />
+
+          <StickyActionBar variant="page" primaryLabel={`Donate $${dollars.toFixed(2)}`} saving={busy}
+            primaryDisabled={!cents || cents < 100} onPrimary={donate} />
+
+          <p className="ff-helper ff-center" style={{ margin: 0 }}>Secure one-time payment via Stripe.</p>
         </div>
-
-        <Input prefix="$" placeholder="Other amount" inputMode="decimal" value={custom}
-          onChange={e => setCustom(e.target.value.replace(/[^\d.]/g, ''))}
-          style={{ marginBottom: 16 }} />
-
-        <Button type="primary" block loading={busy} onClick={donate} icon={<HeartFilled />}
-          disabled={!cents || cents < 100}
-          style={{ borderRadius: 8, height: 42, fontFamily: "'Inter', sans-serif" }}>
-          Donate ${dollars.toFixed(2)}
-        </Button>
-
-        <p style={{ fontFamily: "'Inter', sans-serif", fontSize: '0.68rem', color: 'rgba(244,228,193,0.3)', marginTop: 12, marginBottom: 0, textAlign: 'center' }}>
-          Secure one-time payment via Stripe.
-        </p>
       </Modal>
-    </>
+    </FormSkin>
   );
 }

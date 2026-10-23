@@ -18,6 +18,7 @@ import AppNav from '../components/AppNav.jsx';
 import { useWarmCanvas } from '../hooks/useWarmCanvas.js';
 import AppBloom from '../components/AppBloom.jsx';
 import SubscriptionCard from '../components/SubscriptionCard.jsx';
+import { FormSkin, FORM_CARD_STYLE, useUndoDelete, DeleteAccountDialog } from '../components/forms/index.js';
 import RewardNotice from '../components/RewardNotice.jsx';
 import EmailVerifyNotice from '../components/EmailVerifyNotice.jsx';
 import DonationButton from '../components/DonationButton.jsx';
@@ -38,13 +39,7 @@ const { Title, Text, Paragraph } = Typography;
 // static frontend/css/account.css, not this React app). The Danger Zone
 // card below spreads this same object, so it stays a tinted variant of the
 // same card shape rather than a separate one.
-const CARD_STYLE = {
-  background: 'rgba(32,24,16,0.62)',
-  border: '1px solid rgba(200,134,26,0.22)',
-  backdropFilter: 'blur(14px)',
-  borderRadius: 22,
-  marginBottom: '1.25rem',
-};
+const CARD_STYLE = FORM_CARD_STYLE;
 
 // Full IANA timezone list where supported (most modern browsers); falls back
 // to just the browser's own detected zone so the picker still works.
@@ -98,11 +93,11 @@ function UsageMeter({ label, hint, data }) {
   return (
     <div style={{ marginBottom: '1rem' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '0.3rem' }}>
-        <Text style={{ fontFamily: "'Lora', serif", color: 'rgba(244,228,193,0.85)', fontSize: '0.85rem' }}>
+        <Text style={{ fontFamily: "inherit", color: 'rgba(244,228,193,0.85)', fontSize: '0.85rem' }}>
           {label}
           {hint && <span style={{ color: 'rgba(244,228,193,0.6)', fontSize: '0.7rem', marginLeft: 6 }}>{hint}</span>}
         </Text>
-        <Text style={{ fontFamily: "'Lora', serif", fontSize: '0.8rem', color: unlimited ? 'var(--gold)' : maxed ? '#e08b8b' : 'rgba(244,228,193,0.7)' }}>
+        <Text style={{ fontFamily: "inherit", fontSize: '0.8rem', color: unlimited ? 'var(--gold)' : maxed ? '#e08b8b' : 'rgba(244,228,193,0.7)' }}>
           {unlimited ? 'Unlimited' : `${used} / ${limit}`}{maxed ? ' · Limit reached' : ''}
         </Text>
       </div>
@@ -128,8 +123,8 @@ function PaidOnlyRow({ label, info }) {
   const text = !subscribersOnly ? 'Included' : info.allowed ? 'Included' : 'Subscribers only';
   return (
     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '1rem' }}>
-      <Text style={{ fontFamily: "'Lora', serif", color: 'rgba(244,228,193,0.85)', fontSize: '0.85rem' }}>{label}</Text>
-      <Text style={{ fontFamily: "'Lora', serif", fontSize: '0.8rem', color: info.allowed ? 'var(--gold)' : 'rgba(244,228,193,0.7)' }}>
+      <Text style={{ fontFamily: "inherit", color: 'rgba(244,228,193,0.85)', fontSize: '0.85rem' }}>{label}</Text>
+      <Text style={{ fontFamily: "inherit", fontSize: '0.8rem', color: info.allowed ? 'var(--gold)' : 'rgba(244,228,193,0.7)' }}>
         {!info.allowed && <LockOutlined aria-hidden="true" style={{ marginRight: 5 }} />}{text}
       </Text>
     </div>
@@ -195,6 +190,8 @@ export default function Account() {
   const [photoJustUpdated, setPhotoJustUpdated] = useState(false); // brief crossfade flag (Q18), not a persistent state
   const photoInputRef = useRef(null);
 
+  const undo = useUndoDelete();
+  const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleteConfirm,  setDeleteConfirm]  = useState('');
   const [deleteLoading,  setDeleteLoading]  = useState(false);
   const [deleteMsg,      setDeleteMsg]      = useState(null);
@@ -437,14 +434,23 @@ export default function Account() {
     }
   };
 
-  const handleDeleteAgent = async (agentId) => {
-    try {
-      const res = await fetch(`${API}/agent/${user.user_id}/${agentId}`, { method: 'DELETE' });
-      if (res.ok || res.status === 204) {
+  const handleDeleteAgent = (agentId) => {
+    const prevAgents = agents;
+    const prevEvents = events;
+    undo.schedule({
+      message: 'Agent deleted.',
+      hide: () => {
         setAgents(prev => prev.filter(a => a.id !== agentId));
         setEvents(prev => prev.filter(e => e.agent_id !== agentId));
-      }
-    } catch {}
+      },
+      restore: () => { setAgents(prevAgents); setEvents(prevEvents); },
+      commit: async () => {
+        try {
+          const res = await fetch(`${API}/agent/${user.user_id}/${agentId}`, { method: 'DELETE' });
+          if (!(res.ok || res.status === 204)) { setAgents(prevAgents); setEvents(prevEvents); }
+        } catch { setAgents(prevAgents); setEvents(prevEvents); }
+      },
+    });
   };
 
   // ── Event handlers ────────────────────────────────────────────────────────
@@ -530,11 +536,18 @@ export default function Account() {
     } catch {} finally { setEvSaving(false); }
   };
 
-  const handleDeleteEvent = async (event) => {
-    setEvents(prev => prev.filter(e => e._id !== event._id));
-    try {
-      await fetch(`${API}/agent/${user.user_id}/${event.agent_id}/heartbeat/${event._id}`, { method: 'DELETE' });
-    } catch {}
+  const handleDeleteEvent = (event) => {
+    const prevEvents = events;
+    undo.schedule({
+      message: 'Scheduled devotion deleted.',
+      hide: () => setEvents(prev => prev.filter(e => e._id !== event._id)),
+      restore: () => setEvents(prevEvents),
+      commit: async () => {
+        try {
+          await fetch(`${API}/agent/${user.user_id}/${event.agent_id}/heartbeat/${event._id}`, { method: 'DELETE' });
+        } catch {}
+      },
+    });
   };
 
   // ── Profile / account handlers ────────────────────────────────────────────
@@ -785,8 +798,8 @@ export default function Account() {
               style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '0.75rem 1rem', background: 'rgba(200,134,26,0.07)', border: '1px solid rgba(200,134,26,0.2)', borderRadius: 10, cursor: 'pointer', textAlign: 'left', width: '100%' }}>
               <span style={{ fontSize: '1.3rem' }}>{o.icon}</span>
               <div>
-                <div style={{ fontFamily: "'Lora', serif", color: 'var(--parchment)', fontSize: '0.88rem' }}>{o.title}</div>
-                <div style={{ fontFamily: "'Lora', serif", color: 'rgba(244,228,193,0.4)', fontSize: '0.72rem' }}>{o.desc}</div>
+                <div style={{ fontFamily: "inherit", color: 'var(--parchment)', fontSize: '0.88rem' }}>{o.title}</div>
+                <div style={{ fontFamily: "inherit", color: 'rgba(244,228,193,0.4)', fontSize: '0.72rem' }}>{o.desc}</div>
               </div>
             </button>
           ))}
@@ -797,7 +810,7 @@ export default function Account() {
     if (evStep === 1 && evRecur === 'weekly') {
       return (
         <div>
-          <Text style={{ fontFamily: "'Lora', serif", fontSize: '0.75rem', color: 'rgba(244,228,193,0.5)', display: 'block', marginBottom: '0.75rem' }}>
+          <Text style={{ fontFamily: "inherit", fontSize: '0.75rem', color: 'rgba(244,228,193,0.5)', display: 'block', marginBottom: '0.75rem' }}>
             Which days of the week?
           </Text>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
@@ -805,7 +818,7 @@ export default function Account() {
               const sel = evWeekdays.includes(d.value);
               return (
                 <button key={d.value} onClick={() => setEvWeekdays(prev => sel ? prev.filter(x => x !== d.value) : [...prev, d.value])}
-                  style={{ padding: '6px 14px', borderRadius: 8, border: `1px solid ${sel ? 'var(--gold)' : 'rgba(200,134,26,0.2)'}`, background: sel ? 'rgba(200,134,26,0.2)' : 'transparent', color: sel ? 'var(--gold)' : 'rgba(244,228,193,0.6)', fontFamily: "'Lora', serif", fontSize: '0.78rem', cursor: 'pointer' }}>
+                  style={{ padding: '6px 14px', borderRadius: 8, border: `1px solid ${sel ? 'var(--gold)' : 'rgba(200,134,26,0.2)'}`, background: sel ? 'rgba(200,134,26,0.2)' : 'transparent', color: sel ? 'var(--gold)' : 'rgba(244,228,193,0.6)', fontFamily: "inherit", fontSize: '0.78rem', cursor: 'pointer' }}>
                   {d.label}
                 </button>
               );
@@ -818,7 +831,7 @@ export default function Account() {
     if (evStep === 1 && evRecur === 'monthly') {
       return (
         <div>
-          <Text style={{ fontFamily: "'Lora', serif", fontSize: '0.75rem', color: 'rgba(244,228,193,0.5)', display: 'block', marginBottom: '0.75rem' }}>
+          <Text style={{ fontFamily: "inherit", fontSize: '0.75rem', color: 'rgba(244,228,193,0.5)', display: 'block', marginBottom: '0.75rem' }}>
             Which days of the month?
           </Text>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 6 }}>
@@ -826,7 +839,7 @@ export default function Account() {
               const sel = evMonthDays.includes(d);
               return (
                 <button key={d} onClick={() => setEvMonthDays(prev => sel ? prev.filter(x => x !== d) : [...prev, d])}
-                  style={{ aspectRatio: '1', borderRadius: 6, border: `1px solid ${sel ? 'var(--gold)' : 'rgba(200,134,26,0.15)'}`, background: sel ? 'rgba(200,134,26,0.2)' : 'transparent', color: sel ? 'var(--gold)' : 'rgba(244,228,193,0.6)', fontFamily: "'Lora', serif", fontSize: '0.7rem', cursor: 'pointer' }}>
+                  style={{ aspectRatio: '1', borderRadius: 6, border: `1px solid ${sel ? 'var(--gold)' : 'rgba(200,134,26,0.15)'}`, background: sel ? 'rgba(200,134,26,0.2)' : 'transparent', color: sel ? 'var(--gold)' : 'rgba(244,228,193,0.6)', fontFamily: "inherit", fontSize: '0.7rem', cursor: 'pointer' }}>
                   {d}
                 </button>
               );
@@ -841,13 +854,13 @@ export default function Account() {
       <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
         {agents.length > 1 && (
           <div>
-            <Text style={{ fontFamily: "'Lora', serif", fontSize: '0.7rem', letterSpacing: '0.2em', textTransform: 'uppercase', color: 'rgba(200,134,26,0.55)', display: 'block', marginBottom: 6 }}>Agent</Text>
+            <Text style={{ fontFamily: "inherit", fontSize: '0.7rem', letterSpacing: '0.2em', textTransform: 'uppercase', color: 'rgba(200,134,26,0.55)', display: 'block', marginBottom: 6 }}>Agent</Text>
             <Select value={evAgentId} onChange={setEvAgentId} style={{ width: '100%' }}
               options={agents.map(a => ({ value: a.id, label: agentLabel(a) }))} />
           </div>
         )}
         <div>
-          <Text style={{ fontFamily: "'Lora', serif", fontSize: '0.7rem', letterSpacing: '0.2em', textTransform: 'uppercase', color: 'rgba(200,134,26,0.55)', display: 'block', marginBottom: 6 }}>Devotion Time</Text>
+          <Text style={{ fontFamily: "inherit", fontSize: '0.7rem', letterSpacing: '0.2em', textTransform: 'uppercase', color: 'rgba(200,134,26,0.55)', display: 'block', marginBottom: 6 }}>Devotion Time</Text>
           <TimePicker value={evTime} onChange={v => v && setEvTime(v)} format="HH:mm" use12Hours={false} style={{ width: '100%' }} />
         </div>
         {/* Gold dropdown-trigger + group submenu (task 20260902-group-tagged-devotions).
@@ -856,7 +869,7 @@ export default function Account() {
             a new button style. Selecting a group sets group_id on the heartbeat;
             when it fires, the note it generates inherits this group_id automatically. */}
         <div>
-          <Text style={{ fontFamily: "'Lora', serif", fontSize: '0.7rem', letterSpacing: '0.2em', textTransform: 'uppercase', color: 'rgba(200,134,26,0.55)', display: 'block', marginBottom: 6 }}>Group</Text>
+          <Text style={{ fontFamily: "inherit", fontSize: '0.7rem', letterSpacing: '0.2em', textTransform: 'uppercase', color: 'rgba(200,134,26,0.55)', display: 'block', marginBottom: 6 }}>Group</Text>
           <Dropdown
             trigger={['click']}
             menu={{
@@ -882,8 +895,8 @@ export default function Account() {
           </Dropdown>
         </div>
         <div>
-          <Text style={{ fontFamily: "'Lora', serif", fontSize: '0.7rem', letterSpacing: '0.2em', textTransform: 'uppercase', color: 'rgba(200,134,26,0.55)', display: 'block', marginBottom: 6 }}>Prompt</Text>
-          <Text style={{ fontFamily: "'Lora', serif", fontSize: '0.72rem', color: 'rgba(244,228,193,0.35)', display: 'block', marginBottom: 8 }}>
+          <Text style={{ fontFamily: "inherit", fontSize: '0.7rem', letterSpacing: '0.2em', textTransform: 'uppercase', color: 'rgba(200,134,26,0.55)', display: 'block', marginBottom: 6 }}>Prompt</Text>
+          <Text style={{ fontFamily: "inherit", fontSize: '0.72rem', color: 'rgba(244,228,193,0.35)', display: 'block', marginBottom: 8 }}>
             Every day at your chosen time, your AI study partner writes a devotion from this prompt and saves it as a note, even when the app is closed.
           </Text>
           <Input.TextArea
@@ -927,6 +940,7 @@ export default function Account() {
       <AppBloom variant="account" />
       <AppNav />
 
+      <FormSkin>
       <Content className="fs-account-pad" style={{ maxWidth: 680, margin: '0 auto', width: '100%' }}>
 
         {/* Back navigation (task 20260906-account-back-navigation) -- a
@@ -943,7 +957,7 @@ export default function Account() {
           style={{
             display: 'inline-flex', alignItems: 'center', gap: 6,
             marginBottom: '1.25rem', padding: 0, border: 'none', background: 'none',
-            fontFamily: "'Lora', serif", fontSize: '0.78rem', color: 'rgba(200,134,26,0.7)',
+            fontFamily: "inherit", fontSize: '0.78rem', color: 'rgba(200,134,26,0.7)',
             cursor: 'pointer', animation: 'fadeUp 0.55s ease forwards', opacity: 0,
           }}
         >
@@ -962,7 +976,7 @@ export default function Account() {
                 border: '2px solid var(--gold)',
                 boxShadow: '0 0 0 4px rgba(255,198,26,0.08), 0 0 28px rgba(255,198,26,0.18)',
                 color: 'var(--gold)',
-                fontFamily: "'Playfair Display', serif",
+                fontFamily: 'inherit',
                 fontSize: '2rem',
               }}
             >
@@ -994,7 +1008,7 @@ export default function Account() {
             <Text className="fs-eyebrow">
               Your Profile
             </Text>
-            <Title level={2} style={{ margin: 0, fontFamily: "'Playfair Display', serif", color: 'var(--parchment)', fontSize: 'clamp(1.5rem, 5vw, 1.9rem)' }}>
+            <Title level={2} style={{ margin: 0, fontFamily: 'inherit', color: 'var(--parchment)', fontSize: 'clamp(1.5rem, 5vw, 1.9rem)' }}>
               {profileLoading ? 'Account' : <>{data.username || 'Account'}</>}
             </Title>
             {(data.email || user.email) && (
@@ -1004,7 +1018,7 @@ export default function Account() {
             {!profileLoading && <div style={{ marginTop: 8 }}><EmailVerifyNotice emailKey={data.email || user.email} /></div>}
             {data.profile_photo_url && !photoUploading && (
               <Button type="link" size="small" onClick={handleRemovePhoto}
-                style={{ padding: 0, height: 'auto', fontFamily: "'Lora', serif", fontSize: '0.72rem', color: 'rgba(244,228,193,0.4)' }}>
+                style={{ padding: 0, height: 'auto', fontFamily: "inherit", fontSize: '0.72rem', color: 'rgba(244,228,193,0.4)' }}>
                 Remove photo
               </Button>
             )}
@@ -1090,7 +1104,7 @@ export default function Account() {
             <Form.Item name="password" label="New Password" extra="Leave blank to keep current password.">
               <Input.Password prefix={<LockOutlined />} placeholder="New password…" />
             </Form.Item>
-            <Button type="primary" htmlType="submit" loading={editLoading} shape="round" style={{ fontFamily: "'Lora', serif", letterSpacing: '0.08em' }}>
+            <Button type="primary" htmlType="submit" loading={editLoading} shape="round" style={{ fontFamily: "inherit", letterSpacing: '0.08em' }}>
               Save Changes
             </Button>
           </Form>
@@ -1106,7 +1120,7 @@ export default function Account() {
           )}
           {mfaMsg && <Alert type={mfaMsg.type} message={mfaMsg.text} showIcon style={{ marginBottom: 16, borderRadius: 8 }} />}
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem' }}>
-            <Text style={{ fontFamily: "'Lora', serif", fontSize: '0.82rem', color: 'rgba(244,228,193,0.6)', maxWidth: 340 }}>
+            <Text style={{ fontFamily: "inherit", fontSize: '0.82rem', color: 'rgba(244,228,193,0.6)', maxWidth: 340 }}>
               When enabled, we'll email a 6-digit code to {profileData?.email || user.email} every time you sign in.
             </Text>
             <Switch checked={!!profileData?.mfa_enabled} loading={mfaLoading} onChange={handleMfaToggle} />
@@ -1126,7 +1140,7 @@ export default function Account() {
                 <Text className="fs-eyebrow" style={{ marginBottom: 0 }}>
                   <BellOutlined aria-hidden="true" style={{ marginRight: 8 }} />Notifications
                 </Text>
-                <Text style={{ fontFamily: "'Lora', serif", fontSize: '0.82rem', color: 'rgba(244,228,193,0.6)' }}>
+                <Text style={{ fontFamily: "inherit", fontSize: '0.82rem', color: 'rgba(244,228,193,0.6)' }}>
                   Choose which push notifications you receive.
                 </Text>
               </span>
@@ -1143,15 +1157,15 @@ export default function Account() {
           {blockedLoading
             ? <Spin size="small" />
             : blockedUsers.length === 0
-              ? <Text style={{ fontFamily: "'Lora', serif", fontSize: '0.8rem', color: 'rgba(244,228,193,0.28)' }}>You haven't blocked anyone.</Text>
+              ? <Text style={{ fontFamily: "inherit", fontSize: '0.8rem', color: 'rgba(244,228,193,0.28)' }}>You haven't blocked anyone.</Text>
               : blockedUsers.map(({ user_id, username, profile_photo_url }) => (
                   <div key={user_id} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.6rem 0', borderBottom: '1px solid rgba(200,134,26,0.08)' }}>
-                    <Avatar src={profile_photo_url} style={{ background: 'rgba(200,134,26,0.15)', border: '1px solid rgba(200,134,26,0.3)', color: 'var(--gold)', fontFamily: "'Playfair Display', serif" }}>
+                    <Avatar src={profile_photo_url} style={{ background: 'rgba(200,134,26,0.15)', border: '1px solid rgba(200,134,26,0.3)', color: 'var(--gold)', fontFamily: 'inherit' }}>
                       {username[0].toUpperCase()}
                     </Avatar>
-                    <Text style={{ fontFamily: "'Lora', serif", fontSize: '0.84rem', color: 'var(--parchment)', flex: 1 }}>{username}</Text>
+                    <Text style={{ fontFamily: "inherit", fontSize: '0.84rem', color: 'var(--parchment)', flex: 1 }}>{username}</Text>
                     <Button size="small" loading={unblockingId === user_id} onClick={() => handleUnblock(user_id)}
-                      style={{ borderRadius: 8, fontFamily: "'Lora', serif" }}>
+                      style={{ borderRadius: 8, fontFamily: "inherit" }}>
                       Unblock
                     </Button>
                   </div>
@@ -1167,19 +1181,19 @@ export default function Account() {
           {profileLoading
             ? <Spin size="small" />
             : requests.length === 0
-              ? <Text style={{ fontFamily: "'Lora', serif", fontSize: '0.8rem', color: 'rgba(244,228,193,0.28)' }}>No pending friend requests.</Text>
+              ? <Text style={{ fontFamily: "inherit", fontSize: '0.8rem', color: 'rgba(244,228,193,0.28)' }}>No pending friend requests.</Text>
               : requests.map(({ uid, username, photoUrl }) => (
                   <div key={uid} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.6rem 0', borderBottom: '1px solid rgba(200,134,26,0.08)' }}>
-                    <Avatar src={photoUrl} style={{ background: 'rgba(200,134,26,0.15)', border: '1px solid rgba(200,134,26,0.3)', color: 'var(--gold)', fontFamily: "'Playfair Display', serif" }}>
+                    <Avatar src={photoUrl} style={{ background: 'rgba(200,134,26,0.15)', border: '1px solid rgba(200,134,26,0.3)', color: 'var(--gold)', fontFamily: 'inherit' }}>
                       {username[0].toUpperCase()}
                     </Avatar>
                     <div style={{ flex: 1 }}>
-                      <Text style={{ fontFamily: "'Lora', serif", fontSize: '0.84rem', color: 'var(--parchment)', display: 'block' }}>{username}</Text>
+                      <Text style={{ fontFamily: "inherit", fontSize: '0.84rem', color: 'var(--parchment)', display: 'block' }}>{username}</Text>
                       <Text style={{ fontSize: '0.68rem', color: 'rgba(244,228,193,0.35)' }}>Wants to be your friend</Text>
                     </div>
                     <Button size="small" type="primary" loading={requestsLoading[uid]}
                       onClick={() => handleAccept(uid, username)}
-                      style={{ borderRadius: 8, fontFamily: "'Lora', serif" }}>
+                      style={{ borderRadius: 8, fontFamily: "inherit" }}>
                       Accept
                     </Button>
                   </div>
@@ -1198,13 +1212,13 @@ export default function Account() {
               New Agent
             </Button>
           </div>
-          <Text style={{ fontFamily: "'Lora', serif", fontSize: '0.74rem', color: 'rgba(244,228,193,0.35)', display: 'block', marginBottom: '1rem', lineHeight: 1.65 }}>
+          <Text style={{ fontFamily: "inherit", fontSize: '0.74rem', color: 'rgba(244,228,193,0.35)', display: 'block', marginBottom: '1rem', lineHeight: 1.65 }}>
             Enabled agents participate in your chats and can summarize study sessions.
           </Text>
           {agentsLoading
             ? <Spin size="small" />
             : agents.length === 0
-              ? <Text style={{ fontFamily: "'Lora', serif", fontSize: '0.8rem', color: 'rgba(244,228,193,0.28)' }}>No agents yet. Create one to get started.</Text>
+              ? <Text style={{ fontFamily: "inherit", fontSize: '0.8rem', color: 'rgba(244,228,193,0.28)' }}>No agents yet. Create one to get started.</Text>
               : agents.map(agent => {
                   const label = agentLabel(agent);
                   const isRenaming = renamingId === agent.id;
@@ -1222,8 +1236,8 @@ export default function Account() {
                               style={{ fontSize: '0.82rem', width: '100%' }} />
                           ) : (
                             <>
-                              <Text style={{ fontFamily: "'Lora', serif", fontSize: '0.84rem', color: 'var(--parchment)', display: 'block' }}>{label}</Text>
-                              <Text style={{ fontSize: '0.64rem', color: 'rgba(244,228,193,0.3)', fontFamily: "'Lora', serif" }}>
+                              <Text style={{ fontFamily: "inherit", fontSize: '0.84rem', color: 'var(--parchment)', display: 'block' }}>{label}</Text>
+                              <Text style={{ fontSize: '0.64rem', color: 'rgba(244,228,193,0.3)', fontFamily: "inherit" }}>
                                 {agent.role ? agent.role.slice(0, 60) + (agent.role.length > 60 ? '…' : '') : 'Default spiritual guide role'}
                               </Text>
                             </>
@@ -1271,13 +1285,13 @@ export default function Account() {
               New scheduled devotion
             </Button>
           </div>
-          <Text style={{ fontFamily: "'Lora', serif", fontSize: '0.74rem', color: 'rgba(244,228,193,0.35)', display: 'block', marginBottom: '1rem', lineHeight: 1.65 }}>
+          <Text style={{ fontFamily: "inherit", fontSize: '0.74rem', color: 'rgba(244,228,193,0.35)', display: 'block', marginBottom: '1rem', lineHeight: 1.65 }}>
             Pick a time and a prompt. Every day at that time your AI study partner writes a devotion for you and saves it as a note, even when the app is closed. Try a morning devotion, an evening prayer prompt, a weekly recap, or a reading-plan check-in.
           </Text>
           {agentsLoading
             ? <Spin size="small" />
             : events.length === 0
-              ? <Text style={{ fontFamily: "'Lora', serif", fontSize: '0.8rem', color: 'rgba(244,228,193,0.28)' }}>
+              ? <Text style={{ fontFamily: "inherit", fontSize: '0.8rem', color: 'rgba(244,228,193,0.28)' }}>
                   {agents.length === 0 ? 'Create an agent in the Agents section first to schedule a devotion.' : 'No scheduled devotions yet. Add one to wake up to a devotion each day.'}
                 </Text>
               : events.map(ev => {
@@ -1288,10 +1302,10 @@ export default function Account() {
                         <ThunderboltOutlined style={{ color: 'var(--gold)', fontSize: '0.75rem' }} />
                       </div>
                       <div style={{ flex: 1, minWidth: 0 }}>
-                        <Text style={{ fontFamily: "'Lora', serif", fontSize: '0.82rem', color: 'var(--parchment)', display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        <Text style={{ fontFamily: "inherit", fontSize: '0.82rem', color: 'var(--parchment)', display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                           {ev.prompt || 'Untitled devotion'}
                         </Text>
-                        <Text style={{ fontFamily: "'Lora', serif", fontSize: '0.65rem', color: 'rgba(244,228,193,0.35)' }}>
+                        <Text style={{ fontFamily: "inherit", fontSize: '0.65rem', color: 'rgba(244,228,193,0.35)' }}>
                           {scheduleSummary(ev.timestamps)}{agent ? ` · ${agentLabel(agent)}` : ''}
                         </Text>
                       </div>
@@ -1310,13 +1324,13 @@ export default function Account() {
         {/* New agent modal */}
         <Modal
           open={agentModal}
-          title={<Text style={{ fontFamily: "'Playfair Display', serif", color: 'var(--parchment)' }}>New Agent</Text>}
+          title={<Text style={{ fontFamily: 'inherit', color: 'var(--parchment)' }}>New Agent</Text>}
           onCancel={() => setAgentModal(false)}
           onOk={handleCreateAgent}
           okText="Create"
           confirmLoading={agentSaving}
         >
-          <Text style={{ fontFamily: "'Lora', serif", fontSize: '0.78rem', color: 'rgba(244,228,193,0.55)', display: 'block', marginBottom: '0.6rem' }}>
+          <Text style={{ fontFamily: "inherit", fontSize: '0.78rem', color: 'rgba(244,228,193,0.55)', display: 'block', marginBottom: '0.6rem' }}>
             Optionally give this agent a custom role. Leave blank to use the default spiritual guide role.
           </Text>
           <Input.TextArea
@@ -1331,7 +1345,7 @@ export default function Account() {
         {/* New event modal */}
         <Modal
           open={evModal}
-          title={<Text style={{ fontFamily: "'Playfair Display', serif", color: 'var(--parchment)' }}>
+          title={<Text style={{ fontFamily: 'inherit', color: 'var(--parchment)' }}>
             {editingEvent ? `Edit scheduled devotion` : evModalTitle}
           </Text>}
           onCancel={() => setEvModal(false)}
@@ -1344,13 +1358,13 @@ export default function Account() {
         {/* Confirm enabling 2FA */}
         <Modal
           open={mfaSetupModal}
-          title={<Text style={{ fontFamily: "'Playfair Display', serif", color: 'var(--parchment)' }}>Confirm two-factor authentication</Text>}
+          title={<Text style={{ fontFamily: 'inherit', color: 'var(--parchment)' }}>Confirm two-factor authentication</Text>}
           onCancel={() => { setMfaSetupModal(false); setMfaCode(''); }}
           onOk={handleMfaConfirm}
           okText="Confirm"
           confirmLoading={mfaConfirmLoading}
         >
-          <Text style={{ fontFamily: "'Lora', serif", fontSize: '0.78rem', color: 'rgba(244,228,193,0.55)', display: 'block', marginBottom: '0.8rem' }}>
+          <Text style={{ fontFamily: "inherit", fontSize: '0.78rem', color: 'rgba(244,228,193,0.55)', display: 'block', marginBottom: '0.8rem' }}>
             Enter the 6-digit code we just emailed to {profileData?.email || user.email}.
           </Text>
           <Input
@@ -1366,14 +1380,14 @@ export default function Account() {
         {/* Confirm disabling 2FA */}
         <Modal
           open={mfaDisableModal}
-          title={<Text style={{ fontFamily: "'Playfair Display', serif", color: 'var(--parchment)' }}>Turn off two-factor authentication</Text>}
+          title={<Text style={{ fontFamily: 'inherit', color: 'var(--parchment)' }}>Turn off two-factor authentication</Text>}
           onCancel={() => { setMfaDisableModal(false); setMfaDisablePass(''); }}
           onOk={handleMfaDisable}
           okText="Turn Off"
           okButtonProps={{ danger: true }}
           confirmLoading={mfaDisableLoading}
         >
-          <Text style={{ fontFamily: "'Lora', serif", fontSize: '0.78rem', color: 'rgba(244,228,193,0.55)', display: 'block', marginBottom: '0.8rem' }}>
+          <Text style={{ fontFamily: "inherit", fontSize: '0.78rem', color: 'rgba(244,228,193,0.55)', display: 'block', marginBottom: '0.8rem' }}>
             Enter your current password to confirm.
           </Text>
           <Input.Password
@@ -1391,10 +1405,10 @@ export default function Account() {
             rather than left as a dead-end in-app link. */}
         {!isDesktopApp() && (
           <div style={{ display: 'flex', justifyContent: 'center', gap: '2rem', marginBottom: '1.5rem' }}>
-            <Link to="/privacy" style={{ fontFamily: "'Lora', serif", fontSize: '0.78rem', color: 'rgba(244,228,193,0.35)', textDecoration: 'none' }}>
+            <Link to="/privacy" style={{ fontFamily: "inherit", fontSize: '0.78rem', color: 'rgba(244,228,193,0.35)', textDecoration: 'none' }}>
               Privacy Policy
             </Link>
-            <Link to="/terms" style={{ fontFamily: "'Lora', serif", fontSize: '0.78rem', color: 'rgba(244,228,193,0.35)', textDecoration: 'none' }}>
+            <Link to="/terms" style={{ fontFamily: "inherit", fontSize: '0.78rem', color: 'rgba(244,228,193,0.35)', textDecoration: 'none' }}>
               Terms of Service
             </Link>
           </div>
@@ -1402,7 +1416,7 @@ export default function Account() {
 
         {/* Sign out */}
         <Button block size="large" shape="round" icon={<LogoutOutlined />} onClick={handleSignOut}
-          style={{ marginBottom: '1.25rem', fontFamily: "'Lora', serif", letterSpacing: '0.1em', textTransform: 'uppercase', animation: 'fadeUp 0.55s ease 0.32s forwards', opacity: 0 }}>
+          style={{ marginBottom: '1.25rem', fontFamily: "inherit", letterSpacing: '0.1em', textTransform: 'uppercase', animation: 'fadeUp 0.55s ease 0.32s forwards', opacity: 0 }}>
           Sign Out
         </Button>
 
@@ -1411,24 +1425,21 @@ export default function Account() {
           <Text className="fs-eyebrow" style={{ color: '#e08b8b', marginBottom: '0.5rem' }}>
             Danger Zone
           </Text>
-          <Paragraph style={{ fontFamily: "'Lora', serif", fontSize: '0.8rem', color: 'rgba(244,228,193,0.45)', lineHeight: 1.75, marginBottom: '1.2rem' }}>
+          <Paragraph style={{ fontFamily: "inherit", fontSize: '0.8rem', color: 'rgba(244,228,193,0.45)', lineHeight: 1.75, marginBottom: '1.2rem' }}>
             Permanently deletes your account, all notes, highlights, and removes you from all groups and friend lists. This cannot be undone.
           </Paragraph>
           {deleteMsg && <Alert type={deleteMsg.type} message={deleteMsg.text} showIcon style={{ marginBottom: 12, borderRadius: 8 }} />}
-          <div style={{ marginBottom: '0.8rem' }}>
-            <Text style={{ fontFamily: "'Lora', serif", fontSize: '0.72rem', color: 'rgba(244,228,193,0.5)', display: 'block', marginBottom: '0.4rem' }}>
-              Type your username to confirm
-            </Text>
-            <Input value={deleteConfirm} onChange={e => setDeleteConfirm(e.target.value)}
-              placeholder={profileData?.username || user?.username || 'yourname'}
-              style={{ maxWidth: 260, borderRadius: 8 }} />
-          </div>
-          <Button danger shape="round" icon={<DeleteOutlined />} loading={deleteLoading} onClick={handleDelete}
-            style={{ fontFamily: "'Lora', serif" }}>
+          <Button danger shape="round" icon={<DeleteOutlined />} onClick={() => setDeleteOpen(true)}
+            style={{ fontFamily: "inherit" }}>
             Delete My Account
           </Button>
+          <DeleteAccountDialog open={deleteOpen} username={profileData?.username || user?.username} userId={user?.user_id}
+            onClose={() => setDeleteOpen(false)} onError={(text) => setDeleteMsg({ type: 'error', text })}
+            onDeleted={() => { setDeleteOpen(false); signOut(); navigate('/signin'); }} />
         </Card>
       </Content>
+      {undo.snackbar}
+      </FormSkin>
     </Layout>
   );
 }

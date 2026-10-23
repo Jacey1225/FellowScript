@@ -1,0 +1,26 @@
+{
+  "task_id": "20261023-forms-restyle",
+  "clarification_needed": [],
+  "agents_required": { "backend": false, "frontend": true, "design": true, "security": true, "testing": true },
+  "decisions": [
+    "One shared kit per platform (spec section 10): iOS FSForm* in FellowScript/FellowScript/Theme or Shared; web Form* components plus one shared token file read by antd ConfigProvider (theme.js) and global.css.",
+    "Kit first, then migrate in batches by feature area so each batch is reviewable and testable; commit per batch.",
+    "Tokens: iOS reuses Theme.cardGlassGray/borderGray and system fonts; web remaps gold to #D4922A family per spec 11.1 and adds box tokens.",
+    "Sensitive (S) forms get a security gate after migration: autofill/secure-entry/disclaimer attributes must be unchanged.",
+    "Entries overlapping group-info-row (F-029..034, F-037..039, F-041..048, F-049, F-065, F-067, F-068) are the last batch, blocked until that branch merges and forms-restyle is rebased; reported to Jacey, not skipped silently.",
+    "iOS simulator tests run one at a time. No push or deploy."
+  ],
+  "steps": [
+    { "n": 1, "name": "Kit API and token mapping: component list, props, file layout, parity-test impact (iOS + web)", "routed_to": "design", "checkpoint": null },
+    { "n": 2, "name": "Build shared kits and tokens: iOS FSForm* (scaffold, section, field, toggle row, chips, segmented, radio list, number stepper, rail, pinned bar, error card, destructive confirm); web Form* kit, sticky footer, shared token file, antd theme remap", "routed_to": "frontend", "checkpoint": "design step 1 passed" },
+    { "n": 3, "name": "Kit tests and build: iOS build + kit unit tests, web vitest", "routed_to": "testing", "checkpoint": "frontend step 2 passed" },
+    { "n": 4, "name": "Batch A migrate: Auth C/H (F-001..008), Account D/B/G (F-009..022), Billing and payouts (F-023..027)", "routed_to": "frontend", "checkpoint": "testing step 3 passed" },
+    { "n": 5, "name": "Security review of batch A and all S forms: autofill, secure entry, disclaimers, reveal/re-mask, no sensitive data in logs", "routed_to": "security", "checkpoint": "frontend step 4 passed" },
+    { "n": 6, "name": "Batch A tests", "routed_to": "testing", "checkpoint": "security step 5 passed" },
+    { "n": 7, "name": "Batch B migrate: non-overlap Groups (F-028, F-035, F-036, F-040), Sessions/devotion/rooms (F-050..F-056), Notes (F-057..064), Reporting (F-070, F-071), Misc (F-093), Explore (F-072..078), Admin (F-079..088)", "routed_to": "frontend", "checkpoint": "testing step 6 passed" },
+    { "n": 8, "name": "Design conformance review of A and B against mockups and spec Revision 2 (fonts, boxes, no Inter/Playfair in forms)", "routed_to": "design", "checkpoint": "frontend step 7 passed" },
+    { "n": 9, "name": "Batch B tests, full web suite, full iOS test run (serial)", "routed_to": "testing", "checkpoint": "design step 8 passed" },
+    { "n": 10, "name": "Batch C migrate: group-info-row overlap entries (O list)", "routed_to": "frontend", "checkpoint": "group-info-row merged into ios-build-2-9-9 and forms-restyle rebased; testing step 9 passed" },
+    { "n": 11, "name": "Final conformance review and tests for batch C and whole branch", "routed_to": "testing", "checkpoint": "frontend step 10 passed" }
+  ]
+}

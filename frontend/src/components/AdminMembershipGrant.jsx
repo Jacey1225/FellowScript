@@ -73,17 +73,17 @@ export default function AdminMembershipGrant() {
       {result ? (
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <CrownOutlined style={{ color: 'var(--gold)' }} />
-          <Text style={{ fontFamily: "'Inter', sans-serif", fontSize: '0.85rem', color: 'var(--parchment)' }}>
+          <Text style={{ fontFamily: 'inherit', fontSize: '0.85rem', color: 'var(--parchment)' }}>
             Individual membership active
           </Text>
           <Tag color="gold" style={{ textTransform: 'capitalize' }}>{result.status}</Tag>
         </div>
       ) : (
         <>
-          <Text style={{ fontFamily: "'Inter', sans-serif", fontSize: '0.8rem', color: 'rgba(244,228,193,0.5)', display: 'block', marginBottom: '0.8rem' }}>
+          <Text style={{ fontFamily: 'inherit', fontSize: '0.8rem', color: 'rgba(244,228,193,0.5)', display: 'block', marginBottom: '0.8rem' }}>
             Grant yourself a free, unbilled individual membership — no Stripe/Apple billing involved.
           </Text>
-          <Button type="primary" loading={loading} onClick={grant} shape="round" style={{ fontFamily: "'Inter', sans-serif" }}>
+          <Button type="primary" loading={loading} onClick={grant} shape="round" style={{ fontFamily: 'inherit' }}>
             Grant free individual membership
           </Button>
         </>

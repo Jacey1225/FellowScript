@@ -16,7 +16,7 @@ extension AccountView {
             Button(action: { showBlockedUsers = true }) {
                 HStack {
                     Label("Blocked Users", systemImage: "hand.raised")
-                        .font(.inter(Theme.fontBody))
+                        .font(.system(size: Theme.fontBody))
                         .foregroundColor(Theme.parchment)
                     Spacer()
                     Image(systemName: "chevron.right")
@@ -37,7 +37,7 @@ extension AccountView {
             Button(action: { showNotificationSettings = true }) {
                 HStack {
                     Label("Notification settings", systemImage: "bell")
-                        .font(.inter(Theme.fontBody))
+                        .font(.system(size: Theme.fontBody))
                         .foregroundColor(Theme.parchment)
                     Spacer()
                     Image(systemName: "chevron.right")
@@ -59,7 +59,7 @@ extension AccountView {
             Link(destination: URL(string: "https://fellowscript.com/#/privacy")!) {
                 HStack {
                     Label("Privacy Policy", systemImage: "hand.raised")
-                        .font(.inter(Theme.fontBody))
+                        .font(.system(size: Theme.fontBody))
                         .foregroundColor(Theme.parchment)
                     Spacer()
                     Image(systemName: "arrow.up.right")
@@ -68,12 +68,12 @@ extension AccountView {
                 }
             }
             .accessibilityLabel("Open Privacy Policy")
-            Divider().background(Theme.borderGoldFaint)
+            Divider().background(Theme.borderGray)
 
             Link(destination: URL(string: "https://fellowscript.com/#/terms")!) {
                 HStack {
                     Label("Terms of Service", systemImage: "doc.text")
-                        .font(.inter(Theme.fontBody))
+                        .font(.system(size: Theme.fontBody))
                         .foregroundColor(Theme.parchment)
                     Spacer()
                     Image(systemName: "arrow.up.right")
@@ -82,15 +82,15 @@ extension AccountView {
                 }
             }
             .accessibilityLabel("Open Terms of Service")
-            Divider().background(Theme.borderGoldFaint)
+            Divider().background(Theme.borderGray)
 
             HStack {
                 Label("Version", systemImage: "info.circle")
-                    .font(.inter(Theme.fontBody))
+                    .font(.system(size: Theme.fontBody))
                     .foregroundColor(Theme.parchment)
                 Spacer()
                 Text(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.0")
-                    .font(.inter(Theme.fontSM))
+                    .font(.system(size: Theme.fontSM))
                     .foregroundColor(Theme.textMuted)
             }
         }
@@ -104,7 +104,7 @@ extension AccountView {
         Button(action: appState.signOut) {
             Label("Sign Out", systemImage: "rectangle.portrait.and.arrow.right")
                 .foregroundColor(Theme.error)
-                .font(.inter(Theme.fontBody))
+                .font(.system(size: Theme.fontBody))
         }
         .accessibilityLabel("Sign out of your account")
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -115,53 +115,23 @@ extension AccountView {
     var dangerZone: some View {
         VStack(alignment: .leading, spacing: Theme.spacingSM) {
             Text("Danger Zone")
-                .font(.inter(Theme.fontXXS)).tracking(4)
-                .foregroundColor(Theme.error.opacity(0.65))
+                .font(.system(size: 11, weight: .semibold)).tracking(1)
+                .foregroundColor(Theme.error.opacity(0.85))
 
             Text("Permanently deletes your account, all notes, highlights, and removes you from all groups and friend lists. This cannot be undone.")
-                .font(.inter(Theme.fontSM))
-                .foregroundColor(Theme.textMuted)
+                .font(.system(size: Theme.fontSM))
+                .foregroundColor(Theme.textSecondary)
                 .fixedSize(horizontal: false, vertical: true)
 
-            HStack {
-                Image(systemName: "person").foregroundColor(Theme.error.opacity(0.60)).frame(width: 22)
-                TextField(appState.currentUser?.username ?? "yourname", text: $deleteConfirm)
-                    .font(.inter(Theme.fontBody))
-                    .foregroundColor(Theme.parchment)
-                    .autocapitalization(.none)
-                    .accessibilityLabel("Type your username to confirm deletion")
-            }
-
-            Button(action: {
-                // Explicit empty-field branch (Architecture Q26/Q27): an empty
-                // confirmation field is genuinely ambiguous -- silently doing
-                // nothing left users with no idea why the button "didn't
-                // work" -- so it now surfaces a friendly nudge via the same
-                // deleteAccountError alert plumbing used elsewhere on this
-                // screen, rather than relying on disabled-button silence.
-                // The non-empty-but-mismatched case stays exactly as before:
-                // still blocked below by `.disabled`, so this branch is
-                // unreachable for it and intentionally has no explicit case
-                // here.
-                if deleteConfirm.isEmpty {
-                    deleteAccountError = "Type your username to confirm you want to delete your account."
-                } else if deleteConfirm == (appState.currentUser?.username ?? "") {
-                    showDeleteAlert = true
-                }
-            }) {
+            Button(action: { showDeleteSheet = true }) {
                 HStack(spacing: 6) {
                     Image(systemName: "trash")
-                    Text("Delete My Account").font(.inter(Theme.fontSM))
+                    Text("Delete My Account").font(.system(size: Theme.fontSM, weight: .semibold))
                 }
                 .foregroundColor(Theme.error)
-                .padding(.horizontal, 16).padding(.vertical, 8)
-                .overlay(Capsule().stroke(Theme.error.opacity(0.4), lineWidth: 1))
+                .padding(.horizontal, 16).frame(minHeight: 44)
+                .overlay(Capsule().stroke(Theme.errorStrong, lineWidth: 1))
             }
-            // Only disabled for the non-empty-but-mismatched case (unchanged
-            // from before); left enabled when the field is empty so the tap
-            // above can reach its empty-field branch instead of silently
-            // no-oping.
-            .disabled(!deleteConfirm.isEmpty && deleteConfirm != (appState.currentUser?.username ?? ""))
             .accessibilityLabel("Delete account button")
         }
         .padding(.horizontal, 18).padding(.vertical, 16)

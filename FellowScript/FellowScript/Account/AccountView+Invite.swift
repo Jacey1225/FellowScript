@@ -22,7 +22,7 @@ extension AccountView {
                     HStack(spacing: Theme.spacingSM) {
                         Image(systemName: "gift.fill").foregroundColor(Theme.gold)
                         Text("Have a friend's invite code?")
-                            .font(.inter(Theme.fontBody)).foregroundColor(Theme.parchment)
+                            .font(.system(size: Theme.fontBody)).foregroundColor(Theme.parchment)
                         Spacer()
                         Image(systemName: showInviteField ? "chevron.up" : "chevron.down")
                             .foregroundColor(Theme.textMuted)
@@ -39,43 +39,21 @@ extension AccountView {
     @ViewBuilder
     private var redeemFields: some View {
         VStack(alignment: .leading, spacing: Theme.spacingXS) {
-            Text("Invite code").font(.inter(Theme.fontXS)).foregroundColor(Theme.textSecondary)
-            TextField("", text: $invite.codeInput)
-                .font(.inter(Theme.fontBody, weight: .semibold))
-                .foregroundColor(Theme.parchment)
-                .textInputAutocapitalization(.characters)
-                .autocorrectionDisabled(true)
-                .textContentType(.none)
-                .keyboardType(.asciiCapable)
-                .submitLabel(.go)
-                .onSubmit { startRedeem() }
+            FSField(label: "Invite code", text: $invite.codeInput,
+                    helper: invite.redeemMsg == nil ? "Get 50% off your first month. New subscribers only." : nil,
+                    state: invite.redeemMsg.map { FSFieldState.error($0) } ?? .normal,
+                    accessibilityName: "Invite code", accessibilityId: "inviteCodeField", errorAccessibilityId: "inviteCodeError",
+                    keyboard: .asciiCapable, capitalization: .characters, autocorrect: false,
+                    submitLabel: .go, onSubmit: { startRedeem() })
                 .disabled(invite.redeemBusy)
-                .padding(Theme.spacingSM)
-                .background(Theme.inputBg)
-                .clipShape(RoundedRectangle(cornerRadius: Theme.radius))
-                .overlay(RoundedRectangle(cornerRadius: Theme.radius)
-                    .stroke(invite.redeemMsg == nil ? Theme.borderGoldDim : Theme.error, lineWidth: 1))
-                .accessibilityLabel("Invite code")
-                .accessibilityIdentifier("inviteCodeField")
-            Text("Get 50% off your first month. New subscribers only.")
-                .font(.interScaled(Theme.fontXS)).foregroundColor(Theme.textSecondary)
             if let info = invite.redeemInfo, invite.redeemMsg == nil {
-                Text(info).font(.interScaled(Theme.fontXS)).foregroundColor(Theme.textGoldMuted)
-            }
-            if let msg = invite.redeemMsg {
-                HStack(spacing: 4) {
-                    Image(systemName: "exclamationmark.circle.fill")
-                    Text(msg)
-                }
-                .font(.interScaled(Theme.fontSM)).foregroundColor(Theme.error)
-                .accessibilityElement(children: .combine)
-                .accessibilityIdentifier("inviteCodeError")
+                Text(info).font(.system(size: Theme.fontXS)).foregroundColor(Theme.textGoldMuted)
             }
             Button { startRedeem() } label: {
                 HStack(spacing: 6) {
                     if invite.redeemBusy { ProgressView().tint(Theme.ink) }
                     Text(invite.redeemBusy ? "Checking…" : "Apply code")
-                        .font(.inter(Theme.fontSM, weight: .semibold))
+                        .font(.system(size: Theme.fontSM, weight: .semibold))
                 }
                 .foregroundColor(Theme.ink)
                 .padding(.horizontal, 20)
@@ -108,10 +86,10 @@ extension AccountView {
             VStack(alignment: .leading, spacing: Theme.spacingSM) {
                 if let fc = invite.friendCode {
                     Text("Friends get \(fc.percent_off)% off their first month. You earn a reward when they subscribe.")
-                        .font(.inter(Theme.fontSM)).foregroundColor(Theme.textSecondary)
+                        .font(.system(size: Theme.fontSM)).foregroundColor(Theme.textSecondary)
                     HStack(spacing: Theme.spacingSM) {
                         Text(fc.code)
-                            .font(.inter(Theme.fontBody, weight: .semibold)).tracking(2)
+                            .font(.system(size: Theme.fontBody, weight: .semibold)).tracking(2)
                             .foregroundColor(Theme.gold)
                             .textSelection(.enabled)
                             .lineLimit(1).minimumScaleFactor(0.7)
@@ -136,12 +114,12 @@ extension AccountView {
                         .accessibilityIdentifier("copyInviteCodeButton")
                     }
                     .padding(.leading, Theme.spacingSM)
-                    .background(Theme.inputBg)
+                    .background(Theme.fieldFill)
                     .clipShape(RoundedRectangle(cornerRadius: Theme.radius))
-                    .overlay(RoundedRectangle(cornerRadius: Theme.radius).stroke(Theme.borderGoldDim, lineWidth: 1))
+                    .overlay(RoundedRectangle(cornerRadius: Theme.radius).stroke(Theme.fieldBorder, lineWidth: 1))
                     if invite.friendCodeFailed {
                         Text("Couldn't refresh. Showing your saved code.")
-                            .font(.inter(Theme.fontXS)).foregroundColor(Theme.textSecondary)
+                            .font(.system(size: Theme.fontXS)).foregroundColor(Theme.textSecondary)
                     }
                     if let link = URL(string: fc.link) {
                         ShareLink(item: link, message: Text("Join me on FellowScript, use my code \(fc.code)")) {
@@ -150,11 +128,11 @@ extension AccountView {
                         .accessibilityIdentifier("shareInviteLinkButton")
                     }
                 } else if invite.friendCodeLoading {
-                    RoundedRectangle(cornerRadius: Theme.radius).fill(Theme.inputBg).frame(height: 44)
+                    RoundedRectangle(cornerRadius: Theme.radius).fill(Theme.fieldFill).frame(height: 44)
                         .accessibilityHidden(true)
                 } else if invite.friendCodeFailed {
                     Text("Couldn't load your invite code.")
-                        .font(.inter(Theme.fontSM)).foregroundColor(Theme.textSecondary)
+                        .font(.system(size: Theme.fontSM)).foregroundColor(Theme.textSecondary)
                     Button {
                         Task { await invite.loadFriendCode(userId: appState.currentUser?.user_id ?? "") }
                     } label: { ghostPill("Try again", labelColor: Theme.gold) }
@@ -178,7 +156,7 @@ extension AccountView {
                     .accessibilityAddTraits(.isHeader)
                 if showShare { shareInviteSection }
                 if showRedeem {
-                    if showShare { Divider().background(Theme.borderGoldFaint) }
+                    if showShare { Divider().background(Theme.borderGray) }
                     redeemInviteSection
                 }
             }

@@ -467,7 +467,7 @@ struct AgentChatView: View {
                     HStack(spacing: 6) {
                         ProgressView().tint(Theme.gold).scaleEffect(0.75)
                         Text("Reconnecting…")
-                            .font(.inter(Theme.fontXS))
+                            .font(.system(size: Theme.fontXS))
                             .foregroundColor(Theme.textGoldMuted)
                     }
                     .padding(.horizontal, Theme.spacingSM)
@@ -659,7 +659,7 @@ struct AgentChatView: View {
                 .frame(width: 38, height: 38)
 
                 Text(agent.displayLabel)
-                    .font(.inter(Theme.fontHeading, weight: .bold))
+                    .font(.system(size: Theme.fontHeading, weight: .bold))
                     .foregroundColor(Theme.parchment)
                     .lineLimit(1)
                     .layoutPriority(-1)
@@ -715,7 +715,7 @@ struct AgentChatView: View {
             .frame(width: 56, height: 56)
             .accessibilityHidden(true)
             Text("Ask \(agent.displayLabel) anything")
-                .font(.inter(Theme.fontSM))
+                .font(.system(size: Theme.fontSM))
                 .foregroundColor(Theme.textSecondary)
         }
         .frame(maxWidth: .infinity)
@@ -727,7 +727,7 @@ struct AgentChatView: View {
         HStack(spacing: 10) {
             TextField("", text: $inputText,
                       prompt: Text("Ask about Scripture…").foregroundColor(Theme.textSecondary), axis: .vertical)
-                .font(.inter(Theme.fontBody))
+                .font(.system(size: Theme.fontBody))
                 .foregroundColor(Theme.parchment)
                 .lineLimit(1...5)
                 .padding(.horizontal, Theme.spacingMD)
