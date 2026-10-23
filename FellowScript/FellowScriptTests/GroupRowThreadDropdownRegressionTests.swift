@@ -22,7 +22,9 @@ final class GroupRowThreadDropdownRegressionTests: XCTestCase {
     func test_threadsFolder_isGatedOnThreadsCapability_andFailsClosed() throws {
         let s = try source("Chat/GroupRowThreadsView.swift")
         XCTAssertTrue(s.contains("appState.capabilities.isEnabled(\"threads\")"))
-        XCTAssertTrue(s.contains("if threadsEnabled { tray }"))
+        // State change (task 20261022-ios-threads-subfolder): the tray now carries
+        // an explicit zIndex(0) beneath the card, so the gate string includes it.
+        XCTAssertTrue(s.contains("if threadsEnabled { tray.zIndex(0) }"))
         // Panel lives inside the tray, so it is gated with it; flag-off also collapses.
         XCTAssertTrue(s.contains("if !on { expanded = false }"))
         XCTAssertFalse(FSCapabilities.allOff.isEnabled("threads"))
