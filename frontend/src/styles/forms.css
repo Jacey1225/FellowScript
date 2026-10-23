@@ -8,9 +8,13 @@
   --ff-field: rgba(245,234,208,0.06); --ff-field-border: rgba(245,234,208,0.12);
   --ff-nav: rgba(18,13,8,0.97); --ff-danger-bg: rgba(40,8,8,0.75);
   --ff-error: #E06060; --ff-success: #4CAF78; --ff-border-gold: rgba(212,146,42,0.32);
+  /* Form surfaces use the iOS amber family and the system font everywhere (spec rev 2 / 11.1). */
+  --gold: #D4922A; --gold-dim: #B07820; --gold-light: #F0AE40; --ink: #1A100A; --parchment: #F5EAD0;
   font-family: -apple-system, 'SF Pro Text', system-ui, sans-serif;
   color: var(--ff-text);
 }
+.fs-form *:not(.ff-wordmark):not(.fs-wordmark) { font-family: -apple-system, 'SF Pro Text', system-ui, sans-serif; }
+.fs-form .ff-wordmark, .fs-form .fs-wordmark { font-family: 'Schibsted Grotesk', sans-serif; }
 .fs-form *, .fs-form *::before, .fs-form *::after { box-sizing: border-box; }
 
 /* Containers */
