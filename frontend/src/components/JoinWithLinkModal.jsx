@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
-import { Modal } from 'antd';
+import { ConfigProvider, Modal } from 'antd';
 import { parseInviteInput } from '../lib/invitesApi.js';
+import { Field } from './forms/index.js';
+import { formTheme } from '../lib/formTokens.js';
 
 // Task 20260929-group-invite-links (design-notes.md D): desktop paste-link
 // flow. Accepts a full https://fellowscript.com/join/<token> URL or a bare
@@ -21,15 +23,15 @@ export default function JoinWithLinkModal({ open, onClose }) {
   };
 
   return (
-    <Modal open={open} title="Join with a link" onOk={submit} onCancel={close} okText="Continue" destroyOnClose>
-      <label htmlFor="join-link-input" className="group-info-helper" style={{ display: 'block', marginBottom: 6 }}>
-        Paste an invite link
-      </label>
-      <input id="join-link-input" className="group-info-input" style={{ width: '100%' }} autoFocus
-        value={value} onChange={(e) => { setValue(e.target.value); setError(null); }}
-        onKeyDown={(e) => { if (e.key === 'Enter') submit(); }}
-        aria-invalid={!!error} aria-describedby={error ? 'join-link-error' : undefined} />
-      {error && <p id="join-link-error" className="group-info-error" role="alert" style={{ marginTop: 6 }}>{error}</p>}
-    </Modal>
+    <ConfigProvider theme={formTheme}>
+      <Modal open={open} title="Join with a link" onOk={submit} onCancel={close} okText="Continue" destroyOnClose>
+        <div className="fs-form">
+          <Field id="join-link-input" label="Paste an invite link" value={value} error={error} autoFocus
+            autoComplete="off" autoCapitalize="none" spellCheck={false}
+            onChange={(v) => { setValue(v); setError(null); }}
+            onKeyDown={(e) => { if (e.key === 'Enter') submit(); }} />
+        </div>
+      </Modal>
+    </ConfigProvider>
   );
 }

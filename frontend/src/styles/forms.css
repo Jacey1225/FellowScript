@@ -168,3 +168,28 @@ textarea.ff-input { resize: vertical; min-height: 96px; padding: 0; line-height:
 .fs-form .ant-form-item-explain-error { font-size: 12px; }
 .fs-form .ant-card { backdrop-filter: none; }
 .fs-form .ant-modal .ant-modal-title { font-weight: 800; }
+
+/* Explore surfaces (.ex-*) inside <FormSkin>: same field / button recipe as the kit.
+   Overrides only color, shape and type; layout classes in explore.css are untouched. */
+.fs-form .ex-page, .fs-form [class^="ex-"], .fs-form [class*=" ex-"] { font-family: inherit; }
+.fs-form .ex-h1 { font-weight: 800; letter-spacing: -0.01em; }
+.fs-form .ex-field { font-size: 14px; font-weight: 600; color: var(--ff-text); gap: 6px; }
+.fs-form .ex-field input, .fs-form .ex-field select, .fs-form .ex-field textarea, .fs-form .ex-search input {
+  min-height: 48px; border-radius: 12px; font: 400 16px/1.4 inherit; font-family: inherit;
+  background: var(--ff-field) !important; border: 1px solid var(--ff-field-border) !important; backdrop-filter: none !important; color: var(--ff-text); }
+.fs-form .ex-field input:focus, .fs-form .ex-field select:focus, .fs-form .ex-field textarea:focus, .fs-form .ex-search input:focus {
+  border: 1.5px solid var(--ff-gold) !important; box-shadow: 0 0 0 3px rgba(212,146,42,0.12); outline: none; }
+.fs-form .ex-btn { border-radius: 24px; font-family: inherit; font-weight: 700; font-size: 16px; border-color: var(--ff-border-gold); color: var(--ff-gold); }
+.fs-form .ex-btn--primary { background: linear-gradient(135deg, var(--ff-gold-light), var(--ff-gold), var(--ff-gold-dim)); color: var(--ff-ink); border-color: transparent; }
+.fs-form .ex-btn--primary:disabled { background: rgba(176,120,32,0.4); color: rgba(26,16,10,0.5); opacity: 1; }
+.fs-form .ex-btn--quiet { color: var(--ff-gold); }
+.fs-form .ex-error { color: var(--ff-error); font-size: 12px; font-family: inherit; }
+.fs-form .ex-pill { background: var(--ff-field); border-color: var(--ff-field-border); font-family: inherit; }
+.fs-form .ex-sheet, .fs-form .ex-detail, .fs-form .ex-card { background: var(--ff-card); border-color: var(--ff-card-border); }
+.fs-form .ex-link { color: var(--ff-gold); }
+
+/* Note editor (type E) and notes filter: system font, iOS-amber save, no brand serif */
+.note-editor, .note-editor *, .notes-filter-panel, .notes-filter-panel * { font-family: -apple-system, 'SF Pro Text', system-ui, sans-serif; }
+.note-title-input { font-size: 22px; font-weight: 800; }
+.note-editor-save { background: linear-gradient(135deg, #F0AE40, #D4922A, #B07820); color: #1A100A; }
+.note-editor-cancel { border: 1px solid rgba(212,146,42,0.32); color: #D4922A; }

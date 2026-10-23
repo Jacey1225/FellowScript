@@ -79,7 +79,7 @@ function chipStyle(active) {
     minHeight: 44, minWidth: 44,
     padding: '0.55rem 0.95rem',
     borderRadius: 999,
-    fontFamily: "'Lora', serif",
+    fontFamily: 'inherit',
     fontSize: '0.72rem',
     whiteSpace: 'nowrap',
     flexShrink: 0,
@@ -95,7 +95,7 @@ function shortLogGroupLabel(g) {
 }
 
 const POPOVER_LABEL_STYLE = {
-  fontFamily: "'Lora', serif", fontSize: '0.62rem', letterSpacing: '0.1em',
+  fontFamily: 'inherit', fontSize: '0.62rem', letterSpacing: '0.1em',
   textTransform: 'uppercase', color: 'rgba(244,228,193,0.4)', display: 'block', marginBottom: 4,
 };
 
@@ -347,7 +347,7 @@ export default function AdminDetections() {
             />
           ) : items.length === 0 ? (
             <div style={{ textAlign: 'center' }}>
-              <Text style={{ fontFamily: "'Lora', serif", fontSize: '0.8rem', color: 'rgba(244,228,193,0.28)', display: 'block', marginBottom: hasActiveFilters ? '0.6rem' : 0 }}>
+              <Text style={{ fontFamily: 'inherit', fontSize: '0.8rem', color: 'rgba(244,228,193,0.28)', display: 'block', marginBottom: hasActiveFilters ? '0.6rem' : 0 }}>
                 No error detections match these filters.
               </Text>
               {hasActiveFilters && (
@@ -391,7 +391,7 @@ export default function AdminDetections() {
                 </Tag>
                 <Text
                   title={dayjs.utc(item.event_timestamp).toISOString()}
-                  style={{ fontFamily: "'Lora', serif", fontSize: '0.72rem', color: 'rgba(244,228,193,0.5)', whiteSpace: 'nowrap' }}
+                  style={{ fontFamily: 'inherit', fontSize: '0.72rem', color: 'rgba(244,228,193,0.5)', whiteSpace: 'nowrap' }}
                 >
                   {dayjs(item.event_timestamp).local().format('MMM D, h:mm A')}
                 </Text>
@@ -432,7 +432,7 @@ export default function AdminDetections() {
                     </div>
                     <Text
                       title={dayjs.utc(item.event_timestamp).toISOString()}
-                      style={{ fontFamily: "'Lora', serif", fontSize: '0.7rem', color: 'rgba(244,228,193,0.45)', flexShrink: 0, whiteSpace: 'nowrap' }}
+                      style={{ fontFamily: 'inherit', fontSize: '0.7rem', color: 'rgba(244,228,193,0.45)', flexShrink: 0, whiteSpace: 'nowrap' }}
                     >
                       {dayjs(item.event_timestamp).fromNow()}
                     </Text>

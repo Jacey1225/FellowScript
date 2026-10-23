@@ -58,7 +58,7 @@ export function Field({
       </div>
       <div className="ff-foot">
         {note && (
-          <div id={descId} className={error ? 'ff-error' : 'ff-helper'}>
+          <div id={descId} className={error ? 'ff-error' : 'ff-helper'} role={error ? 'alert' : undefined}>
             {error && <span aria-hidden="true">⚠</span>}<span>{note}</span>
           </div>
         )}

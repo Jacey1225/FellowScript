@@ -1,7 +1,9 @@
 import React from 'react';
-import { describe, it, expect, vi } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { describe, it, expect, vi, afterEach } from 'vitest';
+import { render, screen, fireEvent, cleanup } from '@testing-library/react';
 import { Field, shouldShowCounter, ToggleRow, ChipGroup, Segmented, StepperRail, StickyActionBar, FormErrorSummary, NumberStepper } from './index.js';
+
+afterEach(cleanup);
 
 describe('forms kit', () => {
   it('Field wires label, error and describedby', () => {

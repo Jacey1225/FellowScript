@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Modal, Button, Spin } from 'antd';
+import { Modal, Button, Spin, ConfigProvider } from 'antd';
+import { formTheme } from '../lib/formTokens.js';
 import {
   CheckOutlined, EllipsisOutlined, LockOutlined, PlusOutlined, RollbackOutlined, TeamOutlined,
 } from '@ant-design/icons';
@@ -472,7 +473,8 @@ export default function SessionRoomsModal({ open, onClose, session, user, rooms,
   } else content = renderList();
 
   return (
-    <Modal
+    <ConfigProvider theme={formTheme}>
+<Modal
       open={open}
       onCancel={view.kind === 'list' ? onClose : back}
       title={titles[view.kind]}
@@ -484,5 +486,6 @@ export default function SessionRoomsModal({ open, onClose, session, user, rooms,
     >
       <div className="rooms-body">{content}</div>
     </Modal>
+</ConfigProvider>
   );
 }

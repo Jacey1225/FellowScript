@@ -20,7 +20,7 @@ const CARD_STYLE = {
   padding: '1.25rem 1.4rem',
   marginBottom: '1.25rem',
 };
-const MUTED = { fontFamily: "'Lora', serif", fontSize: '0.82rem', color: 'rgba(244,228,193,0.65)' };
+const MUTED = { fontFamily: 'inherit', fontSize: '0.82rem', color: 'rgba(244,228,193,0.65)' };
 
 // Task 20261012-notification-settings: /#/account/notifications. One switch per
 // user-toggleable push type, showing only server-confirmed values. A change is
@@ -80,7 +80,7 @@ export default function NotificationSettings() {
           style={{
             display: 'inline-flex', alignItems: 'center', gap: 6,
             marginBottom: '1.25rem', padding: 0, border: 'none', background: 'none',
-            fontFamily: "'Lora', serif", fontSize: '0.85rem', color: 'rgba(200,134,26,0.85)',
+            fontFamily: 'inherit', fontSize: '0.85rem', color: 'rgba(200,134,26,0.85)',
             cursor: 'pointer',
           }}
         >
@@ -88,7 +88,7 @@ export default function NotificationSettings() {
         </button>
 
         <Text className="fs-eyebrow">Account</Text>
-        <Title level={2} style={{ fontFamily: "'Playfair Display', serif", color: 'var(--parchment)', marginTop: 0 }}>
+        <Title level={2} style={{ fontFamily: 'inherit', color: 'var(--parchment)', marginTop: 0 }}>
           Notifications
         </Title>
         <p style={{ ...MUTED, marginTop: 0, marginBottom: '1.25rem', lineHeight: 1.6 }}>
@@ -124,7 +124,7 @@ export default function NotificationSettings() {
               return (
                 <div key={t.key} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem', padding: '0.6rem 0' }}>
                   <div style={{ minWidth: 0 }}>
-                    <div style={{ fontFamily: "'Lora', serif", fontSize: '0.95rem', color: 'var(--parchment)' }}>{t.label}</div>
+                    <div style={{ fontFamily: 'inherit', fontSize: '0.95rem', color: 'var(--parchment)' }}>{t.label}</div>
                     <div id={descId} style={MUTED}>{t.description}</div>
                   </div>
                   <Switch

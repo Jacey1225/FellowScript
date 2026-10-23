@@ -1,5 +1,6 @@
 import React, { useState, useCallback } from 'react';
-import { Modal, Button, Spin } from 'antd';
+import { Modal, Button, Spin, ConfigProvider } from 'antd';
+import { formTheme } from '../lib/formTokens.js';
 import { CheckOutlined, CheckCircleFilled, ClockCircleOutlined, WarningFilled } from '@ant-design/icons';
 import { ringMembers, rowStateFromResult } from '../lib/ringApi.js';
 
@@ -109,7 +110,8 @@ export default function RingMembersModal({ open, onClose, session, user, candida
   );
 
   return (
-    <Modal
+    <ConfigProvider theme={formTheme}>
+<Modal
       open={open}
       onCancel={onClose}
       title="Ring Members"
@@ -128,5 +130,6 @@ export default function RingMembersModal({ open, onClose, session, user, candida
       {notYet.length > 0 && renderSection('Not yet joined', notYet, false)}
       {already.length > 0 && renderSection('Already in call', already, true)}
     </Modal>
+</ConfigProvider>
   );
 }

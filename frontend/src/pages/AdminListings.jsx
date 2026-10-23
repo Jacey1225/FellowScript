@@ -18,7 +18,7 @@ const CARD_STYLE = {
   marginBottom: '1rem',
   padding: '1.1rem 1.3rem',
 };
-const MUTED = { fontFamily: "'Inter', sans-serif", fontSize: '0.8rem', color: 'rgba(244,228,193,0.6)' };
+const MUTED = { fontFamily: 'inherit', fontSize: '0.8rem', color: 'rgba(244,228,193,0.6)' };
 
 const TAB_LABEL = {
   pending_review: 'Pending review', published: 'Published', hidden: 'Hidden', rejected: 'Rejected',

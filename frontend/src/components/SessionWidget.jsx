@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Avatar, Button, Modal, Typography } from 'antd';
+import { Avatar, Button, Modal, Typography, ConfigProvider } from 'antd';
+import { formTheme } from '../lib/formTokens.js';
 import { AudioOutlined, AudioMutedOutlined, PhoneOutlined, EditOutlined, DeleteOutlined, CloseOutlined } from '@ant-design/icons';
 import { API } from '../config.js';
 import { useJoinWindow } from '../hooks/useJoinWindow.js';
@@ -106,7 +107,7 @@ function JoinErrorRow({ session, joinError, onJoin, onClearJoinError }) {
   if (!joinError || joinError.sessionId !== session.id) return null;
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', marginTop: '0.35rem', flexWrap: 'wrap' }}>
-      <Text style={{ fontSize: '0.62rem', color: 'rgba(255,120,120,0.85)', fontFamily: "'Inter', sans-serif" }}>
+      <Text style={{ fontSize: '0.62rem', color: 'rgba(255,120,120,0.85)', fontFamily: 'inherit' }}>
         {joinError.message}
       </Text>
       <Button
@@ -151,7 +152,8 @@ function HostControls({ session, user, onEdit, onDelete }) {
     <>
       <IconBtn icon={<EditOutlined />} title="Edit session" onClick={() => onEdit(session)} />
       <IconBtn icon={<DeleteOutlined />} title="Delete session" onClick={() => setConfirming(true)} danger />
-      <Modal
+      <ConfigProvider theme={formTheme}>
+<Modal
         open={confirming}
         title="Delete Session?"
         okText="Delete"
@@ -167,6 +169,7 @@ function HostControls({ session, user, onEdit, onDelete }) {
           This permanently deletes &quot;{session.title}&quot; for everyone. This can&apos;t be undone.
         </p>
       </Modal>
+</ConfigProvider>
     </>
   );
 }
@@ -179,10 +182,10 @@ export function UpcomingCard({ session, user, activeSessionId, onJoin, onLeave, 
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.55rem' }}>
           <PhoneOutlined style={{ fontSize: '0.8rem', color: 'rgba(255,198,26,0.45)', flexShrink: 0 }} />
           <div style={{ flex: 1, minWidth: 0 }}>
-            <Text style={{ display: 'block', fontFamily: "'Inter', sans-serif", fontSize: '0.78rem', color: 'var(--parchment)', lineHeight: 1.3 }}>
+            <Text style={{ display: 'block', fontFamily: 'inherit', fontSize: '0.78rem', color: 'var(--parchment)', lineHeight: 1.3 }}>
               {session.title}
             </Text>
-            <Text style={{ fontSize: '0.62rem', color: 'rgba(242,242,242,0.4)', fontFamily: "'Inter', sans-serif" }}>
+            <Text style={{ fontSize: '0.62rem', color: 'rgba(242,242,242,0.4)', fontFamily: 'inherit' }}>
               {formatTime(session.time_start)}
               {session.time_end ? ` – ${formatTime(session.time_end)}` : ''}
               {session.recurring && <span style={{ marginLeft: '0.4rem', color: 'rgba(255,198,26,0.55)' }}>· Weekly</span>}
@@ -263,7 +266,7 @@ export function ActiveCard({ session, user, ringCandidates, friends, muted = fal
         {/* Row 1: title + controls */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.4rem' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', minWidth: 0 }}>
-            <Text style={{ fontFamily: "'Inter', sans-serif", fontSize: '0.82rem', color: 'var(--parchment)', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            <Text style={{ fontFamily: 'inherit', fontSize: '0.82rem', color: 'var(--parchment)', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
               {session.title}
             </Text>
             <HostControls session={session} user={user} onEdit={onEdit} onDelete={onDelete} />
@@ -300,7 +303,7 @@ export function ActiveCard({ session, user, ringCandidates, friends, muted = fal
 
         {/* Row 1b: time + recurring */}
         <div style={{ marginBottom: '0.35rem' }}>
-          <Text style={{ fontSize: '0.6rem', color: 'rgba(242,242,242,0.35)', fontFamily: "'Inter', sans-serif" }}>
+          <Text style={{ fontSize: '0.6rem', color: 'rgba(242,242,242,0.35)', fontFamily: 'inherit' }}>
             {formatTime(session.time_start)}
             {session.time_end ? ` – ${formatTime(session.time_end)}` : ''}
             {session.recurring && <span style={{ marginLeft: '0.4rem', color: 'rgba(255,198,26,0.5)' }}>· Weekly</span>}
@@ -310,7 +313,7 @@ export function ActiveCard({ session, user, ringCandidates, friends, muted = fal
         {/* Row 2: participants (call screen shows bubbles instead once joined) */}
         {!isJoined && <div style={{ display: 'flex', alignItems: 'center', gap: '0.22rem', marginBottom: (session.verses || []).length ? '0.4rem' : 0, flexWrap: 'wrap' }}>
           {(session.participants || []).length === 0 ? (
-            <Text style={{ fontSize: '0.6rem', color: 'rgba(242,242,242,0.25)', fontFamily: "'Inter', sans-serif", fontStyle: 'italic' }}>
+            <Text style={{ fontSize: '0.6rem', color: 'rgba(242,242,242,0.25)', fontFamily: 'inherit', fontStyle: 'italic' }}>
               No one has joined yet
             </Text>
           ) : (
@@ -418,7 +421,7 @@ export function ActiveCard({ session, user, ringCandidates, friends, muted = fal
                     background: 'none', border: '1px solid rgba(255,255,255,0.108)',
                     borderRadius: 3, padding: '0.08rem 0.35rem',
                     cursor: 'pointer', fontSize: '0.6rem',
-                    color: 'rgba(255,198,26,0.7)', fontFamily: "'Inter', sans-serif",
+                    color: 'rgba(255,198,26,0.7)', fontFamily: 'inherit',
                     transition: 'border-color 0.15s, color 0.15s',
                   }}
                   onMouseEnter={e => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.33)'; e.currentTarget.style.color = 'var(--gold)'; }}

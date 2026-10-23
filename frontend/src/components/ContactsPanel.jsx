@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import JoinWithLinkModal from './JoinWithLinkModal.jsx';
+import { Field, RadioList } from './forms/index.js';
+import { formTheme } from '../lib/formTokens.js';
 import { useCapabilities } from '../hooks/useCapabilities.js';
 import { exploreEntryUrl } from '../lib/exploreEntry.js';
 import { useCollapsedSections } from '../hooks/useCollapsedSections.js';
-import { Button, Avatar, Typography, Modal, Form, Checkbox, Spin, Dropdown, Radio, Input, message as antMessage } from 'antd';
+import { Button, Avatar, Typography, Modal, Form, Checkbox, Spin, Dropdown, Radio, Input, message as antMessage, ConfigProvider } from 'antd';
 import {
   MessageOutlined, PlusOutlined, EditOutlined, DeleteOutlined, UserAddOutlined,
   RobotOutlined, MoreOutlined, DownOutlined, FlagOutlined, StopOutlined, CompassOutlined,
@@ -67,7 +69,7 @@ function AgentRow({ agent, active, onOpen }) {
         <RobotOutlined style={{ color: 'var(--gold)', fontSize: '0.8rem' }} />
       </div>
       <Text style={{
-        fontFamily: "'Inter', sans-serif", fontSize: '0.72rem',
+        fontFamily: 'inherit', fontSize: '0.72rem',
         color: active ? 'var(--parchment)' : 'rgba(242,242,242,0.65)',
         overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1,
       }}>
@@ -117,7 +119,7 @@ function ContactRow({ contact, active, onOpen, onRemove, onEdit, onReport, onBlo
         {contact.name[0].toUpperCase()}
       </Avatar>
       <Text
-        style={{ fontFamily: "'Inter', sans-serif", fontSize: '0.72rem', color: active ? 'var(--parchment)' : 'rgba(242,242,242,0.65)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}
+        style={{ fontFamily: 'inherit', fontSize: '0.72rem', color: active ? 'var(--parchment)' : 'rgba(242,242,242,0.65)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}
       >
         {contact.name}
       </Text>
@@ -158,27 +160,22 @@ function ReportUserModal({ target, onSubmit, onClose }) {
   };
 
   return (
+    <ConfigProvider theme={formTheme}>
     <Modal
       open={!!target}
-      title={<Text style={{ fontFamily: "'Space Grotesk', sans-serif", color: 'var(--parchment)' }}>Report {target?.name}</Text>}
+      title={`Report ${target?.name || ''}`}
       onOk={handleOk}
       onCancel={onClose}
       confirmLoading={submitting}
-      okText="Submit Report"
-      okButtonProps={{ danger: true }}
+      okText="Send report"
     >
-      <Radio.Group value={reason} onChange={e => setReason(e.target.value)} style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 12 }}>
-        {REPORT_REASONS.map(r => (
-          <Radio key={r.value} value={r.value} style={{ color: 'rgba(242,242,242,0.75)' }}>{r.label}</Radio>
-        ))}
-      </Radio.Group>
-      <Input.TextArea
-        placeholder="Additional details (optional)"
-        value={detail}
-        onChange={e => setDetail(e.target.value)}
-        autoSize={{ minRows: 2, maxRows: 5 }}
-      />
+      <div className="fs-form ff-formstack">
+        <RadioList label="Reason" options={REPORT_REASONS} value={reason} onChange={setReason} />
+        <Field label="Additional details" optional multiline value={detail} onChange={setDetail}
+          maxLength={500} helper="Reports are private." />
+      </div>
     </Modal>
+    </ConfigProvider>
   );
 }
 
@@ -294,7 +291,7 @@ export default function ContactsPanel({
               <div style={{
                 marginTop: '0.3rem',
                 fontSize: '0.63rem',
-                fontFamily: "'Inter', sans-serif",
+                fontFamily: 'inherit',
                 color: friendMsg.type === 'success' ? '#6dbf7e' : '#e07070',
                 display: 'flex',
                 alignItems: 'center',
@@ -382,9 +379,10 @@ export default function ContactsPanel({
       <JoinWithLinkModal open={joinLinkModal} onClose={() => setJoinLinkModal(false)} />
 
       {/* Group modal */}
+      <ConfigProvider theme={formTheme}>
       <Modal
         open={groupModal}
-        title={<Text style={{ fontFamily: "'Space Grotesk', sans-serif", color: 'var(--parchment)' }}>{editingGroup ? 'Edit Group' : 'New Group'}</Text>}
+        title={editingGroup ? 'Edit Group' : 'New Group'}
         onOk={handleGroupOk}
         onCancel={() => { setGroupModal(false); setEditingGroup(null); form.resetFields(); }}
         okText={editingGroup ? 'Update' : 'Create'}
@@ -402,6 +400,7 @@ export default function ContactsPanel({
           </Form.Item>
         </Form>
       </Modal>
+      </ConfigProvider>
 
       <ReportUserModal
         target={reportTarget}
