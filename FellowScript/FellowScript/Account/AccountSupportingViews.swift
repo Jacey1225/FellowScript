@@ -58,7 +58,7 @@ struct NewAgentSheet: View {
         )
         // Shared keyboard-dismiss convention (task 20260831-interaction-polish-conventions).
         .dismissesKeyboardOnScrollAndTap()
-        .presentationDetents([.medium, .large])
+        .presentationDetents([.medium])
         .preferredColorScheme(.dark)
     }
 }

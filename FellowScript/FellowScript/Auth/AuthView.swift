@@ -53,6 +53,7 @@ struct AuthView: View {
             onApple: { Task { await performAppleSignIn() } },
             onForgotPassword: { showForgotPassword = true }
         )
+        .dismissesKeyboardOnScrollAndTap()
         .onAppear { isSignIn = initialSignIn }
         .fullScreenCover(isPresented: Binding(
             get: { pendingMfaUserId != nil },

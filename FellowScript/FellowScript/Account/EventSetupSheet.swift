@@ -433,6 +433,15 @@ struct EventSetupSheet: View {
         // title item keeps "Details" centered regardless of this now-wider
         // trailing pill's width against the automatic system back button on
         // the leading side.
+        .navigationTitle("Details")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .principal) {
+                Text("Details")
+                    .font(.system(size: 17, weight: .semibold))
+                    .foregroundColor(Theme.parchment)
+            }
+        }
         .safeAreaInset(edge: .bottom, spacing: 0) {
             FSPinnedActionBar(
                 primaryTitle: isEditing ? "Update" : "Save",

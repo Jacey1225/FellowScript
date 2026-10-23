@@ -38,6 +38,7 @@ struct FSField: View {
 
     @FocusState private var focused: Bool
     @State private var revealed = false
+    @Environment(\.scenePhase) private var scenePhase
 
     private var isError: Bool { if case .error = state { return true } else { return false } }
     private var isDisabled: Bool { if case .disabled = state { return true } else { return false } }
@@ -60,6 +61,13 @@ struct FSField: View {
             footer
         }
         .accessibilityElement(children: .contain)
+        // Re-mask on app background and after 10 seconds (spec 9.1.1); reveal is never persisted.
+        .onChange(of: scenePhase) { _, phase in if phase != .active { revealed = false } }
+        .task(id: revealed) {
+            guard revealed else { return }
+            try? await Task.sleep(nanoseconds: 10_000_000_000)
+            revealed = false
+        }
     }
 
     @ViewBuilder private var fieldBody: some View {

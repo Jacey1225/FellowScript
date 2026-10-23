@@ -26,7 +26,7 @@
 //      with the expected title text (decoupling the title from
 //      leading/trailing item widths).
 //   B. EventSetupSheet.detailsScreen's DEVOTION TIME and GROUP controls sit in
-//      one `.widgetCard()` (a single HStack), not two separate cards.
+//      one `.fsCard()` (a single HStack), not two separate cards.
 //   C. All four sheets' Cancel affordance is the ghost-chip recipe (a
 //      Button wrapping a Text with a faint parchment-tinted Capsule
 //      fill+stroke), not a plain `Button("Cancel") { }.foregroundColor(...)`.
@@ -88,9 +88,8 @@ final class SubmenuFollowupPolishRegressionTests: XCTestCase {
         // compliance-readability-cleanup task's AccountView.swift split.
         let source = try readSource("FellowScript/Account/AccountSupportingViews.swift")
         let sheetBody = try body(of: "NewAgentSheet", in: source)
-        XCTAssertTrue(sheetBody.contains("ToolbarItem(placement: .principal)"),
-                      "NewAgentSheet must also get the centered-title fix now that its Create button width changed")
-        XCTAssertTrue(sheetBody.contains("Text(\"New Agent\")"))
+        XCTAssertTrue(sheetBody.contains("FSFormScaffold(") && sheetBody.contains("title: \"New Agent\""),
+                      "NewAgentSheet's centered title now comes from the FSForm scaffold nav bar")
     }
 
     func test_eventSetupSheet_recurrenceScreenAndDetailsScreen_havePrincipalTitleItems() throws {
@@ -127,8 +126,8 @@ final class SubmenuFollowupPolishRegressionTests: XCTestCase {
         guard let hstackRange = detBody.range(of: "HStack(alignment: .top, spacing: Theme.spacingMD) {") else {
             XCTFail("the row-combining HStack (item 2's fix) was not found in detailsScreen"); return
         }
-        guard let closingCardRange = detBody.range(of: ".widgetCard()", range: hstackRange.upperBound..<detBody.endIndex) else {
-            XCTFail(".widgetCard() closing the merged row not found after the HStack"); return
+        guard let closingCardRange = detBody.range(of: ".fsCard()", range: hstackRange.upperBound..<detBody.endIndex) else {
+            XCTFail(".fsCard() closing the merged row not found after the HStack"); return
         }
         let row = String(detBody[hstackRange.lowerBound..<closingCardRange.upperBound])
 
@@ -137,11 +136,11 @@ final class SubmenuFollowupPolishRegressionTests: XCTestCase {
         // Only the one widgetCard() (closing this shared row) should appear
         // inside the HStack's own body -- confirms DEVOTION TIME and GROUP are
         // not still each individually wrapped in their own widgetCard().
-        let rowBodyOnly = String(row.dropLast(".widgetCard()".count))
-        XCTAssertFalse(rowBodyOnly.contains(".widgetCard()"),
+        let rowBodyOnly = String(row.dropLast(".fsCard()".count))
+        XCTAssertFalse(rowBodyOnly.contains(".fsCard()"),
                        "DEVOTION TIME and GROUP must share exactly one widgetCard() (the row's own), not carry individual ones")
         // The separate PROMPT card must come strictly after this merged row.
-        guard let promptRange = detBody.range(of: "Text(\"PROMPT\")") else {
+        guard let promptRange = detBody.range(of: "FSEyebrow(title: \"PROMPT\")") else {
             XCTFail("PROMPT card not found"); return
         }
         XCTAssertTrue(closingCardRange.upperBound <= promptRange.lowerBound,
@@ -185,10 +184,8 @@ final class SubmenuFollowupPolishRegressionTests: XCTestCase {
         let sheetBody = try body(of: "NewAgentSheet", in: source)
         XCTAssertFalse(sheetBody.contains(#"Button("Cancel")"#),
                        "NewAgentSheet must no longer use a plain string-literal Button(\"Cancel\")")
-        XCTAssertTrue(sheetBody.contains("cancelGhostChip"), "NewAgentSheet must use its own ghost-chip Cancel label")
-        XCTAssertTrue(sheetBody.contains("Button(action: { dismiss() }) { cancelGhostChip }"),
-                      "NewAgentSheet's Cancel must still call dismiss()")
-        XCTAssertTrue(sheetBody.contains("Capsule().fill(Theme.parchment.opacity(0.06))"))
+        XCTAssertTrue(sheetBody.contains(#"secondaryTitle: "Cancel", onSecondary: { dismiss() }"#),
+                      "NewAgentSheet's Cancel is now the pinned bar's secondary action and must still call dismiss()")
     }
 
     func test_eventSetupSheet_recurrenceScreen_usesGhostChipCancel_notPlainButton() throws {
@@ -228,7 +225,7 @@ final class SubmenuFollowupPolishRegressionTests: XCTestCase {
     func test_newAgentSheet_create_usesPillButton() throws {
         let source = try readSource("FellowScript/Account/AccountSupportingViews.swift")
         let sheetBody = try body(of: "NewAgentSheet", in: source)
-        XCTAssertTrue(sheetBody.contains(#"PillButton(title: "Create") { onCreate(); dismiss() }"#))
+        XCTAssertTrue(sheetBody.contains(#"primaryTitle: "Create", onPrimary: { onCreate(); dismiss() }"#))
         XCTAssertFalse(sheetBody.contains(#"Button("Create")"#))
     }
 
@@ -239,7 +236,7 @@ final class SubmenuFollowupPolishRegressionTests: XCTestCase {
         }
         let detEnd = source.range(of: "// ── Helpers", range: detRange.upperBound..<source.endIndex)?.lowerBound ?? source.endIndex
         let detBody = String(source[detRange.upperBound..<detEnd])
-        XCTAssertTrue(detBody.contains(#"PillButton(title: isEditing ? "Update" : "Save") {"#),
+        XCTAssertTrue(detBody.contains(#"primaryTitle: isEditing ? "Update" : "Save""#),
                       "Update/Save must use PillButton's gold-gradient recipe, matching the other three sheets' primary actions")
         XCTAssertFalse(detBody.contains(#"Button("Update")"#) && detBody.contains(#"Button("Save")"#))
         // A later, legitimate double-tap-guard fix (task
@@ -270,7 +267,7 @@ final class SubmenuFollowupPolishRegressionTests: XCTestCase {
         }
         let tzEnd = accountSource.range(of: "\nstruct ", range: tzRange.upperBound..<accountSource.endIndex)?.lowerBound ?? accountSource.endIndex
         let tzBody = String(accountSource[tzRange.upperBound..<tzEnd])
-        XCTAssertTrue(tzBody.contains(#"Button("Cancel") { dismiss() }.foregroundColor(Theme.textGoldMuted)"#),
-                      "TimeZonePickerSheet was not named in this task's scope and must keep its plain Cancel button")
+        XCTAssertTrue(tzBody.contains(#"FSFormScaffold("#) && tzBody.contains("onClose: { dismiss() }"),
+                      "TimeZonePickerSheet (restyled onto the FSForm scaffold) must still dismiss on close")
     }
 }

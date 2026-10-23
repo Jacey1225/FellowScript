@@ -1,4 +1,4 @@
-import React, { useId, useState } from 'react';
+import React, { useEffect, useId, useState } from 'react';
 
 // Counter shows at >=80% of the limit (singles) or whenever provided for textareas near the limit.
 export function shouldShowCounter(length, maxLength) {
@@ -16,6 +16,12 @@ export function Field({
   const id = idProp || autoId;
   const descId = `${id}-desc`;
   const [revealed, setRevealed] = useState(false);
+  // Re-mask after 10 seconds (spec 9.1.1); reveal is never persisted.
+  useEffect(() => {
+    if (!revealed) return undefined;
+    const t = setTimeout(() => setRevealed(false), 10000);
+    return () => clearTimeout(t);
+  }, [revealed]);
   const Tag = multiline ? 'textarea' : 'input';
   const len = (value || '').length;
   const note = error || (disabled && disabledReason) || helper;
