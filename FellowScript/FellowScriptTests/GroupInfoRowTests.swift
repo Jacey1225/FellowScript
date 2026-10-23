@@ -20,10 +20,10 @@ final class GroupInfoRowTests: XCTestCase {
     }
 
     func test_row_notRenderedWhenNoneShow_inDMs_orInsideAThread() {
-        XCTAssertFalse(GroupInfoCategory.rowShows(isGroup: true, isThreadOpen: false, categories: []))
-        XCTAssertFalse(GroupInfoCategory.rowShows(isGroup: false, isThreadOpen: false, categories: [.threads]))
-        XCTAssertFalse(GroupInfoCategory.rowShows(isGroup: true, isThreadOpen: true, categories: [.threads]))
-        XCTAssertTrue(GroupInfoCategory.rowShows(isGroup: true, isThreadOpen: false, categories: [.threads]))
+        // The row always carries the trailing Sessions pill, so it shows even with no chips.
+        XCTAssertFalse(GroupInfoCategory.rowShows(isGroup: false, isThreadOpen: false))
+        XCTAssertFalse(GroupInfoCategory.rowShows(isGroup: true, isThreadOpen: true))
+        XCTAssertTrue(GroupInfoCategory.rowShows(isGroup: true, isThreadOpen: false))
     }
 
     func test_groupMediaCapability_failsClosed() {
@@ -136,7 +136,7 @@ final class GroupInfoRowTests: XCTestCase {
 
     func test_chatThreadView_hasRowInGroupsOnly_noBanner_noGroupPinButton() throws {
         let s = try src("Chat/ChatThreadView.swift")
-        XCTAssertTrue(s.contains("GroupInfoCategory.rowShows(isGroup: contact.type == .group, isThreadOpen: vm.isThreadOpen"))
+        XCTAssertTrue(s.contains("GroupInfoCategory.rowShows(isGroup: contact.type == .group, isThreadOpen: vm.isThreadOpen)"))
         XCTAssertTrue(s.contains("GroupInfoChipRow("))
         XCTAssertFalse(s.contains("GroupAnnouncementWidgetView("), "announcement banner removed from chats")
         XCTAssertTrue(s.contains("if pinsAvailable && contact.type != .group {"), "pin button stays in DMs only")
@@ -164,5 +164,28 @@ final class GroupInfoRowTests: XCTestCase {
         XCTAssertTrue(s.contains("/media?"))
         XCTAssertTrue(s.contains("kind=image,video,gif"))
         XCTAssertTrue(s.contains("cursor_seq"))
+    }
+
+    // MARK: Sessions pill moved into the row (groups); stays in the DM header
+
+    func test_sessionsPill_isTrailingRowItemInGroups_andStaysInDMHeader() throws {
+        let s = try src("Chat/ChatThreadView.swift")
+        let hs = try XCTUnwrap(s.range(of: "private var header: some View {")?.lowerBound)
+        let he = try XCTUnwrap(s.range(of: "private var sessionsPill: some View {")?.lowerBound)
+        let header = String(s[hs..<he])
+        XCTAssertTrue(header.contains("if contact.type == .group {"))
+        XCTAssertTrue(header.contains("sessionsPill"), "DM header keeps the Sessions pill")
+        let groupBranch = try XCTUnwrap(header.range(of: "if contact.type == .group {\n                // Sessions lives"))
+        let elseBranch = try XCTUnwrap(header.range(of: "} else {\n                Spacer(minLength: 8)\n                sessionsPill"))
+        XCTAssertTrue(groupBranch.lowerBound < elseBranch.lowerBound)
+        XCTAssertFalse(String(header[groupBranch.lowerBound..<elseBranch.lowerBound]).contains("sessionsPill"),
+                       "no Sessions pill in the group header")
+        XCTAssertTrue(s.contains("GroupInfoChipRow(categories: groupInfoCategories, selected: $infoCategory, pinCount: vm.pinCount) {\n                        sessionsPill"),
+                      "Sessions is the trailing item of the group chip row")
+        let row = try src("Chat/GroupInfoChipRow.swift")
+        let chips = try XCTUnwrap(row.range(of: "ForEach(categories)")?.lowerBound)
+        let trailing = try XCTUnwrap(row.range(of: "trailing()")?.lowerBound)
+        XCTAssertTrue(chips < trailing)
+        XCTAssertTrue(row.contains(".frame(minHeight: 44)"))
     }
 }

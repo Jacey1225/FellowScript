@@ -39,9 +39,10 @@ enum GroupInfoCategory: String, CaseIterable, Identifiable, Equatable {
         return out
     }
 
-    /// The chip row shows in group chats only, never inside an open thread.
-    static func rowShows(isGroup: Bool, isThreadOpen: Bool, categories: [GroupInfoCategory]) -> Bool {
-        isGroup && !isThreadOpen && !categories.isEmpty
+    /// The chip row shows in group chats only, never inside an open thread. It always
+    /// has at least the trailing Sessions pill, so it no longer depends on the chips.
+    static func rowShows(isGroup: Bool, isThreadOpen: Bool) -> Bool {
+        isGroup && !isThreadOpen
     }
 
     /// Tapping the open chip closes it; any other chip swaps the panel in place.

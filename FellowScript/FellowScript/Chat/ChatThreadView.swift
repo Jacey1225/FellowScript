@@ -1511,9 +1511,10 @@ struct ChatThreadView: View {
 
                 // Task 20261023-group-info-row: groups only, directly under the header
                 // (replaces the announcement banner and the floating pin button).
-                if GroupInfoCategory.rowShows(isGroup: contact.type == .group, isThreadOpen: vm.isThreadOpen,
-                                              categories: groupInfoCategories) {
-                    GroupInfoChipRow(categories: groupInfoCategories, selected: $infoCategory, pinCount: vm.pinCount)
+                if GroupInfoCategory.rowShows(isGroup: contact.type == .group, isThreadOpen: vm.isThreadOpen) {
+                    GroupInfoChipRow(categories: groupInfoCategories, selected: $infoCategory, pinCount: vm.pinCount) {
+                        sessionsPill
+                    }
                 }
 
                 // ── Reconnecting banner (dropped-socket lifecycle state) ───
@@ -2471,7 +2472,10 @@ struct ChatThreadView: View {
         HStack(spacing: 14) {
             RoundIconButton(systemIcon: "chevron.left") { goBack() }
                 .accessibilityLabel("Go back")
+                // Groups: the title gets the whole row and is centered; a hidden twin
+                // of the back button on the right keeps it truly centered.
 
+            if contact.type == .group { Spacer(minLength: 0) }
             Button(action: {
                 if contact.type == .group { showGroupInfo = true }
             }) {
@@ -2507,20 +2511,13 @@ struct ChatThreadView: View {
             .accessibilityLabel(contact.type == .group ? "Group info, \(displayName)" : contact.name)
             .accessibilityHint(contact.type == .group ? "Opens group settings, members, and shared media" : "")
 
-            Spacer(minLength: 8)
-
-            if embedded {
-                PillButton(title: "Sessions", systemIcon: "phone",
-                           textColor: Theme.goldLight,
-                           fill: AnyShapeStyle(Theme.gold.opacity(0.12))) {
-                    openSessionsMenu()
-                }
-                .accessibilityLabel("View and schedule study sessions")
+            if contact.type == .group {
+                // Sessions lives in the group info chip row (20261023-group-info-row).
+                Spacer(minLength: 0)
+                RoundIconButton(systemIcon: "chevron.left") {}.hidden().accessibilityHidden(true)
             } else {
-                PillButton(title: "Sessions", systemIcon: "calendar") {
-                    openSessionsMenu()
-                }
-                .accessibilityLabel("View and schedule study sessions")
+                Spacer(minLength: 8)
+                sessionsPill
             }
         }
         // Join-request push tap (task 20261016-push-notifications-and-ui).
@@ -2531,6 +2528,24 @@ struct ChatThreadView: View {
         .overlay(alignment: .bottom) {
             Rectangle().fill(Theme.borderGoldFaint).frame(height: 1)
         }
+    }
+
+    /// The gold Sessions pill: in the DM header, or the trailing item of the group chip row.
+    private var sessionsPill: some View {
+        Group {
+            if embedded {
+                PillButton(title: "Sessions", systemIcon: "phone",
+                           textColor: Theme.goldLight,
+                           fill: AnyShapeStyle(Theme.gold.opacity(0.12))) {
+                    openSessionsMenu()
+                }
+            } else {
+                PillButton(title: "Sessions", systemIcon: "calendar") {
+                    openSessionsMenu()
+                }
+            }
+        }
+        .accessibilityLabel("View and schedule study sessions")
     }
 
     // ── Sessions submenu (task 20260920-chat-sessions-submenu) ────────────────
@@ -2609,7 +2624,7 @@ struct ChatThreadView: View {
                     .padding(.horizontal, Theme.spacingMD)
                 Spacer()
             }
-            .padding(.top, 76) // clears the header row so the card reads as anchored under the "Sessions" pill
+            .padding(.top, contact.type == .group ? 132 : 76) // clears the header (+ chip row in groups) so the card reads as anchored under the "Sessions" pill
             .frame(maxWidth: .infinity, alignment: .trailing)
         }
         .transition(

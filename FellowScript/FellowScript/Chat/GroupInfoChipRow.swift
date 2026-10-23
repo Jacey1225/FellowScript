@@ -6,10 +6,12 @@
 
 import SwiftUI
 
-struct GroupInfoChipRow: View {
+struct GroupInfoChipRow<Trailing: View>: View {
     let categories: [GroupInfoCategory]
     @Binding var selected: GroupInfoCategory?
     let pinCount: Int
+    /// Last item in the scroller: the Sessions pill (44pt target).
+    @ViewBuilder var trailing: () -> Trailing
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @AccessibilityFocusState private var focusedChip: GroupInfoCategory?
@@ -28,6 +30,8 @@ struct GroupInfoChipRow: View {
                     }
                     .accessibilityFocused($focusedChip, equals: category)
                 }
+                trailing()
+                    .frame(minHeight: 44)
             }
             .padding(.horizontal, Theme.spacingMD)
         }
