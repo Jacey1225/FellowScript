@@ -69,18 +69,14 @@ final class SubmenuFollowupPolishRegressionTests: XCTestCase {
     func test_addFriendSheet_hasPrincipalTitleItem_decoupledFromToolbarWidths() throws {
         let source = try readSource("FellowScript/Chat/ChatRootView.swift")
         let sheetBody = try body(of: "AddFriendSheet", in: source)
-        XCTAssertTrue(sheetBody.contains("ToolbarItem(placement: .principal)"),
-                      "AddFriendSheet must center its title via a `.principal` toolbar item, independent of leading/trailing button widths")
-        XCTAssertTrue(sheetBody.contains("Text(\"Add Friend\")"),
-                      "the `.principal` item must render the sheet's actual title text")
+        XCTAssertTrue(sheetBody.contains("FSFormScaffold(") && sheetBody.contains("title: \"Add Friend\""),
+                      "AddFriendSheet's centered title comes from the FSForm scaffold nav bar")
     }
 
     func test_addGroupSheet_hasPrincipalTitleItem() throws {
         let source = try readSource("FellowScript/Chat/ChatRootView.swift")
         let sheetBody = try body(of: "AddGroupSheet", in: source)
-        XCTAssertTrue(sheetBody.contains("ToolbarItem(placement: .principal)"),
-                      "AddGroupSheet must also get the centered-title fix now that its Create button width changed")
-        XCTAssertTrue(sheetBody.contains("Text(\"New Group\")"))
+        XCTAssertTrue(sheetBody.contains("FSFormScaffold(") && sheetBody.contains("title: \"New Group\""))
     }
 
     func test_newAgentSheet_hasPrincipalTitleItem() throws {
@@ -162,21 +158,12 @@ final class SubmenuFollowupPolishRegressionTests: XCTestCase {
 
     func test_addFriendSheet_addGroupSheet_useGhostChipCancel_notPlainButton() throws {
         let source = try readSource("FellowScript/Chat/ChatRootView.swift")
-        let friendBody = try body(of: "AddFriendSheet", in: source)
-        let groupBody = try body(of: "AddGroupSheet", in: source)
-        for (name, sheetBody) in [("AddFriendSheet", friendBody), ("AddGroupSheet", groupBody)] {
-            XCTAssertFalse(sheetBody.contains(#"Button("Cancel")"#),
-                           "\(name) must no longer use a plain string-literal `Button(\"Cancel\")` (picks up unstyled system Liquid Glass chrome)")
-            XCTAssertTrue(sheetBody.contains("sheetGhostCancelLabel"),
-                          "\(name) must use the shared ghost-chip Cancel label")
-            XCTAssertTrue(sheetBody.contains("Button(action: { dismiss() }) { sheetGhostCancelLabel }"),
-                          "\(name)'s Cancel must still call dismiss()")
+        for name in ["AddFriendSheet", "AddGroupSheet"] {
+            let sheetBody = try body(of: name, in: source)
+            XCTAssertFalse(sheetBody.contains(#"Button("Cancel")"#), "\(name) must not use a plain Button(\"Cancel\")")
+            XCTAssertTrue(sheetBody.contains(#"secondaryTitle: "Cancel", onSecondary: { dismiss() }"#),
+                          "\(name)'s Cancel is the pinned bar secondary and must still call dismiss()")
         }
-        // The shared label itself must actually render as a custom chip
-        // (capsule fill + stroke), not fall back to plain text.
-        XCTAssertTrue(source.contains("fileprivate var sheetGhostCancelLabel: some View {"))
-        XCTAssertTrue(source.contains("Capsule().fill(Theme.parchment.opacity(0.06))"))
-        XCTAssertTrue(source.contains("Capsule().stroke(Theme.parchment.opacity(0.12), lineWidth: 1)"))
     }
 
     func test_newAgentSheet_usesGhostChipCancel_notPlainButton() throws {
@@ -207,19 +194,17 @@ final class SubmenuFollowupPolishRegressionTests: XCTestCase {
     func test_addFriendSheet_sendRequest_usesPillButton() throws {
         let source = try readSource("FellowScript/Chat/ChatRootView.swift")
         let sheetBody = try body(of: "AddFriendSheet", in: source)
-        XCTAssertTrue(sheetBody.contains(#"PillButton(title: "Send Request") {"#),
-                      "Send Request must use PillButton's gold-gradient recipe")
-        XCTAssertFalse(sheetBody.contains(#"Button("Send Request")"#),
-                       "must not keep the old plain-text Button for Send Request")
-        XCTAssertTrue(sheetBody.contains(".disabled(username.isEmpty)"), "disabled predicate must be unchanged")
+        XCTAssertTrue(sheetBody.contains(#"primaryTitle: "Send Request""#), "Send Request is the pinned bar primary")
+        XCTAssertFalse(sheetBody.contains(#"Button("Send Request")"#))
+        XCTAssertTrue(sheetBody.contains("primaryDimmed: username.isEmpty"), "dimmed predicate must be unchanged")
     }
 
     func test_addGroupSheet_create_usesPillButton() throws {
         let source = try readSource("FellowScript/Chat/ChatRootView.swift")
         let sheetBody = try body(of: "AddGroupSheet", in: source)
-        XCTAssertTrue(sheetBody.contains(#"PillButton(title: "Create") {"#))
+        XCTAssertTrue(sheetBody.contains(#"primaryTitle: "Create""#))
         XCTAssertFalse(sheetBody.contains(#"Button("Create")"#))
-        XCTAssertTrue(sheetBody.contains(".disabled(groupName.isEmpty)"), "disabled predicate must be unchanged")
+        XCTAssertTrue(sheetBody.contains("primaryDimmed: groupName.isEmpty"), "dimmed predicate must be unchanged")
     }
 
     func test_newAgentSheet_create_usesPillButton() throws {

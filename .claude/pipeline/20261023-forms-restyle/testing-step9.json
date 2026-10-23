@@ -1,0 +1,2 @@
+{ "task_id": "20261023-forms-restyle", "step": 9, "gate": "testing", "result": "pass",
+  "summary": "iOS full suite (one simulator, serial, skipping the 4 classes that hang on the untouched base): 32 failures, 21 identical to the base; the other 11 were AddFriend/AddGroup source-pin tests for the old markup, updated to the FSForm kit and now passing (Submenu* classes green). Web vitest: 49 failed / 2009 passed, same failing file set as the untouched base (recharts/dockview/AppNav/build-only environment failures)." }
