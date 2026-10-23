@@ -4,11 +4,9 @@
 // message. The token is stripped from the address bar after the attempt.
 import React, { useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate, Link } from 'react-router-dom';
-import { Card, Button, Typography, Alert, Spin } from 'antd';
+import { AuthPage } from '../components/forms/index.js';
 import Seo from '../components/Seo.jsx';
 import { verifyEmailToken } from '../lib/emailVerificationApi.js';
-
-const { Title } = Typography;
 
 export default function VerifyEmail() {
   const location = useLocation();
@@ -27,33 +25,26 @@ export default function VerifyEmail() {
   }, [token, navigate]);
 
   return (
-    <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '2rem' }}>
+    <>
       <Seo title="Verify Email — FellowScript" path="/verify-email" noindex />
-      <Card style={{ width: '100%', maxWidth: 420, background: 'rgba(10,6,2,0.88)', border: '1px solid rgba(200,134,26,0.2)', backdropFilter: 'blur(12px)' }}>
-        <div style={{ textAlign: 'center', marginBottom: '1.5rem' }}>
-          <Title level={3} style={{ margin: 0, fontFamily: "'Playfair Display', serif" }}>
-            <span style={{ color: 'var(--parchment)' }}>Verify</span>{' '}
-            <em style={{ color: 'var(--gold)' }}>email</em>
-          </Title>
-        </div>
-        {phase === 'loading' && <div style={{ textAlign: 'center' }}><Spin /></div>}
+      <AuthPage title="Verify email">
+        {phase === 'loading' && <div className="ff-center" role="status">Verifying…</div>}
         {phase === 'done' && (
           <>
-            <Alert type="success" showIcon message="Email verified" description="Thanks, your email address is confirmed." style={{ marginBottom: 16 }} />
-            <Link to="/account"><Button type="primary" block>Continue to your account</Button></Link>
+            <div className="ff-info" role="status"><strong>Email verified</strong><div className="ff-helper">Thanks, your email address is confirmed.</div></div>
+            <Link to="/account" className="ff-btn ff-btn--primary ff-btn--block" style={{ textAlign: 'center', textDecoration: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>Continue to your account</Link>
           </>
         )}
         {phase === 'invalid' && (
           <>
-            <Alert
-              type="error" showIcon message="This verification link is invalid or has expired."
-              description="Sign in and request a new verification email from your account page."
-              style={{ marginBottom: 16 }}
-            />
-            <Link to="/account"><Button type="primary" block>Go to your account</Button></Link>
+            <div className="ff-alert" role="alert">
+              <div className="ff-alert__title">This verification link is invalid or has expired.</div>
+              <div className="ff-helper">Sign in and request a new verification email from your account page.</div>
+            </div>
+            <Link to="/account" className="ff-btn ff-btn--primary ff-btn--block" style={{ textAlign: 'center', textDecoration: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>Go to your account</Link>
           </>
         )}
-      </Card>
-    </div>
+      </AuthPage>
+    </>
   );
 }

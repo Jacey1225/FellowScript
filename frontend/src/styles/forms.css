@@ -130,3 +130,35 @@ textarea.ff-input { resize: vertical; min-height: 96px; padding: 0; line-height:
   .ff-actions .ff-btn { flex: 1; }
 }
 @media (prefers-reduced-motion: reduce) { .fs-form * { transition: none !important; animation: none !important; } }
+
+/* Auth page (type C) */
+.ff-authpage { min-height: 100vh; display: flex; align-items: center; justify-content: center; }
+.ff-authpage .ff-page { width: 100%; }
+.ff-wordmark { text-align: center; font-family: 'Schibsted Grotesk', sans-serif; font-weight: 600; font-size: 28px; color: #FFF8EE; letter-spacing: -0.01em; }
+.ff-authhead { text-align: center; display: flex; flex-direction: column; gap: 8px; }
+.ff-title--center { text-align: center; font-size: 28px; }
+.ff-center { text-align: center; }
+.ff-link { color: var(--ff-gold); text-decoration: none; font-size: 14px; font-weight: 600; background: none; border: 0; padding: 0; cursor: pointer; font-family: inherit; }
+.ff-link:hover { text-decoration: underline; }
+.ff-link-row { min-height: 44px; display: flex; align-items: center; justify-content: center; }
+.ff-or { display: flex; align-items: center; gap: 12px; color: var(--ff-text-2); font-size: 12px; }
+.ff-or::before, .ff-or::after { content: ''; flex: 1; height: 1px; background: var(--ff-card-border); }
+.ff-social { width: 100%; min-height: 48px; display: flex; align-items: center; justify-content: center; gap: 10px; background: #fff; color: #3c3c3c;
+  border: 0; border-radius: 12px; font: inherit; font-size: 14px; font-weight: 500; cursor: pointer; }
+.ff-social:disabled { opacity: .7; cursor: not-allowed; }
+.ff-check { display: flex; gap: 10px; align-items: flex-start; min-height: 44px; font-size: 12px; line-height: 1.4; color: var(--ff-text-2); cursor: pointer; }
+.ff-check input { width: 20px; height: 20px; margin-top: 2px; accent-color: var(--ff-gold); flex: none; }
+.ff-legal { text-align: center; font-size: 12px; color: var(--ff-text-2); }
+.ff-legal a { color: var(--ff-gold); text-decoration: none; }
+
+/* Code boxes */
+.ff-code { position: relative; }
+.ff-code__input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0.01; font-size: 16px; z-index: 1; }
+.ff-code__boxes { display: flex; gap: 8px; }
+.ff-code__box { flex: 1; height: 56px; display: inline-flex; align-items: center; justify-content: center; border-radius: 12px; background: var(--ff-field);
+  border: 1px solid var(--ff-field-border); font-size: 24px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.ff-code__box--active { border: 1.5px solid var(--ff-gold); box-shadow: 0 0 0 3px rgba(212,146,42,0.12); }
+.ff-code:focus-within .ff-code__box--active { border-color: var(--ff-gold); }
+.ff-formstack { display: flex; flex-direction: column; gap: 16px; }
+.ff-formstack .ff-actions { position: static; background: transparent; border: 0; padding: 0; }
+.ff-formstack .ff-actions .ff-btn { width: 100%; }

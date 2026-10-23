@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation, Link } from 'react-router-dom';
-import { Card, Form, Input, Button, Typography, Tabs, Alert, Checkbox, Modal } from 'antd';
-import { UserOutlined, LockOutlined, MailOutlined } from '@ant-design/icons';
+import { AuthPage, Field, Segmented, FormErrorSummary, StickyActionBar, TermsReaccept } from '../components/forms/index.js';
 import { useAuth } from '../context/AuthContext.jsx';
 import { isDesktopApp } from '../lib/desktopScope.js';
 import { API } from '../config.js';
@@ -9,8 +8,6 @@ import Seo from '../components/Seo.jsx';
 import { useWarmCanvas } from '../hooks/useWarmCanvas.js';
 import { postAuthPath } from '../lib/pendingInvite.js';
 import { hasMfaRequiredFlag, clearMfaRequiredFlag, MFA_SETUP_PATH, MFA_NOTICE_TEXT } from '../lib/adminMfa.js';
-
-const { Title, Text } = Typography;
 
 const GOOGLE_CLIENT_ID = '667477247503-plvi16hhr4gpigqudkpsc3epsu6edbgq.apps.googleusercontent.com';
 
@@ -33,8 +30,10 @@ export default function SignIn() {
   // routing through the existing https-only on_new_window handoff instead
   // of an in-app SPA navigation.
   const desktopApp = isDesktopApp();
-  const [siForm]   = Form.useForm();
-  const [suForm]   = Form.useForm();
+  const [siVals, setSiVals] = useState({ username: '', password: '' });
+  const [suVals, setSuVals] = useState({ username: '', email: '', password: '' });
+  const [siErrs, setSiErrs] = useState({});
+  const [suErrs, setSuErrs] = useState({});
   const [siError,  setSiError]  = useState('');
   const [suError,  setSuError]  = useState('');
   const [siLoading, setSiLoading] = useState(false);
@@ -146,13 +145,19 @@ export default function SignIn() {
     window.location.href = `https://accounts.google.com/o/oauth2/v2/auth?${params}`;
   };
 
-  const handleSignin = async (vals) => {
+  const handleSignin = async (e) => {
+    e?.preventDefault?.();
     setSiError('');
+    const errs = {};
+    if (!siVals.username.trim()) errs.username = 'Username required';
+    if (!siVals.password) errs.password = 'Password required';
+    setSiErrs(errs);
+    if (Object.keys(errs).length) { document.getElementById(`si-${Object.keys(errs)[0]}`)?.focus(); return; }
     setSiLoading(true);
     try {
       const res  = await fetch(`${API}/login`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username: vals.username.trim(), plain_pass: vals.password }),
+        body: JSON.stringify({ username: siVals.username.trim(), plain_pass: siVals.password }),
       });
       const data = await res.json();
       if (!res.ok) { setSiError(data.detail || 'Sign in failed.'); return; }
@@ -168,8 +173,15 @@ export default function SignIn() {
     }
   };
 
-  const handleSignup = async (vals) => {
+  const handleSignup = async (e) => {
+    e?.preventDefault?.();
     setSuError('');
+    const errs = {};
+    if (!suVals.username.trim()) errs.username = 'Add a username.';
+    if (!/^\S+@\S+\.\S+$/.test(suVals.email.trim())) errs.email = 'Enter a valid email.';
+    if (suVals.password.length < 6) errs.password = 'Use at least 6 characters.';
+    setSuErrs(errs);
+    if (Object.keys(errs).length) { document.getElementById(`su-${Object.keys(errs)[0]}`)?.focus(); return; }
     if (!termsAccepted) {
       setSuError('You must agree to the Terms of Service to create an account.');
       return;
@@ -179,7 +191,7 @@ export default function SignIn() {
       const res  = await fetch(`${API}/signup`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          username: vals.username.trim(), email: vals.email.trim(), plain_pass: vals.password,
+          username: suVals.username.trim(), email: suVals.email.trim(), plain_pass: suVals.password,
           terms_accepted: termsAccepted,
         }),
       });
@@ -194,158 +206,93 @@ export default function SignIn() {
     }
   };
 
-  const tabs = [
-    {
-      key: 'signin',
-      label: 'Sign In',
-      children: (
-        <Form form={siForm} layout="vertical" onFinish={handleSignin} style={{ marginTop: 8 }}>
-          {location.state?.mfaRequired && <Alert message={MFA_NOTICE_TEXT} type="warning" showIcon style={{ marginBottom: 16 }} />}
-          {siError && <Alert message={siError} type="error" showIcon style={{ marginBottom: 16 }} />}
-          <Form.Item name="username" rules={[{ required: true, message: 'Username required' }]}>
-            <Input prefix={<UserOutlined />} placeholder="Username" />
-          </Form.Item>
-          <Form.Item name="password" rules={[{ required: true, message: 'Password required' }]}>
-            <Input.Password prefix={<LockOutlined />} placeholder="Password" />
-          </Form.Item>
-          <div style={{ textAlign: 'right', marginTop: -8, marginBottom: 16 }}>
-            <Link to="/forgot-password" style={{ fontSize: 12, color: 'rgba(200,134,26,0.65)' }}>
-              Forgot password?
-            </Link>
-          </div>
-          <Button type="primary" htmlType="submit" loading={siLoading} block>Sign In</Button>
-        </Form>
-      ),
-    },
-    {
-      key: 'signup',
-      label: 'Create Account',
-      children: (
-        <Form form={suForm} layout="vertical" onFinish={handleSignup} style={{ marginTop: 8 }}>
-          {suError && <Alert message={suError} type="error" showIcon style={{ marginBottom: 16 }} />}
-          <Form.Item name="username" rules={[{ required: true }]}>
-            <Input prefix={<UserOutlined />} placeholder="Username" />
-          </Form.Item>
-          <Form.Item name="email" rules={[{ required: true, type: 'email' }]}>
-            <Input prefix={<MailOutlined />} placeholder="Email" />
-          </Form.Item>
-          <Form.Item name="password" rules={[{ required: true, min: 6 }]}>
-            <Input.Password prefix={<LockOutlined />} placeholder="Password" />
-          </Form.Item>
-          <Button type="primary" htmlType="submit" loading={suLoading} block>Create Account</Button>
-        </Form>
-      ),
-    },
-  ];
+  const GoogleG = (
+    <svg width="18" height="18" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+      <g fill="none" fillRule="evenodd">
+        <path d="M17.64 9.205c0-.639-.057-1.252-.164-1.841H9v3.481h4.844a4.14 4.14 0 0 1-1.796 2.716v2.259h2.908c1.702-1.567 2.684-3.875 2.684-6.615z" fill="#4285F4"/>
+        <path d="M9 18c2.43 0 4.467-.806 5.956-2.18l-2.908-2.259c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332A8.997 8.997 0 0 0 9 18z" fill="#34A853"/>
+        <path d="M3.964 10.71A5.41 5.41 0 0 1 3.682 9c0-.593.102-1.17.282-1.71V4.958H.957A8.996 8.996 0 0 0 0 9c0 1.452.348 2.827.957 4.042l3.007-2.332z" fill="#FBBC05"/>
+        <path d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0A8.997 8.997 0 0 0 .957 4.958L3.964 7.29C4.672 5.163 6.656 3.58 9 3.58z" fill="#EA4335"/>
+      </g>
+    </svg>
+  );
+
+  const isSignin = activeTab === 'signin';
+  const formErrors = (errs, prefix, names) => Object.keys(errs).map((k) => ({ id: `${prefix}-${k}`, name: names[k] }));
 
   return (
-    <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '2rem' }}>
+    <>
       <Seo
         title="Sign In — FellowScript"
         description="Sign in or create a FellowScript account to start your daily Bible reading rhythm."
         path="/signin"
         noindex
       />
-      <Card className="fs-signin-card" style={{ width: '100%', maxWidth: 420 }}>
-        <div style={{ textAlign: 'center', marginBottom: '1.5rem' }}>
-          <Title level={3} className="fs-wordmark" style={{ margin: 0, fontFamily: "'Schibsted Grotesk', sans-serif", fontWeight: 600, color: '#FFF8EE' }}>
-            FellowScript
-          </Title>
-          <div style={{ width: 40, height: 1, background: 'rgba(200,134,26,0.3)', margin: '1rem auto 0' }} />
-        </div>
+      <AuthPage
+        footer={(
+          <>
+            <p className="ff-legal">
+              By creating an account, you agree to our{' '}
+              <Link to="/terms" target={desktopApp ? '_blank' : undefined} rel={desktopApp ? 'noopener noreferrer' : undefined}>Terms of Service</Link>
+              {' '}and{' '}
+              <Link to="/privacy" target={desktopApp ? '_blank' : undefined} rel={desktopApp ? 'noopener noreferrer' : undefined}>Privacy Policy</Link>.
+            </p>
+          </>
+        )}
+      >
+        <Segmented label="Account" value={activeTab} onChange={setActiveTab}
+          options={[{ value: 'signin', label: 'Sign In' }, { value: 'signup', label: 'Create Account' }]} />
 
-        <Tabs items={tabs} centered activeKey={activeTab} onChange={setActiveTab} />
-
-        {activeTab === 'signup' && (
-          <div style={{ marginTop: -8, marginBottom: 12 }}>
-            <Checkbox checked={termsAccepted} onChange={e => setTermsAccepted(e.target.checked)}>
-              <Text style={{ fontFamily: "'Lora', serif", fontSize: '0.78rem', color: 'rgba(244,228,193,0.6)' }}>
+        {isSignin ? (
+          <form onSubmit={handleSignin} noValidate className="ff-formstack">
+            {location.state?.mfaRequired && <div className="ff-info" role="status">{MFA_NOTICE_TEXT}</div>}
+            {siError && <div className="ff-alert" role="alert"><div className="ff-alert__title">{siError}</div></div>}
+            <FormErrorSummary items={formErrors(siErrs, 'si', { username: 'Username', password: 'Password' })}
+              onSelect={(id) => document.getElementById(id)?.focus()} />
+            <Field id="si-username" label="Username" required value={siVals.username} error={siErrs.username}
+              autoComplete="username" autoCapitalize="none" spellCheck={false}
+              onChange={(v) => { setSiVals((p) => ({ ...p, username: v })); if (siErrs.username) setSiErrs((p) => ({ ...p, username: undefined })); }} />
+            <Field id="si-password" label="Password" required secure value={siVals.password} error={siErrs.password}
+              autoComplete="current-password"
+              onChange={(v) => { setSiVals((p) => ({ ...p, password: v })); if (siErrs.password) setSiErrs((p) => ({ ...p, password: undefined })); }} />
+            <div className="ff-link-row"><Link to="/forgot-password" className="ff-link">Forgot password?</Link></div>
+            <StickyActionBar variant="page" primaryType="submit" primaryLabel="Sign In" saving={siLoading} onPrimary={() => {}} />
+          </form>
+        ) : (
+          <form onSubmit={handleSignup} noValidate className="ff-formstack">
+            {suError && <div className="ff-alert" role="alert"><div className="ff-alert__title">{suError}</div></div>}
+            <FormErrorSummary items={formErrors(suErrs, 'su', { username: 'Username', email: 'Email', password: 'Password' })}
+              onSelect={(id) => document.getElementById(id)?.focus()} />
+            <Field id="su-username" label="Username" required value={suVals.username} error={suErrs.username}
+              autoComplete="username" autoCapitalize="none" spellCheck={false}
+              onChange={(v) => { setSuVals((p) => ({ ...p, username: v })); if (suErrs.username) setSuErrs((p) => ({ ...p, username: undefined })); }} />
+            <Field id="su-email" label="Email" required type="email" value={suVals.email} error={suErrs.email}
+              autoComplete="email" autoCapitalize="none" spellCheck={false}
+              onChange={(v) => { setSuVals((p) => ({ ...p, email: v })); if (suErrs.email) setSuErrs((p) => ({ ...p, email: undefined })); }} />
+            <Field id="su-password" label="Password" required secure value={suVals.password} error={suErrs.password}
+              helper="At least 6 characters." autoComplete="new-password"
+              onChange={(v) => { setSuVals((p) => ({ ...p, password: v })); if (suErrs.password) setSuErrs((p) => ({ ...p, password: undefined })); }} />
+            <label className="ff-check">
+              <input type="checkbox" checked={termsAccepted} onChange={(e) => setTermsAccepted(e.target.checked)} />
+              <span>
                 I agree to the{' '}
-                <Link to="/terms" target="_blank" style={{ color: 'rgba(200,134,26,0.8)' }}>Terms of Service</Link>
+                <Link to="/terms" target="_blank" className="ff-link" style={{ fontSize: 12 }}>Terms of Service</Link>
                 {', including its zero-tolerance policy for objectionable content and abusive behavior.'}
-              </Text>
-            </Checkbox>
-          </div>
+              </span>
+            </label>
+            <StickyActionBar variant="page" primaryType="submit" primaryLabel="Create Account" saving={suLoading} onPrimary={() => {}} />
+          </form>
         )}
 
-        {/* Google Sign-In — below both tabs */}
-        <div style={{ marginTop: 8 }}>
-          <div style={{ display: 'flex', alignItems: 'center', margin: '16px 0' }}>
-            <div style={{ flex: 1, height: 1, background: 'rgba(200,134,26,0.18)' }} />
-            <Text style={{ margin: '0 12px', color: 'rgba(244,228,193,0.35)', fontSize: 12 }}>or</Text>
-            <div style={{ flex: 1, height: 1, background: 'rgba(200,134,26,0.18)' }} />
-          </div>
-          {googleError && <Alert message={googleError} type="error" showIcon style={{ marginBottom: 12 }} />}
-          <button
-            onClick={handleGoogleClick}
-            disabled={googleLoading}
-            style={{
-              width: '100%',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: 10,
-              padding: '10px 16px',
-              background: '#fff',
-              border: '1px solid rgba(200,134,26,0.25)',
-              borderRadius: 6,
-              cursor: googleLoading ? 'not-allowed' : 'pointer',
-              opacity: googleLoading ? 0.7 : 1,
-              fontSize: 14,
-              fontWeight: 500,
-              color: '#3c3c3c',
-              transition: 'opacity 0.2s',
-            }}
-          >
-            {googleLoading ? (
-              <span>Signing in…</span>
-            ) : (
-              <>
-                {/* Google "G" logo */}
-                <svg width="18" height="18" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg">
-                  <g fill="none" fillRule="evenodd">
-                    <path d="M17.64 9.205c0-.639-.057-1.252-.164-1.841H9v3.481h4.844a4.14 4.14 0 0 1-1.796 2.716v2.259h2.908c1.702-1.567 2.684-3.875 2.684-6.615z" fill="#4285F4"/>
-                    <path d="M9 18c2.43 0 4.467-.806 5.956-2.18l-2.908-2.259c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332A8.997 8.997 0 0 0 9 18z" fill="#34A853"/>
-                    <path d="M3.964 10.71A5.41 5.41 0 0 1 3.682 9c0-.593.102-1.17.282-1.71V4.958H.957A8.996 8.996 0 0 0 0 9c0 1.452.348 2.827.957 4.042l3.007-2.332z" fill="#FBBC05"/>
-                    <path d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0A8.997 8.997 0 0 0 .957 4.958L3.964 7.29C4.672 5.163 6.656 3.58 9 3.58z" fill="#EA4335"/>
-                  </g>
-                </svg>
-                Continue with Google
-              </>
-            )}
-          </button>
-        </div>
-      </Card>
+        {/* Google Sign-In: below both tabs */}
+        <div className="ff-or" aria-hidden="true">or</div>
+        {googleError && <div className="ff-alert" role="alert"><div className="ff-alert__title">{googleError}</div></div>}
+        <button type="button" className="ff-social" onClick={handleGoogleClick} disabled={googleLoading}>
+          {googleLoading ? <span>Signing in…</span> : (<>{GoogleG}Continue with Google</>)}
+        </button>
+      </AuthPage>
 
-      <div style={{ marginTop: '1.25rem', textAlign: 'center' }}>
-        <Text style={{ fontFamily: "'Lora', serif", fontSize: '0.75rem', color: 'rgba(244,228,193,0.35)' }}>
-          By creating an account, you agree to our{' '}
-          <Link to="/terms" target={desktopApp ? '_blank' : undefined} rel={desktopApp ? 'noopener noreferrer' : undefined}
-            style={{ color: 'rgba(200,134,26,0.65)', textDecoration: 'none' }}>Terms of Service</Link>
-          {' '}and{' '}
-          <Link to="/privacy" target={desktopApp ? '_blank' : undefined} rel={desktopApp ? 'noopener noreferrer' : undefined}
-            style={{ color: 'rgba(200,134,26,0.65)', textDecoration: 'none' }}>Privacy Policy</Link>.
-        </Text>
-      </div>
-
-      <Modal
-        open={!!reaccept}
-        closable={false}
-        maskClosable={false}
-        title={<Text style={{ fontFamily: "'Playfair Display', serif", color: 'var(--parchment)' }}>Our Terms of Service have been updated</Text>}
-        footer={[
-          <Button key="agree" type="primary" loading={reacceptLoading} onClick={handleAcceptUpdatedTerms}>
-            I Agree
-          </Button>,
-        ]}
-      >
-        <Text style={{ fontFamily: "'Lora', serif", fontSize: '0.85rem', color: 'rgba(244,228,193,0.7)' }}>
-          We've clarified our zero-tolerance policy for objectionable content and abusive behavior, including new
-          in-app reporting and blocking tools. Please review our{' '}
-          <Link to="/terms" target="_blank" style={{ color: 'var(--gold)' }}>updated Terms of Service</Link>{' '}
-          before continuing.
-        </Text>
-      </Modal>
-    </div>
+      <TermsReaccept open={!!reaccept} loading={reacceptLoading} onAgree={handleAcceptUpdatedTerms} />
+    </>
   );
 }
