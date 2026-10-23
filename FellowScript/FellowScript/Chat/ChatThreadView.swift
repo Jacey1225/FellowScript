@@ -124,6 +124,12 @@ final class ChatThreadViewModel: ObservableObject {
     /// Bumped when an ack replaced a bubble's local id in place (no count
     /// change), so the view recomputes its id-keyed group/anchor caches.
     @Published private(set) var ackRevision = 0
+    /// Bumped whenever a message's reactions change in place (optimistic toggle,
+    /// server result, rollback, live frame). The count never changes for these,
+    /// and the view renders from a cached group list that only recomputes on
+    /// count/ack/older/thread changes, so without this signal the chip stayed
+    /// invisible until the next reload.
+    @Published private(set) var reactionRevision = 0
     private var olderCursor: FSMessageCursor? = nil
     /// Bumped by every load(); a response that returns after the thread was
     /// reloaded is discarded.
@@ -578,7 +584,9 @@ final class ChatThreadViewModel: ObservableObject {
                 id: id, text: old.text, mine: old.mine, sender: old.sender,
                 timestamp: (timestamp?.isEmpty == false ? timestamp! : old.timestamp),
                 attachmentKind: old.attachmentKind, attachmentURL: old.attachmentURL, attachmentMeta: old.attachmentMeta,
+                reactions: old.reactions,
                 reply: reply ?? old.reply,
+                pinned: old.pinned, systemKind: old.systemKind,
                 mentions: mentions ?? old.mentions
             )
         }
@@ -749,6 +757,7 @@ final class ChatThreadViewModel: ObservableObject {
             guard let idx = list.firstIndex(where: { $0.id == id }) else { return }
             list[idx].reactions = ReactionSummary.updatingCount(list[idx].reactions ?? [], emoji: emoji, count: count)
         }
+        reactionRevision += 1
     }
 
     private func frameBelongsToCurrentConversation(_ json: [String: Any]) -> Bool {
@@ -965,6 +974,7 @@ final class ChatThreadViewModel: ObservableObject {
             guard let idx = list.firstIndex(where: { $0.id == messageId }) else { return }
             list[idx].reactions = change(list[idx].reactions ?? [])
         }
+        reactionRevision += 1
     }
 
     // ── Pins (task 20261012-message-pins) ─────────────────────────────────────
@@ -1668,6 +1678,12 @@ struct ChatThreadView: View {
                     .onChange(of: vm.ackRevision) { _ in
                         recomputeMessageGroups()
                         lastTailId = vm.messages.last?.id
+                    }
+                    // A reaction changed in place (same count, same tail): the
+                    // cached groups hold stale FSMessage copies, so rebuild
+                    // them or the chip never appears until a reload.
+                    .onChange(of: vm.reactionRevision) { _ in
+                        recomputeMessageGroups()
                     }
                     // Task 20261001-message-threads: entering/leaving a thread
                     // swaps the whole list (the count can be equal across the

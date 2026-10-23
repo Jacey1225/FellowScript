@@ -1023,7 +1023,27 @@ final class MockDataService: DataServiceProtocol {
     private static var isUITestingThreads: Bool {
         ProcessInfo.processInfo.arguments.contains("UI-TESTING-THREADS")
     }
+    // UI-TESTING-REACTIONS (additive test-only launch argument, task
+    // 20261022-reactions-live): turns the message_reactions capability on and
+    // answers add/remove from memory with the server's {emoji,count,viewer_reacted}
+    // shape, so a simulator UI test can prove a tapped reaction chip renders
+    // immediately. Without the argument capabilities/reactions behave as before.
+    private static var isUITestingReactions: Bool {
+        ProcessInfo.processInfo.arguments.contains("UI-TESTING-REACTIONS")
+    }
+    func addMessageReaction(userId: String, messageId: String, emoji: String) async throws -> ReactionSummary {
+        guard Self.isUITestingReactions else { throw FSReactionError.failed("Reactions aren't available right now.") }
+        return ReactionSummary(emoji: emoji, count: 1, viewerReacted: true)
+    }
+    func removeMessageReaction(userId: String, messageId: String, emoji: String) async throws -> ReactionSummary {
+        guard Self.isUITestingReactions else { throw FSReactionError.failed("Reactions aren't available right now.") }
+        return ReactionSummary(emoji: emoji, count: 0, viewerReacted: false)
+    }
     func fetchCapabilities() async throws -> FSCapabilities {
+        if Self.isUITestingReactions {
+            return FSCapabilities(features: ["message_reactions": true], exploreLink: nil, termsCurrent: true,
+                                  reactionEmoji: FSReactionEmoji(quick: ["👍", "❤️", "🙏"], more: []))
+        }
         guard Self.isUITestingThreads else { throw AppError.networkError("Capabilities unavailable.") }
         return FSCapabilities(features: ["threads": true], exploreLink: nil, termsCurrent: true)
     }
