@@ -40,5 +40,18 @@ export const formTheme = {
     borderRadius: 12,
     borderRadiusLG: 20,
     controlHeight: 48,
+    colorBgLayout: 'transparent',
+  },
+  components: {
+    Input: { activeBorderColor: formTokens.gold, hoverBorderColor: formTokens.gold, activeShadow: '0 0 0 3px rgba(212,146,42,0.12)', colorBgContainer: formTokens.fieldBg, colorBorder: formTokens.fieldBorder },
+    InputNumber: { activeBorderColor: formTokens.gold, hoverBorderColor: formTokens.gold, activeShadow: '0 0 0 3px rgba(212,146,42,0.12)', colorBgContainer: formTokens.fieldBg },
+    Select: { colorBgContainer: formTokens.fieldBg, optionSelectedBg: 'rgba(212,146,42,0.16)', colorBorder: formTokens.fieldBorder },
+    DatePicker: { colorBgContainer: formTokens.fieldBg, activeBorderColor: formTokens.gold },
+    TimePicker: { colorBgContainer: formTokens.fieldBg, activeBorderColor: formTokens.gold },
+    Modal: { contentBg: '#1E1812', headerBg: '#1E1812', footerBg: '#1E1812', borderRadiusLG: 16, titleFontSize: 22, titleColor: formTokens.textPrimary },
+    Card: { colorBgContainer: formTokens.cardBg, colorBorderSecondary: formTokens.cardBorder, borderRadiusLG: 20 },
+    Button: { primaryColor: formTokens.ink, borderRadius: 24, controlHeight: 44, fontWeight: 700, defaultBorderColor: 'rgba(212,146,42,0.32)', defaultColor: formTokens.gold, defaultBg: 'transparent' },
+    Switch: { colorPrimary: formTokens.gold },
+    Form: { labelColor: formTokens.textPrimary, labelFontSize: 14, verticalLabelPadding: '0 0 6px' },
   },
 };

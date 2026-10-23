@@ -4,3 +4,4 @@ export { FormRoot, FormCard, StepperRail, StickyActionBar, FormErrorSummary, Ret
 export { ConfirmDialog } from './ConfirmDialog.jsx';
 export { AuthPage, CodeField } from './AuthPage.jsx';
 export { TermsReaccept } from './TermsReaccept.jsx';
+export { FormSkin, FORM_CARD_STYLE } from './FormSkin.jsx';
