@@ -34,6 +34,20 @@ import GroupAnnouncementWidget, { _clearWidgetCache } from './GroupAnnouncementW
 import BannerCropper from './BannerCropper.jsx';
 import { _clearGroupInfoCaches } from './GroupInfoPanel.jsx';
 
+// Create flow is a 3-step stepper (Content, Style, Publish); the primary becomes Post only on the last step.
+const goStyle = () => {
+  if (screen.queryByRole('radio', { name: 'Parchment (default)' })) return;
+  const n = screen.queryByRole('button', { name: /^Next/ });
+  if (n) fireEvent.click(n);
+};
+const goPublish = () => {
+  for (let i = 0; i < 2; i++) {
+    const n = screen.queryByRole('button', { name: /^Next/ });
+    if (n && n.getAttribute('aria-disabled') !== 'true') fireEvent.click(n);
+  }
+};
+
+
 beforeAll(() => { if (!Element.prototype.scrollIntoView) Element.prototype.scrollIntoView = () => {}; });
 
 const mk = (id, extra = {}) => ({
@@ -78,7 +92,7 @@ describe('form flow: title_color sent only when changed', () => {
   test('create with default color omits title_color', async () => {
     api.createAnnouncement.mockResolvedValue(mk('n'));
     await openCreate();
-    fireEvent.click(screen.getByText('Post'));
+    goPublish(); fireEvent.click(screen.getByText('Post'));
     await waitFor(() => expect(api.createAnnouncement).toHaveBeenCalled());
     expect('title_color' in api.createAnnouncement.mock.calls[0][2]).toBe(false);
   });
@@ -86,12 +100,13 @@ describe('form flow: title_color sent only when changed', () => {
   test('create with a swatch sends the uppercase hex and preview reflects it', async () => {
     api.createAnnouncement.mockResolvedValue(mk('n'));
     await openCreate();
+    goStyle();
     fireEvent.click(screen.getByRole('radio', { name: 'Sky' }));
     const title = document.querySelector('.title-color-preview .announce-widget-title');
     expect(title.textContent).toBe('Hi');
     expect(title.style.getPropertyValue('--title-color')).toBe('#9CD3FF');
-    expect(screen.getByRole('img', { name: 'Preview of the announcement title in Sky' })).toBeTruthy();
-    fireEvent.click(screen.getByText('Post'));
+    expect(screen.getByRole('img', { name: 'Preview of the announcement title in Sky', hidden: true })).toBeTruthy();
+    goPublish(); fireEvent.click(screen.getByText('Post'));
     await waitFor(() => expect(api.createAnnouncement).toHaveBeenCalled());
     expect(api.createAnnouncement.mock.calls[0][2].title_color).toBe('#9CD3FF');
   });
@@ -99,8 +114,9 @@ describe('form flow: title_color sent only when changed', () => {
   test('create with custom lowercase color is sent uppercase', async () => {
     api.createAnnouncement.mockResolvedValue(mk('n'));
     await openCreate();
+    goStyle();
     fireEvent.change(screen.getByLabelText('Custom color'), { target: { value: '#123abc' } });
-    fireEvent.click(screen.getByText('Post'));
+    goPublish(); fireEvent.click(screen.getByText('Post'));
     await waitFor(() => expect(api.createAnnouncement).toHaveBeenCalled());
     expect(api.createAnnouncement.mock.calls[0][2].title_color).toBe('#123ABC');
   });
@@ -108,6 +124,7 @@ describe('form flow: title_color sent only when changed', () => {
   test('edit without touching color does not send title_color', async () => {
     api.updateAnnouncement.mockResolvedValue(mk('a'));
     await openEdit(mk('a', { title_color: '#FFC61A' }));
+    goStyle();
     expect(screen.getByRole('radio', { name: 'Gold' })).toHaveAttribute('aria-checked', 'true');
     fireEvent.change(screen.getByLabelText('Title'), { target: { value: 'Changed' } });
     fireEvent.click(screen.getByText('Save'));
@@ -118,6 +135,7 @@ describe('form flow: title_color sent only when changed', () => {
   test('edit: changing color sends only that change', async () => {
     api.updateAnnouncement.mockResolvedValue(mk('a'));
     await openEdit(mk('a', { title_color: '#FFC61A' }));
+    goStyle();
     fireEvent.click(screen.getByRole('radio', { name: 'Mint' }));
     fireEvent.click(screen.getByText('Save'));
     await waitFor(() => expect(api.updateAnnouncement).toHaveBeenCalled());
@@ -136,6 +154,7 @@ describe('form flow: title_color sent only when changed', () => {
   test('edit: selecting default on an unset announcement sends nothing; invalid stored color is treated as default (not resent)', async () => {
     api.updateAnnouncement.mockResolvedValue(mk('a'));
     await openEdit(mk('a', { title_color: 'red; background:url(x)' }));
+    goStyle();
     expect(screen.getByRole('radio', { name: 'Parchment (default)' })).toHaveAttribute('aria-checked', 'true');
     fireEvent.change(screen.getByLabelText('Title'), { target: { value: 'C' } });
     fireEvent.click(screen.getByText('Save'));
@@ -145,9 +164,11 @@ describe('form flow: title_color sent only when changed', () => {
 
   test('low-contrast custom color warns but does not block Post', async () => {
     await openCreate();
+    goStyle();
     fireEvent.change(screen.getByLabelText('Custom color'), { target: { value: '#222222' } });
+    goStyle();
     expect(screen.getByRole('status').textContent).toMatch(/hard to read/);
-    expect(screen.getByText('Post').closest('button')).not.toBeDisabled();
+    expect((goPublish(), screen.getByText('Post')).closest('button')).not.toBeDisabled();
   });
 });
 
@@ -173,12 +194,12 @@ describe('Post/Save disabled while the banner upload is in flight', () => {
     await cropAndDone();
     await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Crop banner' })).toBeNull());
     const btn = screen.getByText('Uploading…').closest('button');
-    expect(btn).toBeDisabled();
+    expect(btn).toHaveAttribute('aria-disabled', 'true');
     fireEvent.click(btn);
     expect(api.createAnnouncement).not.toHaveBeenCalled();
     await act(async () => { resolve('group-announcements/g1/new'); });
-    await waitFor(() => expect(screen.getByText('Post').closest('button')).not.toBeDisabled());
-    fireEvent.click(screen.getByText('Post'));
+    goPublish(); await waitFor(() => expect(screen.getByText('Post').closest('button')).not.toHaveAttribute('aria-disabled','true'));
+    goPublish(); fireEvent.click(screen.getByText('Post'));
     await waitFor(() => expect(api.createAnnouncement).toHaveBeenCalled());
     expect(api.createAnnouncement.mock.calls[0][2].banner_key).toBe('group-announcements/g1/new');
   });
@@ -189,11 +210,11 @@ describe('Post/Save disabled while the banner upload is in flight', () => {
     api.updateAnnouncement.mockResolvedValue(mk('a'));
     await openEdit(mk('a'));
     await cropAndDone();
-    await waitFor(() => expect(screen.getByText('Uploading…').closest('button')).toBeDisabled());
+    await waitFor(() => expect(screen.getByText('Uploading…').closest('button')).toHaveAttribute('aria-disabled', 'true'));
     await act(async () => { reject(Object.assign(new Error('nope'), { status: 0 })); });
     await screen.findByRole('alert');
     const save = await screen.findByText('Save');
-    expect(save.closest('button')).not.toBeDisabled();
+    expect(save.closest('button')).not.toHaveAttribute('aria-disabled', 'true');
     fireEvent.click(save);
     await waitFor(() => expect(api.updateAnnouncement).toHaveBeenCalled());
     expect('banner_key' in api.updateAnnouncement.mock.calls[0][3]).toBe(false);

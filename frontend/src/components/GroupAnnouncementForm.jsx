@@ -1,3 +1,4 @@
+import { StepperRail, StickyActionBar, FormErrorSummary } from './forms/index.js';
 import React, { useState, useRef, useEffect } from 'react';
 import { Spin } from 'antd';
 import { PictureOutlined, BgColorsOutlined } from '@ant-design/icons';
@@ -25,6 +26,9 @@ function toLocalInput(date) {
 export default function GroupAnnouncementForm({ userId, groupId, item, gate, gateHit, upgrade, onSubmit, onCancel, headingRef }) {
   const editing = !!item;
   const canReschedule = !editing || item.published === false;
+  const [step, setStep] = useState(0);
+  const [furthest, setFurthest] = useState(0);
+  const [showErrors, setShowErrors] = useState(false);
   const [title, setTitle] = useState(item?.title || '');
   const [titleColor, setTitleColor] = useState(normalizeHex(item?.title_color));
   const [description, setDescription] = useState(item?.description || '');
@@ -207,15 +211,27 @@ export default function GroupAnnouncementForm({ userId, groupId, item, gate, gat
   const stripStyle = stripTheme === 'none' ? undefined : { background: bgThemeCss(stripTheme), color: stripText };
   const stripTitleColor = titleColor ? (stripTheme === 'none' ? titleColor : titleColorOnTheme(titleColor, stripTheme, stripText)) : stripText;
   const heading = editing ? 'Edit announcement' : 'New announcement';
+  const STEP_NAMES = ['Content', 'Style', 'Publish'];
+  const contentValid = !!trimmedTitle && !!trimmedDesc;
+  const maxReachable = editing ? STEP_NAMES.length - 1 : furthest;
+  const goStep = (i) => { if (i <= maxReachable) setStep(i); };
+  const nextStep = () => {
+    if (step === 0 && !contentValid) { setShowErrors(true); document.getElementById(trimmedTitle ? 'announcement-description' : 'announcement-title')?.focus(); return; }
+    setShowErrors(false);
+    const n = Math.min(step + 1, STEP_NAMES.length - 1);
+    setFurthest((f) => Math.max(f, n));
+    setStep(n);
+  };
+  const submitLabelText = saving ? 'Saving…' : bannerBusy ? 'Uploading…' : (editing ? 'Save' : (mode === 'schedule' ? 'Schedule' : 'Post'));
+  const lastStep = step === STEP_NAMES.length - 1;
   return (
-    <div className="group-info-announcements-form-wrap">
+    <div className="group-info-announcements-form-wrap fs-form">
       <div className="group-info-announcements-bar">
-        <button type="button" className="ann-outline-pill" onClick={cancel}>Cancel</button>
+        <button type="button" className="ann-outline-pill" onClick={cancel} aria-label="Cancel">✕</button>
         <h3 ref={headingRef} tabIndex={-1} className="group-info-announcements-title">{heading}</h3>
-        <button type="button" className="ann-outline-pill ann-outline-pill-post" onClick={submit} disabled={!canSubmit}>
-          {saving ? <Spin size="small" /> : bannerBusy ? 'Uploading…' : (editing ? 'Save' : (mode === 'schedule' ? 'Schedule' : 'Post'))}
-        </button>
+        <span aria-hidden="true" style={{ width: 44 }} />
       </div>
+      <StepperRail steps={STEP_NAMES} current={step} maxReachable={maxReachable} onSelect={goStep} />
 
       {cropSource && <BannerCropper source={cropSource} onConfirm={onCropped} onCancel={() => setCropSource(null)} />}
 
@@ -229,7 +245,27 @@ export default function GroupAnnouncementForm({ userId, groupId, item, gate, gat
         </div>
       )}
 
-      <form className="group-info-announcements-form" onSubmit={(e) => { e.preventDefault(); submit(); }}>
+      <form className="group-info-announcements-form" onSubmit={(e) => { e.preventDefault(); if (lastStep) submit(); else nextStep(); }}>
+        <div className="ann-step" hidden={step !== 0}>
+        <div className="group-info-announcements-field">
+          <label className="group-info-label" htmlFor="announcement-title">Title</label>
+          <input id="announcement-title" className="group-info-input" value={title} disabled={saving} placeholder="Title"
+            maxLength={ANNOUNCEMENT_LIMITS.titleMax} aria-describedby="announcement-title-help"
+            onChange={(e) => { setTitle(e.target.value); setTouched(true); }} />
+          {title.length >= ANNOUNCEMENT_LIMITS.titleMax - 20 && <span className="group-info-counter">{title.length}/{ANNOUNCEMENT_LIMITS.titleMax}</span>}
+          {!trimmedTitle && <p id="announcement-title-help" className={showErrors ? "group-info-error" : "group-info-helper"} role={showErrors ? "alert" : undefined}>{showErrors ? "Add a title." : "Give it a title."}</p>}
+        </div>
+
+        <div className="group-info-announcements-field">
+          <label className="group-info-label" htmlFor="announcement-description">Message</label>
+          <textarea id="announcement-description" className="group-info-input group-info-announcements-textarea" rows={4}
+            value={description} disabled={saving} maxLength={ANNOUNCEMENT_LIMITS.descriptionMax}
+            aria-describedby="announcement-desc-help"
+            onChange={(e) => { setDescription(e.target.value); setTouched(true); }} />
+          {description.length >= ANNOUNCEMENT_LIMITS.descriptionMax - 200 && <span className="group-info-counter">{description.length}/{ANNOUNCEMENT_LIMITS.descriptionMax}</span>}
+          {!trimmedDesc && <p id="announcement-desc-help" className={showErrors ? "group-info-error" : "group-info-helper"} role={showErrors ? "alert" : undefined}>Write a message for the group.</p>}
+        </div>
+
         <div className="group-info-announcements-field">
           <span className="group-info-label">Banner photo (optional)</span>
           <div className="ann-banner-tile">
@@ -259,6 +295,12 @@ export default function GroupAnnouncementForm({ userId, groupId, item, gate, gat
             aria-hidden="true" tabIndex={-1} data-testid="announcement-banner-input" onChange={onFile} />
           {bannerError && <p className="group-info-error" role="alert">{bannerError}</p>}
 
+          {!currentBanner ? null : null}
+        </div>
+
+        </div>
+        <div className="ann-step" hidden={step !== 1}>
+        <div className="group-info-announcements-field">
           {showFont && (
             <div className="ann-font-row" role="radiogroup" aria-label="Title font">
               {TITLE_FONT_KEYS.map((k) => {
@@ -303,27 +345,8 @@ export default function GroupAnnouncementForm({ userId, groupId, item, gate, gat
         </div>
 
         <div className="group-info-announcements-field">
-          <label className="group-info-label" htmlFor="announcement-title">Title</label>
-          <input id="announcement-title" className="group-info-input" value={title} disabled={saving} placeholder="Title"
-            maxLength={ANNOUNCEMENT_LIMITS.titleMax} aria-describedby="announcement-title-help"
-            onChange={(e) => { setTitle(e.target.value); setTouched(true); }} />
-          {title.length >= ANNOUNCEMENT_LIMITS.titleMax - 20 && <span className="group-info-counter">{title.length}/{ANNOUNCEMENT_LIMITS.titleMax}</span>}
-          {!trimmedTitle && <p id="announcement-title-help" className="group-info-helper">Give it a title.</p>}
-        </div>
-
-        <div className="group-info-announcements-field">
           <span className="group-info-label">Title color</span>
           <TitleColorPicker value={titleColor} disabled={saving} onChange={(c) => { setTitleColor(c); setTouched(true); }} />
-        </div>
-
-        <div className="group-info-announcements-field">
-          <label className="group-info-label" htmlFor="announcement-description">Message</label>
-          <textarea id="announcement-description" className="group-info-input group-info-announcements-textarea" rows={4}
-            value={description} disabled={saving} maxLength={ANNOUNCEMENT_LIMITS.descriptionMax}
-            aria-describedby="announcement-desc-help"
-            onChange={(e) => { setDescription(e.target.value); setTouched(true); }} />
-          {description.length >= ANNOUNCEMENT_LIMITS.descriptionMax - 200 && <span className="group-info-counter">{description.length}/{ANNOUNCEMENT_LIMITS.descriptionMax}</span>}
-          {!trimmedDesc && <p id="announcement-desc-help" className="group-info-helper">Write a message for the group.</p>}
         </div>
 
         {showExtras && (
@@ -442,6 +465,8 @@ export default function GroupAnnouncementForm({ userId, groupId, item, gate, gat
         )}
         {extrasError && <p className="group-info-error" role="alert">{extrasError}</p>}
 
+        </div>
+        <div className="ann-step" hidden={step !== 2}>
         {canReschedule && (
           <div className="group-info-announcements-field">
             <span className="group-info-label" id="announcement-publish-label">Publish</span>
@@ -470,7 +495,20 @@ export default function GroupAnnouncementForm({ userId, groupId, item, gate, gat
 
         {gateHit && upgrade}
         {error && <p className="group-info-error" role="alert">{error}</p>}
+          <section className="ff-card" aria-label="Review">
+            <h3 className="ff-card__title">Review</h3>
+            <p className="group-info-helper">Title: {trimmedTitle || 'None'}</p>
+            <p className="group-info-helper">Message: {trimmedDesc ? trimmedDesc.slice(0, 80) : 'None'}</p>
+            <p className="group-info-helper">Banner: {currentBanner ? 'Added' : 'None'}</p>
+          </section>
+        </div>
       </form>
+      <StickyActionBar variant="panel"
+        secondaryLabel={step === 0 ? (editing ? 'Next' : undefined) : (editing && !lastStep ? 'Next' : 'Back')}
+        onSecondary={() => { if (editing && !lastStep) nextStep(); else setStep(step - 1); }}
+        primaryLabel={bannerBusy ? 'Uploading…' : (lastStep || editing ? submitLabelText : 'Next')}
+        primaryDisabled={bannerBusy || (lastStep || editing ? !canSubmit : (step === 0 && !contentValid))}
+        onPrimary={() => { if (lastStep || editing) { if (!contentValid) { setStep(0); setShowErrors(true); return; } submit(); } else nextStep(); }} />
     </div>
   );
 }

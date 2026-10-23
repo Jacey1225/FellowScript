@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { Modal, Button, Spin } from 'antd';
+import { Modal, Button, Spin, ConfigProvider } from 'antd';
+import { formTheme } from '../lib/formTokens.js';
 import { CheckOutlined } from '@ant-design/icons';
 
 // Task 20261003-web-reader-ios-parity (step 3). Web port of iOS
@@ -28,6 +29,7 @@ export default function AddGroupMembersModal({ open, onClose, candidates, onAdd 
   };
 
   return (
+    <ConfigProvider theme={formTheme}>
     <Modal
       open={open}
       onCancel={close}
@@ -64,5 +66,6 @@ export default function AddGroupMembersModal({ open, onClose, candidates, onAdd 
       )}
       {error && <p className="group-info-error" role="alert" style={{ marginTop: '0.6rem' }}>{error}</p>}
     </Modal>
+    </ConfigProvider>
   );
 }

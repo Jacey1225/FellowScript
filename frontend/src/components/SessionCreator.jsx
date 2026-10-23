@@ -1,3 +1,4 @@
+import { StepperRail, StickyActionBar, FormSkin } from './forms/index.js';
 import React, { useState, useEffect } from 'react';
 import { Modal, Input, Button, Typography, DatePicker, Select, Switch } from 'antd';
 import { CloseOutlined, PlusOutlined, ScheduleOutlined } from '@ant-design/icons';
@@ -22,6 +23,9 @@ export default function SessionCreator({
 }) {
   const isEditing = !!editSession;
 
+  const [step, setStep] = useState(0);
+  const [furthest, setFurthest] = useState(0);
+  const [showErrors, setShowErrors] = useState(false);
   const [title,        setTitle]        = useState('');
   const [timeStart,    setTimeStart]    = useState('');
   const [timeEnd,      setTimeEnd]      = useState('');
@@ -97,16 +101,17 @@ export default function SessionCreator({
 
   const labelStyle = {
     display: 'block', fontSize: '0.72rem',
-    color: 'rgba(242,242,242,0.55)', fontFamily: "'Inter', sans-serif", marginBottom: '0.35rem',
+    color: 'rgba(242,242,242,0.55)', fontFamily: 'inherit', marginBottom: '0.35rem',
   };
 
   return (
+    <FormSkin>
     <Modal
       open={open}
       onCancel={handleClose}
       footer={null}
       title={
-        <Text style={{ fontFamily: "'Space Grotesk', sans-serif", color: 'var(--parchment)', fontSize: '1rem' }}>
+        <Text style={{ fontFamily: 'inherit', color: 'var(--parchment)', fontSize: '1rem' }}>
           {isEditing ? 'Edit Session' : 'Schedule'}
         </Text>
       }
@@ -114,8 +119,10 @@ export default function SessionCreator({
     >
       <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
 
+        <StepperRail steps={['Basics', 'Study', 'Options']} current={step} maxReachable={isEditing ? 2 : furthest} onSelect={(i) => setStep(i)} />
+
         {/* Title */}
-        <div>
+        <div hidden={step !== 0}>
           <Text style={labelStyle}>Session Title</Text>
           <Input
             placeholder="Evening Study"
@@ -126,7 +133,7 @@ export default function SessionCreator({
         </div>
 
         {/* Start time + duration — side by side */}
-        <div style={{ display: 'flex', gap: '0.75rem' }}>
+        <div hidden={step !== 0} style={{ display: 'flex', gap: '0.75rem' }}>
           <div style={{ flex: 2 }}>
             <Text style={labelStyle}>Start Time</Text>
             <DatePicker
@@ -154,7 +161,7 @@ export default function SessionCreator({
         </div>
 
         {/* Verses */}
-        <div>
+        <div hidden={step !== 1}>
           <Text style={labelStyle}>Verses</Text>
           {verses.length > 0 && (
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.35rem', marginBottom: '0.5rem' }}>
@@ -165,7 +172,7 @@ export default function SessionCreator({
                     display: 'inline-flex', alignItems: 'center', gap: '0.3rem',
                     padding: '0.2rem 0.5rem',
                     background: 'rgba(255,198,26,0.12)', border: '1px solid rgba(255,255,255,0.15)',
-                    borderRadius: 4, fontSize: '0.72rem', color: 'var(--parchment)', fontFamily: "'Inter', sans-serif",
+                    borderRadius: 4, fontSize: '0.72rem', color: 'var(--parchment)', fontFamily: 'inherit',
                   }}
                 >
                   {parseVerseRef(ref)}
@@ -181,7 +188,7 @@ export default function SessionCreator({
         </div>
 
         {/* Discussion Prompts */}
-        <div>
+        <div hidden={step !== 1}>
           <Text style={labelStyle}>Discussion Prompts</Text>
           {prompts.length > 0 && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem', marginBottom: '0.5rem' }}>
@@ -192,7 +199,7 @@ export default function SessionCreator({
                     display: 'flex', alignItems: 'flex-start', gap: '0.4rem',
                     padding: '0.3rem 0.5rem',
                     background: 'rgba(255,198,26,0.07)', border: '1px solid rgba(255,255,255,0.12)',
-                    borderRadius: 4, fontSize: '0.78rem', color: 'var(--parchment)', fontFamily: "'Inter', sans-serif",
+                    borderRadius: 4, fontSize: '0.78rem', color: 'var(--parchment)', fontFamily: 'inherit',
                     lineHeight: 1.5,
                   }}
                 >
@@ -224,7 +231,7 @@ export default function SessionCreator({
         </div>
 
         {/* Recurring + Summarize */}
-        <div style={{ display: 'flex', gap: '1.4rem', flexWrap: 'wrap' }}>
+        <div hidden={step !== 2} style={{ display: 'flex', gap: '1.4rem', flexWrap: 'wrap' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
             <Switch size="small" checked={recurring} onChange={setRecurring} />
             <Text style={{ ...labelStyle, marginBottom: 0 }}>Repeat weekly</Text>
@@ -235,27 +242,29 @@ export default function SessionCreator({
           </div>
         </div>
 
-        {/* Actions */}
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem', paddingTop: '0.25rem' }}>
-          <Button
-            shape="circle"
-            icon={<CloseOutlined />}
-            onClick={handleClose}
-            aria-label="Cancel"
-            title="Cancel"
-          />
-          <Button
-            type="primary"
-            shape="circle"
-            icon={<ScheduleOutlined />}
-            loading={loading}
-            disabled={!title.trim() || !timeStart}
-            onClick={handleSubmit}
-            aria-label={isEditing ? 'Save Changes' : 'Schedule'}
-            title={isEditing ? 'Save Changes' : 'Schedule'}
-          />
-        </div>
+        {/* Actions: sticky bar, Back / Next, last step Schedule or Save */}
+        {(() => {
+          const last = step === 2;
+          const titleOk = !!title.trim();
+          const canSubmit = titleOk && !!timeStart;
+          const label = isEditing ? 'Save Changes' : 'Schedule';
+          const goNext = () => {
+            if (step === 0 && !(titleOk && timeStart)) { setShowErrors(true); return; }
+            setShowErrors(false); setFurthest((f) => Math.max(f, step + 1)); setStep(step + 1);
+          };
+          return (
+            <>
+              {showErrors && step === 0 && !titleOk && <p className="ff-error" role="alert">Add a title.</p>}
+              <StickyActionBar variant="panel"
+                secondaryLabel={step === 0 ? 'Cancel' : 'Back'} onSecondary={() => (step === 0 ? handleClose() : setStep(step - 1))}
+                primaryLabel={last || isEditing ? label : 'Next'} saving={loading}
+                primaryDisabled={last || isEditing ? !canSubmit : (step === 0 && !(titleOk && timeStart))}
+                onPrimary={() => { if (last || isEditing) { if (!canSubmit) { setStep(0); setShowErrors(true); return; } handleSubmit(); } else goNext(); }} />
+            </>
+          );
+        })()}
       </div>
     </Modal>
+    </FormSkin>
   );
 }

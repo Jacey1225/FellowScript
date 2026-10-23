@@ -202,3 +202,23 @@ textarea.ff-input { resize: vertical; min-height: 96px; padding: 0; line-height:
 .ff-snackbar { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); z-index: 1100; display: flex; align-items: center; gap: 16px;
   min-height: 48px; padding: 0 16px; border-radius: 12px; background: rgba(18,13,8,0.97); border: 1px solid rgba(255,255,255,0.14); color: #F5EAD0; font-size: 14px; }
 .ff-title { margin: 0; }
+
+/* Group Info / announcement forms (group-info-*, ann-*): same field, label, chip and button recipe as the kit.
+   Selector list covers the panel itself plus the announcement form wrap. */
+.group-info-panel .group-info-input, .fs-form .group-info-input {
+  min-height: 48px; border-radius: 12px; background: rgba(245,234,208,0.06); border: 1px solid rgba(245,234,208,0.12);
+  color: #F5EAD0; font: 400 16px/1.4 -apple-system, 'SF Pro Text', system-ui, sans-serif; padding: 0 14px; }
+.group-info-panel .group-info-input:focus-visible, .fs-form .group-info-input:focus-visible {
+  outline: none; border: 1.5px solid #D4922A; box-shadow: 0 0 0 3px rgba(212,146,42,0.12); }
+.group-info-panel .group-info-label, .fs-form .group-info-label {
+  font-size: 14px; letter-spacing: 0; text-transform: none; font-weight: 600; color: #F5EAD0; margin: 0 0 6px; }
+.group-info-panel .group-info-helper, .fs-form .group-info-helper { font-size: 12px; color: rgba(245,234,208,0.55); }
+.group-info-panel .group-info-error, .fs-form .group-info-error { font-size: 12px; color: #E06060; }
+.group-info-panel .group-info-chip, .fs-form .group-info-chip { border-radius: 22px; background: rgba(245,234,208,0.06); border: 1px solid rgba(245,234,208,0.12);
+  color: rgba(245,234,208,0.55); font-size: 14px; font-weight: 600; }
+.group-info-panel .group-info-chip-on, .fs-form .group-info-chip-on { background: linear-gradient(135deg, #F0AE40, #D4922A, #B07820); color: #1A100A; border-color: transparent; }
+.fs-form .ann-outline-pill { border-color: rgba(212,146,42,0.32); color: #D4922A; font-weight: 700; }
+.fs-form .ann-glass-pill { font-family: inherit; }
+.fs-form .ann-step[hidden] { display: none; }
+.fs-form .ann-step { display: flex; flex-direction: column; gap: 16px; }
+.group-info-panel, .group-info-panel * { font-family: -apple-system, 'SF Pro Text', system-ui, sans-serif; }

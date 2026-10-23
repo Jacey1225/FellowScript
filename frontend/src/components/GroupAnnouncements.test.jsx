@@ -32,6 +32,15 @@ import GroupAnnouncements, { _clearAnnouncementCaches } from './GroupAnnouncemen
 import GroupAnnouncementViewer from './GroupAnnouncementViewer.jsx';
 import GroupInfoPanel, { _clearGroupInfoCaches } from './GroupInfoPanel.jsx';
 
+// Create flow is a 3-step stepper (Content, Style, Publish); the primary becomes Post only on the last step.
+const goPublish = () => {
+  for (let i = 0; i < 2; i++) {
+    const n = screen.queryByRole('button', { name: /^Next/ });
+    if (n && n.getAttribute('aria-disabled') !== 'true') fireEvent.click(n);
+  }
+};
+
+
 beforeAll(() => { if (!Element.prototype.scrollIntoView) Element.prototype.scrollIntoView = () => {}; });
 
 const mk = (id, extra = {}) => ({
@@ -194,11 +203,15 @@ describe('create / edit form', () => {
     mount();
     await screen.findByText('No announcements yet.');
     await openForm();
-    expect(screen.getByText('Post').closest('button')).toBeDisabled();
+    // Step 1 of the stepper: Next stays dimmed (aria-disabled) until title and message are present.
+    const next = () => screen.getByRole('button', { name: /^Next/ });
+    expect(next()).toHaveAttribute('aria-disabled', 'true');
     fireEvent.change(screen.getByLabelText('Title'), { target: { value: 'Hi' } });
-    expect(screen.getByText('Post').closest('button')).toBeDisabled();
+    expect(next()).toHaveAttribute('aria-disabled', 'true');
     fireEvent.change(screen.getByLabelText('Message'), { target: { value: 'There' } });
-    expect(screen.getByText('Post').closest('button')).not.toBeDisabled();
+    expect(next()).not.toHaveAttribute('aria-disabled', 'true');
+    goPublish();
+    expect(screen.getByText('Post').closest('button')).not.toHaveAttribute('aria-disabled', 'true');
   });
 
   test('post now sends trimmed body with publish_at null and no banner_key', async () => {
@@ -210,7 +223,7 @@ describe('create / edit form', () => {
     await openForm();
     fireEvent.change(screen.getByLabelText('Title'), { target: { value: '  Hi  ' } });
     fireEvent.change(screen.getByLabelText('Message'), { target: { value: ' There ' } });
-    fireEvent.click(screen.getByText('Post'));
+    goPublish(); fireEvent.click(screen.getByText('Post'));
     await waitFor(() => expect(api.createAnnouncement).toHaveBeenCalled());
     const body = api.createAnnouncement.mock.calls[0][2];
     expect(body).toEqual({ title: 'Hi', description: 'There', publish_at: null });
@@ -225,13 +238,14 @@ describe('create / edit form', () => {
     await openForm();
     fireEvent.change(screen.getByLabelText('Title'), { target: { value: 'Hi' } });
     fireEvent.change(screen.getByLabelText('Message'), { target: { value: 'There' } });
+    goPublish();
     fireEvent.click(screen.getByRole('radio', { name: 'Schedule' }));
-    expect(screen.getByText('Schedule', { selector: 'button.ann-outline-pill' }).closest('button')).toBeDisabled();
+    expect(screen.getByText('Schedule', { selector: 'button.ff-btn--primary' }).closest('button')).toHaveAttribute('aria-disabled', 'true');
     const future = new Date(Date.now() + 2 * 86400000);
     const pad = (n) => String(n).padStart(2, '0');
     const local = `${future.getFullYear()}-${pad(future.getMonth() + 1)}-${pad(future.getDate())}T10:30`;
     fireEvent.change(screen.getByLabelText('Publish date and time'), { target: { value: local } });
-    fireEvent.click(screen.getByText('Schedule', { selector: 'button.ann-outline-pill' }));
+    fireEvent.click(screen.getByText('Schedule', { selector: 'button.ff-btn--primary' }));
     await waitFor(() => expect(api.createAnnouncement).toHaveBeenCalled());
     expect(api.createAnnouncement.mock.calls[0][2].publish_at).toBe(new Date(local).toISOString());
   });
@@ -270,7 +284,7 @@ describe('create / edit form', () => {
     expect(screen.queryByRole('dialog', { name: 'Crop banner' })).not.toBeInTheDocument();
     await screen.findByText('Replace photo');
     expect(screen.getByText('Adjust crop')).toBeInTheDocument();
-    fireEvent.click(screen.getByText('Post'));
+    goPublish(); fireEvent.click(screen.getByText('Post'));
     await waitFor(() => expect(api.createAnnouncement).toHaveBeenCalled());
     expect(api.createAnnouncement.mock.calls[0][2].banner_key).toBe('group-announcements/g1/k');
   });
@@ -383,7 +397,7 @@ describe('create / edit form', () => {
     await openForm();
     fireEvent.change(screen.getByLabelText('Title'), { target: { value: 'Hi' } });
     fireEvent.change(screen.getByLabelText('Message'), { target: { value: 'There' } });
-    fireEvent.click(screen.getByText('Post'));
+    goPublish(); fireEvent.click(screen.getByText('Post'));
     await screen.findByRole('region', { name: 'Announcement limit reached' });
     expect(screen.getByLabelText('Title')).toHaveValue('Hi');
   });
@@ -396,7 +410,7 @@ describe('create / edit form', () => {
     await openForm();
     fireEvent.change(screen.getByLabelText('Title'), { target: { value: 'Hi' } });
     fireEvent.change(screen.getByLabelText('Message'), { target: { value: 'There' } });
-    fireEvent.click(screen.getByText('Post'));
+    goPublish(); fireEvent.click(screen.getByText('Post'));
     await screen.findByText('Contains blocked words');
     expect(screen.getByLabelText('Title')).toBeInTheDocument();
   });
@@ -406,11 +420,11 @@ describe('create / edit form', () => {
     mount();
     await screen.findByText('No announcements yet.');
     await openForm();
-    fireEvent.click(screen.getByText('Cancel'));
+    fireEvent.click(screen.getByLabelText('Cancel'));
     await screen.findByText('No announcements yet.');
     await openForm();
     fireEvent.change(screen.getByLabelText('Title'), { target: { value: 'x' } });
-    fireEvent.click(screen.getByText('Cancel'));
+    fireEvent.click(screen.getByLabelText('Cancel'));
     expect(screen.getByRole('alertdialog')).toBeInTheDocument();
     fireEvent.click(screen.getByText('Discard'));
     await screen.findByText('No announcements yet.');
