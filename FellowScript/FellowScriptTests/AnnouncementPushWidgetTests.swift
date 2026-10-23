@@ -215,12 +215,16 @@ final class AnnouncementPushWidgetTests: XCTestCase {
         XCTAssertEqual(received?.announcementId, "a1")
     }
 
-    // MARK: widget placement (groups only)
+    // MARK: banner removed from chats (20261023-group-info-row)
 
-    func test_chatThreadView_insertsWidgetForGroupsOnly() throws {
+    /// The announcement banner is no longer mounted in any chat; announcements are
+    /// reached through the Announcements chip, and the push deep link is handled by
+    /// the group info panel host instead of the widget.
+    func test_chatThreadView_noLongerMountsBanner_andPanelHostOwnsDeepLink() throws {
         let src = try readSource("FellowScript/Chat/ChatThreadView.swift")
-        guard let r = src.range(of: "GroupAnnouncementWidgetView(") else { XCTFail("widget not inserted"); return }
-        let before = String(src[..<r.lowerBound].suffix(250))
-        XCTAssertTrue(before.contains(".group"), "widget must be guarded by a group-type check, not shown in DMs")
+        XCTAssertFalse(src.contains("GroupAnnouncementWidgetView("), "banner widget must not be mounted in chat")
+        let host = try readSource("FellowScript/Chat/GroupInfoPanelHost.swift")
+        XCTAssertTrue(host.contains("appState.pendingAnnouncementOpen"), "push deep link must still open the announcement")
+        XCTAssertTrue(host.contains("fetchAnnouncement(userId: userId, groupId: contact.id"))
     }
 }

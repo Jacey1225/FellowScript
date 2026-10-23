@@ -34,6 +34,10 @@ struct FSCapabilities: Decodable, Equatable {
     /// show only when the flag is on. Fail closed: a missing/odd value is off.
     var messagePinsEnabled: Bool { isEnabled("message_pins") }
 
+    /// Task 20261023-group-info-row: the Media chip and grid show only with the
+    /// flag on. Fail closed: a missing/odd value is off.
+    var groupMediaEnabled: Bool { isEnabled("group_media") }
+
     /// Task 20261017-chat-mentions: the @ picker and the `mentions` field on
     /// send show only when the flag is on. Fail closed: a missing/odd value is off.
     var chatMentionsEnabled: Bool { isEnabled("chat_mentions") }

@@ -381,16 +381,19 @@ final class ChatPinsSourcePinTests: XCTestCase {
         return try String(contentsOf: file, encoding: .utf8)
     }
 
-    func test_pinButton_sitsInRowBelowHeader_andIsFlagGated() throws {
+    func test_pinButton_isDMsOnly_andIsFlagGated() throws {
         let s = try src("Chat/ChatThreadView.swift")
         let header = try XCTUnwrap(s.range(of: "header.modifier(pinsPresentation)")?.lowerBound)
         let pinRow = try XCTUnwrap(s.range(of: "Color.clear.frame(height: 0)")?.lowerBound)
         XCTAssertTrue(header < pinRow, "pin button floats over the messages after the header (zero-height layer), not in the top bar or its own row")
+        XCTAssertTrue(s.contains("if pinsAvailable && contact.type != .group {"),
+                      "20261023-group-info-row: the floating pin button is removed in group chats and kept in DMs")
         XCTAssertFalse(s.contains("if pinsAvailable { pinButton }"), "no longer in the header bar")
         XCTAssertTrue(s.contains("appState.capabilities.messagePinsEnabled && !vm.isThreadOpen && vm.pinsState != .unavailable"),
                       "fail closed: flag, main chat, and not turned off mid-session")
         XCTAssertTrue(s.contains(".accessibilityLabel(\"Pinned messages\")"))
         XCTAssertFalse(s.localizedCaseInsensitiveContains("pinned banner"), "REVISION 1: no banner")
+        XCTAssertTrue(s.contains("pins: pinsAvailable"), "the Pinned chip uses the same pinsAvailable gating")
     }
 
     func test_pinUpdatedFrame_andMenuWiring() throws {

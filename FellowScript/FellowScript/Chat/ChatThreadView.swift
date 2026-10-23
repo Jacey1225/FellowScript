@@ -1193,6 +1193,8 @@ struct ChatThreadView: View {
     // Task 20261012-message-pins: Pinned list sheet + the message briefly
     // outlined after jumping to it.
     @State private var showPinned: Bool = false
+    // Task 20261023-group-info-row: the open group info submenu (nil = closed).
+    @State private var infoCategory: GroupInfoCategory? = nil
     // Task 20261017-chat-mentions: the composer's recorded mentions, the text
     // they were last reconciled with, and the mentionable members (nil = not
     // available, so no picker).
@@ -1495,7 +1497,8 @@ struct ChatThreadView: View {
                     header.modifier(pinsPresentation)
                     // Zero-height layer: the pin button floats over the top-right of the
                     // messages (which scroll up to the header divider) instead of taking a row.
-                    if pinsAvailable {
+                    // DMs only: in group chats the Pinned chip replaces it (20261023-group-info-row).
+                    if pinsAvailable && contact.type != .group {
                         Color.clear.frame(height: 0)
                             .overlay(alignment: .topTrailing) {
                                 pinButton
@@ -1506,9 +1509,11 @@ struct ChatThreadView: View {
                     }
                 }
 
-                // Task 20260929-announcement-push-widget: groups only, directly under the header.
-                if !vm.isThreadOpen, contact.type == .group, GroupAnnouncementsConfig.enabled, let uid = user?.user_id {
-                    GroupAnnouncementWidgetView(service: appState.service, groupId: contact.id, userId: uid)
+                // Task 20261023-group-info-row: groups only, directly under the header
+                // (replaces the announcement banner and the floating pin button).
+                if GroupInfoCategory.rowShows(isGroup: contact.type == .group, isThreadOpen: vm.isThreadOpen,
+                                              categories: groupInfoCategories) {
+                    GroupInfoChipRow(categories: groupInfoCategories, selected: $infoCategory, pinCount: vm.pinCount)
                 }
 
                 // ── Reconnecting banner (dropped-socket lifecycle state) ───
@@ -1719,6 +1724,7 @@ struct ChatThreadView: View {
                         settleBottomPin(proxy: proxy)
                     }
                 }
+                .overlay { groupInfoPanelHost }
             }
             // Shared keyboard-dismiss convention (task
             // 20260831-interaction-polish-conventions) — covers header/
@@ -1776,6 +1782,11 @@ struct ChatThreadView: View {
             }
         }
         .preferredColorScheme(.dark)
+        // Group info submenu coordination (20261023-group-info-row): opening it
+        // dismisses the keyboard and the Sessions overlay; focusing the composer or
+        // opening a thread closes it.
+        .modifier(GroupInfoCoordination(category: $infoCategory, composerFocused: $composerFocused,
+                                        showSessions: $showSessionsMenu, isThreadOpen: vm.isThreadOpen))
         .task {
             let uid = appState.currentUser?.user_id ?? ""
             memberNames = contact.memberNames
@@ -2051,6 +2062,26 @@ struct ChatThreadView: View {
         appState.capabilities.messagePinsEnabled && !vm.isThreadOpen && vm.pinsState != .unavailable
     }
 
+    /// Task 20261023-group-info-row: chips whose feature is on for this user.
+    private var groupInfoCategories: [GroupInfoCategory] {
+        GroupInfoCategory.visible(announcements: GroupAnnouncementsConfig.enabled,
+                                  threads: appState.capabilities.isEnabled("threads"),
+                                  pins: pinsAvailable,
+                                  media: appState.capabilities.groupMediaEnabled)
+    }
+
+    /// The bottom submenu layer over the message area (groups only, never in a thread).
+    @ViewBuilder private var groupInfoPanelHost: some View {
+        if contact.type == .group, !vm.isThreadOpen, let uid = user?.user_id {
+            GroupInfoPanelHost(
+                contact: contact, userId: uid, selected: $infoCategory, visible: groupInfoCategories,
+                service: appState.service, pinsVM: vm,
+                onOpenThread: { openThread($0) },
+                onJumpToPin: { jumpToMessage($0.id, announce: "Jumped to pinned message from \($0.message.fromUser.isEmpty ? "someone" : $0.message.fromUser)") },
+                onJumpToMessage: { jumpToMessage($0, announce: "Jumped to message") })
+        }
+    }
+
     /// Pinned list sheet + count refresh triggers, attached to the header (not the
     /// screen body) to keep the body's type-check cheap.
     private var pinsPresentation: PinsPresentation {
@@ -2084,20 +2115,23 @@ struct ChatThreadView: View {
 
     /// Tap on a Pinned row: close the list, load the message if it is outside
     /// the paged window, scroll to it and outline it for 1.2 s.
-    private func jumpToPin(_ pin: FSPinnedMessage) {
+    private func jumpToPin(_ pin: FSPinnedMessage) { jumpToMessage(
+        pin.id, announce: "Jumped to pinned message from \(pin.message.fromUser.isEmpty ? "someone" : pin.message.fromUser)") }
+
+    /// Shared jump-and-highlight (pins and the Media grid's video cells).
+    private func jumpToMessage(_ id: String, announce: String) {
         showPinned = false
         let uid = appState.currentUser?.user_id ?? ""
         Task { @MainActor in
             try? await Task.sleep(nanoseconds: 350_000_000)   // let the sheet finish dismissing
-            guard await vm.ensureLoaded(pin.id, service: appState.service, contact: contact, userId: uid) else {
+            guard await vm.ensureLoaded(id, service: appState.service, contact: contact, userId: uid) else {
                 showToast("Couldn't find that message. It may have been removed.", seconds: 4)
                 return
             }
             recomputeMessageGroups()
-            jumpTarget = pin.id
-            let who = pin.message.fromUser.isEmpty ? "someone" : pin.message.fromUser
-            UIAccessibility.post(notification: .announcement, argument: "Jumped to pinned message from \(who)")
-            withMotionAwareAnimation(.easeOut(duration: 0.2), reduceMotion: reduceMotion) { highlightedMessageId = pin.id }
+            jumpTarget = id
+            UIAccessibility.post(notification: .announcement, argument: announce)
+            withMotionAwareAnimation(.easeOut(duration: 0.2), reduceMotion: reduceMotion) { highlightedMessageId = id }
             try? await Task.sleep(nanoseconds: 1_200_000_000)
             withMotionAwareAnimation(.easeOut(duration: 0.4), reduceMotion: reduceMotion) { highlightedMessageId = nil }
         }
@@ -2507,6 +2541,7 @@ struct ChatThreadView: View {
     // request, rather than a full context switch away from the thread.
 
     private func openSessionsMenu() {
+        infoCategory = nil
         withMotionAwareAnimation(.spring(response: 0.35, dampingFraction: 0.82), reduceMotion: reduceMotion) {
             showSessionsMenu = true
         }

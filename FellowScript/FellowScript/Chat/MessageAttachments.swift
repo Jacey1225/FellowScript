@@ -1070,7 +1070,7 @@ struct AttachmentContentView: View {
 // by choice. Every other decision (fullScreenCover + glassCard-style material
 // backdrop, dismiss mechanism, GIF restart-from-frame-0, no caption, 44×44
 // scrimmed close button) is implemented exactly as specified.
-private struct AttachmentLightboxView: View {
+struct AttachmentLightboxView: View {
     enum Kind {
         case image(UIImage?)
         case gif(URL)
