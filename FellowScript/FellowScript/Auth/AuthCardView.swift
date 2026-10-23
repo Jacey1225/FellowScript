@@ -1,8 +1,11 @@
-// iPad (regular width) sign-in / create-account card.
-// SOURCE: frontend/src/pages/SignIn.jsx (card, tabs, icon fields, or divider,
-// Google button, terms line). Presentation only: AuthView owns all state and
-// auth logic and passes bindings plus action closures. Colours come from Theme;
-// the warm brown canvas is Theme's warmCanvasBackground().
+// Sign-in / create-account screen (iPhone and iPad).
+// SOURCE: frontend/src/pages/SignIn.jsx (tabs, icon fields, or divider, Google
+// button, terms line). Presentation only: AuthView owns all state and auth
+// logic and passes bindings plus action closures.
+// Restyled onto the FSForm kit (task 20261023-forms-restyle): type C, S, TC1.
+// One layout for both size classes: wordmark, Sign in / Create account
+// segmented control, glass field card, social buttons, legal line, and a
+// single pinned full-width primary.
 
 import SwiftUI
 
@@ -32,132 +35,95 @@ struct AuthCardView: View {
 
     private static let termsURL = URL(string: "https://fellowscript.com/#/terms")!
     private static let privacyURL = URL(string: "https://fellowscript.com/#/privacy")!
-    private let fieldFill = Color(hex: "#FFE8BE").opacity(0.08)
-    private let fieldBorder = Color(hex: "#FFE1AA").opacity(0.22)
-    private var secondaryText: Color { Theme.parchment.opacity(0.65) }
     private var anyBusy: Bool { isLoading || googleLoading || appleLoading }
 
     var body: some View {
-        GeometryReader { geo in
-            ScrollView {
-                VStack(spacing: Theme.spacingMD) {
-                    card
-                    legalLine
-                }
-                .frame(maxWidth: 420)
-                .padding(.horizontal, Theme.spacingLG)
-                .padding(.vertical, Theme.spacingXL)
-                .frame(maxWidth: .infinity, minHeight: geo.size.height)
-            }
-        }
-        .warmCanvasBackground()
-        .dismissesKeyboardOnScrollAndTap()
-    }
-
-    // MARK: Card
-
-    private var card: some View {
-        VStack(spacing: 0) {
-            VStack(spacing: Theme.spacingSM) {
-                WordmarkText()
-                Rectangle().fill(Theme.borderGold).frame(width: 40, height: 1)
-            }
-            .padding(.bottom, Theme.spacingMD)
-
-            tabs
-            if !errorMsg.isEmpty { errorBanner }
-            fields
-            if !isSignIn { signUpExtras }
-            primaryButton
-            orDivider
-            googleButton
-            appleButton
-        }
-        .padding(Theme.spacingLG)
-        .background(Color(hex: "#5C442A").opacity(0.34))
-        .clipShape(RoundedRectangle(cornerRadius: 22))
-        .overlay(RoundedRectangle(cornerRadius: 22).stroke(Color(hex: "#FFE1AA").opacity(0.16), lineWidth: 1))
-    }
-
-    private var tabs: some View {
-        HStack(spacing: 0) {
-            tab("Sign In", selected: isSignIn) { onSwitchTab(true) }
-            tab("Create Account", selected: !isSignIn) { onSwitchTab(false) }
-        }
-        .overlay(alignment: .bottom) { Rectangle().fill(Theme.borderGoldDim).frame(height: 1) }
-        .padding(.bottom, Theme.spacingMD)
-    }
-
-    private func tab(_ title: String, selected: Bool, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
+        ZStack {
+            Theme.bgPage.ignoresSafeArea()
             VStack(spacing: 0) {
-                Text(title)
-                    .font(.inter(Theme.fontSM, weight: .semibold))
-                    .foregroundColor(selected ? Theme.gold : secondaryText)
-                    .frame(maxWidth: .infinity, minHeight: 42)
-                Rectangle().fill(selected ? Theme.gold : Color.clear).frame(height: 2)
-            }
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(title)
-        .accessibilityAddTraits(selected ? .isSelected : [])
-    }
+                ScrollView {
+                    VStack(spacing: Theme.spacingMD) {
+                        VStack(spacing: Theme.spacingSM) {
+                            WordmarkText()
+                            Rectangle().fill(Theme.borderGray).frame(width: 40, height: 1)
+                        }
+                        .padding(.vertical, Theme.spacingLG)
 
-    private var errorBanner: some View {
-        HStack(spacing: Theme.spacingSM) {
-            Image(systemName: "exclamationmark.circle.fill")
-            Text(errorMsg).font(.inter(Theme.fontSM))
+                        FSSegmented(
+                            options: [(id: true, title: "Sign In"), (id: false, title: "Create Account")],
+                            selection: Binding(get: { isSignIn }, set: { onSwitchTab($0) })
+                        )
+
+                        if !errorMsg.isEmpty { FSInlineError(message: errorMsg) }
+
+                        FSFormCard {
+                            fields
+                            if !isSignIn { signUpExtras }
+                        }
+
+                        if isSignIn {
+                            Button(action: onForgotPassword) {
+                                Text("Forgot password?")
+                                    .font(.system(size: 14, weight: .semibold))
+                                    .foregroundColor(Theme.gold)
+                                    .frame(maxWidth: .infinity, minHeight: 44)
+                            }
+                            .accessibilityLabel("Forgot password")
+                        }
+
+                        orDivider
+                        googleButton
+                        appleButton
+                        legalLine
+                    }
+                    .frame(maxWidth: 420)
+                    .padding(.horizontal, Theme.spacingMD)
+                    .padding(.bottom, Theme.spacingLG)
+                    .frame(maxWidth: .infinity)
+                }
+                .scrollDismissesKeyboard(.interactively)
+
+                FSPinnedActionBar(
+                    primaryTitle: isSignIn ? "Sign In" : "Create Account",
+                    primaryDimmed: !formValid,
+                    primaryAccessibilityLabel: isSignIn ? "Sign In button" : "Create Account button",
+                    saving: isLoading,
+                    onPrimary: { if formValid && !isLoading { dismissAndRun(onSubmit) } }
+                )
+            }
         }
-        .foregroundColor(Theme.error)
-        .padding(Theme.spacingSM)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Theme.error.opacity(0.12))
-        .clipShape(RoundedRectangle(cornerRadius: Theme.radiusSM))
-        .padding(.bottom, Theme.spacingSM)
+        .preferredColorScheme(.dark)
+        .dismissesKeyboardOnScrollAndTap()
     }
 
     // MARK: Fields
 
     private var fields: some View {
-        VStack(spacing: 12) {
-            FSTextField(placeholder: "Username", icon: "person", text: $username, isSecure: false)
-                .focused($focusField, equals: .username)
-                .submitLabel(.next)
-                .onSubmit { focusField = isSignIn ? .password : .email }
-                .accessibilityLabel("Username field")
+        VStack(spacing: Theme.spacingMD) {
+            FSField(label: "Username", required: true, text: $username, leadingSymbol: "person",
+                    accessibilityName: "Username field",
+                    contentType: .username, capitalization: .never, autocorrect: false,
+                    submitLabel: .next,
+                    onSubmit: { focusField = isSignIn ? .password : .email })
 
             if !isSignIn {
-                FSTextField(placeholder: "Email", icon: "envelope", text: $email, isSecure: false)
-                    .focused($focusField, equals: .email)
-                    .keyboardType(.emailAddress)
-                    .textContentType(.emailAddress)
-                    .submitLabel(.next)
-                    .onSubmit { focusField = .password }
-                    .accessibilityLabel("Email field")
+                FSField(label: "Email", required: true, text: $email, leadingSymbol: "envelope",
+                        accessibilityName: "Email field",
+                        contentType: .emailAddress, keyboard: .emailAddress,
+                        capitalization: .never, autocorrect: false,
+                        submitLabel: .next,
+                        onSubmit: { focusField = .password })
             }
 
-            FSTextField(placeholder: "Password", icon: "lock", text: $password,
-                        isSecure: true, showsRevealToggle: true)
-                .focused($focusField, equals: .password)
-                .textContentType(isSignIn ? .password : .newPassword)
-                .submitLabel(.done)
-                .onSubmit { dismissAndRun(onSubmit) }
-                .accessibilityLabel("Password field")
-
-            if isSignIn {
-                HStack {
-                    Spacer()
-                    Button(action: onForgotPassword) {
-                        Text("Forgot password?")
-                            .font(.inter(Theme.fontXS))
-                            .foregroundColor(Theme.gold)
-                            .frame(minHeight: 44)
-                    }
-                    .accessibilityLabel("Forgot password")
-                }
-                .padding(.top, -8)
-            }
+            FSField(label: "Password", required: true, text: $password,
+                    helper: isSignIn ? nil : "At least 6 characters.",
+                    leadingSymbol: "lock",
+                    accessibilityName: "Password field",
+                    secure: true,
+                    contentType: isSignIn ? .password : .newPassword,
+                    capitalization: .never, autocorrect: false,
+                    submitLabel: .done,
+                    onSubmit: { if formValid { dismissAndRun(onSubmit) } })
         }
     }
 
@@ -167,10 +133,10 @@ struct AuthCardView: View {
             Button(action: { termsAccepted.toggle() }) {
                 HStack(alignment: .top, spacing: 8) {
                     Image(systemName: termsAccepted ? "checkmark.square.fill" : "square")
-                        .foregroundColor(termsAccepted ? Theme.gold : secondaryText)
+                        .foregroundColor(termsAccepted ? Theme.gold : Theme.textSecondary)
                     Text("I agree to the zero-tolerance policy for objectionable content and abusive behavior in our Terms of Service.")
-                        .font(.inter(Theme.fontXS))
-                        .foregroundColor(secondaryText)
+                        .font(.fsHelper)
+                        .foregroundColor(Theme.textSecondary)
                         .multilineTextAlignment(.leading)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -181,60 +147,36 @@ struct AuthCardView: View {
             .accessibilityAddTraits(termsAccepted ? [.isButton, .isSelected] : .isButton)
 
             Text("You must be 13 or older to create an account.")
-                .font(.inter(Theme.fontXS))
-                .foregroundColor(secondaryText)
+                .font(.fsHelper)
+                .foregroundColor(Theme.textSecondary)
                 .frame(maxWidth: .infinity, alignment: .leading)
 
             // Optional invite code; a bad code never blocks signup.
             Button(action: { showInviteCode.toggle() }) {
-                Text("Have an invite code?")
-                    .font(.inter(Theme.fontSM)).foregroundColor(Theme.gold)
-                    .frame(minHeight: 44)
+                HStack {
+                    Text("Have an invite code?")
+                        .font(.system(size: 14, weight: .semibold)).foregroundColor(Theme.gold)
+                    Spacer()
+                }
+                .frame(minHeight: 44)
             }
             .accessibilityIdentifier("signupInviteDisclosure")
             if showInviteCode {
-                TextField("Invite code", text: $inviteCode)
-                    .font(.inter(Theme.fontBody)).foregroundColor(Theme.parchment)
-                    .textInputAutocapitalization(.characters)
-                    .autocorrectionDisabled(true)
-                    .keyboardType(.asciiCapable)
-                    .padding(Theme.spacingSM)
-                    .background(fieldFill)
-                    .clipShape(RoundedRectangle(cornerRadius: Theme.radius))
-                    .overlay(RoundedRectangle(cornerRadius: Theme.radius).stroke(fieldBorder, lineWidth: 1))
-                    .accessibilityIdentifier("signupInviteCodeField")
+                FSField(label: "Invite code", optional: true, text: $inviteCode,
+                        accessibilityId: "signupInviteCodeField",
+                        keyboard: .asciiCapable, capitalization: .characters, autocorrect: false)
             }
         }
-        .padding(.top, Theme.spacingSM)
     }
 
-    // MARK: Buttons
-
-    private var primaryButton: some View {
-        Button { dismissAndRun(onSubmit) } label: {
-            Group {
-                if isLoading { ProgressView().tint(Theme.ink) }
-                else { Text(isSignIn ? "Sign In" : "Create Account").font(.inter(Theme.fontBody, weight: .semibold)) }
-            }
-            .foregroundColor(Theme.ink)
-            .frame(maxWidth: .infinity, minHeight: 48)
-            .background(Theme.gold)
-            .clipShape(RoundedRectangle(cornerRadius: Theme.radius))
-            .opacity(formValid ? 1 : 0.5)
-        }
-        .buttonStyle(.plain)
-        .disabled(isLoading || !formValid)
-        .padding(.top, Theme.spacingMD)
-        .accessibilityLabel(isSignIn ? "Sign In button" : "Create Account button")
-    }
+    // MARK: Social buttons
 
     private var orDivider: some View {
         HStack(spacing: Theme.spacingSM) {
-            Rectangle().fill(Theme.borderGoldDim).frame(height: 1)
-            Text("or").font(.inter(Theme.fontXS)).foregroundColor(Theme.parchment.opacity(0.6))
-            Rectangle().fill(Theme.borderGoldDim).frame(height: 1)
+            Rectangle().fill(Theme.borderGray).frame(height: 1)
+            Text("or").font(.fsHelper).foregroundColor(Theme.textSecondary)
+            Rectangle().fill(Theme.borderGray).frame(height: 1)
         }
-        .padding(.vertical, Theme.spacingMD)
         .accessibilityHidden(true)
     }
 
@@ -249,12 +191,11 @@ struct AuthCardView: View {
                     Text("Continue with Google")
                 }
             }
-            .font(.inter(Theme.fontSM, weight: .medium))
+            .font(.system(size: 14, weight: .medium))
             .foregroundColor(Color(hex: "#3C3C3C"))
             .frame(maxWidth: .infinity, minHeight: 48)
             .background(Color.white)
             .clipShape(RoundedRectangle(cornerRadius: Theme.radius))
-            .overlay(RoundedRectangle(cornerRadius: Theme.radius).stroke(Theme.gold.opacity(0.25), lineWidth: 1))
         }
         .buttonStyle(.plain)
         .disabled(anyBusy)
@@ -266,10 +207,10 @@ struct AuthCardView: View {
         Button { dismissAndRun(onApple) } label: {
             HStack(spacing: Theme.spacingSM) {
                 Image(systemName: "apple.logo").font(.system(size: 18, weight: .medium))
-                Text("Continue with Apple").font(.inter(Theme.fontSM, weight: .medium))
+                Text("Continue with Apple").font(.system(size: 14, weight: .medium))
             }
             .foregroundColor(.black)
-            .frame(maxWidth: .infinity, minHeight: 48)
+            .frame(maxWidth: .infinity, minHeight: 50)
             .background(Color.white)
             .clipShape(RoundedRectangle(cornerRadius: Theme.radius))
             .overlay {
@@ -281,7 +222,6 @@ struct AuthCardView: View {
             }
         }
         .buttonStyle(.plain)
-        .padding(.top, 10)
         .disabled(anyBusy)
         .accessibilityLabel("Sign in with Apple")
     }
@@ -294,8 +234,8 @@ struct AuthCardView: View {
             + Text(" and ")
             + Text("[Privacy Policy](\(Self.privacyURL.absoluteString))")
             + Text("."))
-            .font(.inter(Theme.fontXS))
-            .foregroundColor(Theme.parchment.opacity(0.7))
+            .font(.fsHelper)
+            .foregroundColor(Theme.textSecondary)
             .tint(Theme.gold)
             .multilineTextAlignment(.center)
     }

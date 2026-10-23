@@ -13,6 +13,7 @@ struct FSPinnedActionBar: View {
     let primaryTitle: String
     var primaryTrailingIcon: String? = nil
     var primaryDimmed: Bool = false
+    var primaryAccessibilityLabel: String? = nil
     var saving: Bool = false
     var tight: Bool = false
     let onPrimary: () -> Void
@@ -77,7 +78,7 @@ struct FSPinnedActionBar: View {
             }
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(saving ? "Saving" : primaryTitle)
+        .accessibilityLabel(saving ? "Saving" : (primaryAccessibilityLabel ?? primaryTitle))
         .accessibilityValue(primaryDimmed ? "dimmed" : "")
         .accessibilityAddTraits(.isButton)
     }

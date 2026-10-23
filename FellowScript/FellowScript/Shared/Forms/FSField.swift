@@ -22,6 +22,9 @@ struct FSField: View {
     var state: FSFieldState = .normal
     var maxLength: Int? = nil
     var leadingSymbol: String? = nil
+    /// Accessibility label override (UI tests key on e.g. "Username field").
+    var accessibilityName: String? = nil
+    var accessibilityId: String? = nil
     var secure: Bool = false
     var multiline: Bool = false
     var minLines: Int = 1
@@ -84,7 +87,8 @@ struct FSField: View {
             .focused($focused)
             .disabled(isDisabled)
             .onSubmit { onSubmit?() }
-            .accessibilityLabel(label)
+            .accessibilityLabel(accessibilityName ?? label)
+            .accessibilityIdentifier(accessibilityId ?? "")
             .onChange(of: focused) { _, now in if !now { revealed = false } }
             .onChange(of: text) { _, new in
                 if let maxLength, new.count > maxLength { text = String(new.prefix(maxLength)) }

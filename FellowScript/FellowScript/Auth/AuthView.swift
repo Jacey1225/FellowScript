@@ -9,7 +9,6 @@ import AuthenticationServices
 struct AuthView: View {
     @EnvironmentObject var appState: AppState
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     var initialSignIn: Bool = true
     var onComplete: (() -> Void)? = nil
@@ -35,12 +34,12 @@ struct AuthView: View {
     private enum Field { case username, email, password }
 
     var body: some View {
-        if horizontalSizeClass == .regular { padCard } else { phoneBody }
+        authCard
     }
 
-    /// iPad (regular width) sign-in card. All state and auth logic stay in this
-    /// view; AuthCardView is presentation only.
-    private var padCard: some View {
+    /// Sign-in / create-account screen for every size class. All state and auth
+    /// logic stay in this view; AuthCardView is presentation only.
+    private var authCard: some View {
         AuthCardView(
             isSignIn: $isSignIn, username: $username, email: $email, password: $password,
             termsAccepted: $termsAccepted, inviteCode: $inviteCode, showInviteCode: $showInviteCode,
@@ -70,302 +69,40 @@ struct AuthView: View {
         .sheet(isPresented: $showForgotPassword) { ForgotPasswordView() }
     }
 
-    private var phoneBody: some View {
-        ZStack {
-            Theme.bgPage.ignoresSafeArea()
-
-            ScrollView {
-                VStack(spacing: Theme.spacingXL) {
-                    Spacer(minLength: 60)
-
-                    // Brand logotype — mirrors SignIn.jsx title
-                    VStack(spacing: Theme.spacingSM) {
-                        WordmarkText()
-
-                        Rectangle()
-                            .fill(Theme.borderGold)
-                            .frame(width: 40, height: 1)
-                    }
-
-                    // Card
-                    VStack(spacing: 0) {
-
-                        // Tab toggle — matches Tabs in SignIn.jsx
-                        HStack(spacing: 0) {
-                            tabButton(title: "Sign In",       selected: isSignIn)  { withMotionAwareAnimation(.easeInOut(duration: 0.2), reduceMotion: reduceMotion) { isSignIn = true;  clearForm() } }
-                            tabButton(title: "Create Account", selected: !isSignIn) { withMotionAwareAnimation(.easeInOut(duration: 0.2), reduceMotion: reduceMotion) { isSignIn = false; clearForm() } }
-                        }
-                        .padding(.bottom, Theme.spacingMD)
-
-                        // Error banner
-                        if !errorMsg.isEmpty {
-                            HStack(spacing: Theme.spacingSM) {
-                                Image(systemName: "exclamationmark.circle.fill")
-                                Text(errorMsg)
-                                    .font(.inter(Theme.fontSM))
-                            }
-                            .foregroundColor(Theme.error)
-                            .padding(Theme.spacingSM)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .background(Theme.error.opacity(0.12))
-                            .clipShape(RoundedRectangle(cornerRadius: Theme.radiusSM))
-                            .transition(.opacity)
-                            .padding(.bottom, Theme.spacingSM)
-                        }
-
-                        // Form fields
-                        VStack(spacing: Theme.spacingMD) {
-                            // Username — always shown
-                            FSTextField(placeholder: "Username",
-                                        icon: "person",
-                                        text: $username,
-                                        isSecure: false)
-                                .focused($focusField, equals: .username)
-                                .submitLabel(isSignIn ? .next : .next)
-                                .onSubmit { focusField = isSignIn ? .password : .email }
-                                .accessibilityLabel("Username field")
-
-                            // Email — sign-up only (matches field order in SignIn.jsx)
-                            if !isSignIn {
-                                FSTextField(placeholder: "Email",
-                                            icon: "envelope",
-                                            text: $email,
-                                            isSecure: false)
-                                    .focused($focusField, equals: .email)
-                                    .keyboardType(.emailAddress)
-                                    .textContentType(.emailAddress)
-                                    .autocapitalization(.none)
-                                    .submitLabel(.next)
-                                    .onSubmit { focusField = .password }
-                                    .transition(.move(edge: .top).combined(with: .opacity))
-                                    .accessibilityLabel("Email field")
-                            }
-
-                            // Password
-                            FSTextField(placeholder: "Password",
-                                        icon: "lock",
-                                        text: $password,
-                                        isSecure: true)
-                                .focused($focusField, equals: .password)
-                                .textContentType(isSignIn ? .password : .newPassword)
-                                .submitLabel(.done)
-                                .onSubmit { Task { await submit() } }
-                                .accessibilityLabel("Password field")
-
-                            if isSignIn {
-                                HStack {
-                                    Spacer()
-                                    Button(action: { showForgotPassword = true }) {
-                                        Text("Forgot password?")
-                                            .font(.inter(Theme.fontXS))
-                                            .foregroundColor(Theme.gold)
-                                    }
-                                    .accessibilityLabel("Forgot password")
-                                }
-                            }
-                        }
-
-                        // Submit button
-                        Button(action: { Task { await submit() } }) {
-                            HStack {
-                                if isLoading {
-                                    ProgressView()
-                                        .tint(Theme.ink)
-                                } else {
-                                    Text(isSignIn ? "Sign In" : "Create Account")
-                                        .font(.inter(Theme.fontSM))
-                                        .tracking(2)
-                                        .textCase(.uppercase)
-                                }
-                            }
-                            .foregroundColor(Theme.ink)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, Theme.spacingMD)
-                            .background(isLoading ? Theme.gold.opacity(0.7) : Theme.gold)
-                            .clipShape(RoundedRectangle(cornerRadius: Theme.radius))
-                        }
-                        .disabled(isLoading || !formValid)
-                        .padding(.top, Theme.spacingMD)
-                        .accessibilityLabel(isSignIn ? "Sign In button" : "Create Account button")
-
-                        // Google Sign-In
-                        HStack {
-                            Rectangle().fill(Theme.borderGoldDim).frame(height: 1)
-                            Text("or")
-                                .font(.inter(Theme.fontXS))
-                                .foregroundColor(Theme.textMuted)
-                            Rectangle().fill(Theme.borderGoldDim).frame(height: 1)
-                        }
-                        .padding(.vertical, Theme.spacingSM)
-
-                        Button(action: { Task { await signInWithGoogle() } }) {
-                            HStack(spacing: Theme.spacingSM) {
-                                if googleLoading {
-                                    ProgressView().tint(Theme.parchment)
-                                } else {
-                                    Image(systemName: "globe")
-                                        .foregroundColor(Theme.parchment)
-                                    Text("Continue with Google")
-                                        .font(.inter(Theme.fontSM))
-                                        .foregroundColor(Theme.parchment)
-                                }
-                            }
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, Theme.spacingMD)
-                            .background(Color(white: 0.15))
-                            .clipShape(RoundedRectangle(cornerRadius: Theme.radius))
-                            .overlay(
-                                RoundedRectangle(cornerRadius: Theme.radius)
-                                    .stroke(Theme.borderGoldDim, lineWidth: 1)
-                            )
-                        }
-                        .disabled(googleLoading || isLoading)
-                        .accessibilityLabel("Continue with Google")
-
-                        // Sign in with Apple — required by Guideline 4.8 whenever a
-                        // third-party social login (Google) is offered.
-                        //
-                        // Root cause (task 20260903-apple-signin-no-response): SwiftUI's
-                        // SignInWithAppleButton (the ASAuthorizationAppleIDButton-backed
-                        // UIViewRepresentable) never invoked its own request-building
-                        // closure on tap in this view — confirmed live via 4 separate
-                        // real XCUITest tap reproductions (full view, with/without the
-                        // shared dismissesKeyboardOnScrollAndTap() modifier ruled out as
-                        // the cause, with .disabled forced false, and a bare
-                        // SignInWithAppleButton with zero surrounding modifiers in an
-                        // isolated top-level ZStack) — every other Button in this exact
-                        // view (Google, tab toggle, submit) fired reliably across the
-                        // same taps. That isolates the bug to the native control's own
-                        // UIKit touch-to-target-action forwarding, not this app's
-                        // layout/gestures/state. Manually driving ASAuthorizationController
-                        // from a plain SwiftUI Button (still Apple's own native auth
-                        // APIs underneath — see AppleAuthSession.swift, same
-                        // withCheckedContinuation + presentation-anchor pattern already
-                        // established by GoogleAuthSession's ASWebAuthenticationSession
-                        // bridge) sidesteps the broken control while keeping every
-                        // downstream piece (handleAppleCompletion, AppState,
-                        // NetworkService, backend) unchanged.
-                        //
-                        // Re-evaluated for ios-guidelines #4 (20260904-frontend-arch-
-                        // sweep, "hand-built Apple sign-in button bypasses native HIG
-                        // conformance"): not reverted to SignInWithAppleButton --
-                        // that would resurrect the exact broken-tap regression this
-                        // task fixed. Current styling (white background, black text,
-                        // Apple logo + "Continue with Apple", 50pt height) matches a
-                        // currently-approved HIG variant per that sweep's own review;
-                        // re-diff against Apple's Sign in with Apple button HIG page
-                        // if this button is touched again.
-                        Button(action: { Task { await performAppleSignIn() } }) {
-                            HStack(spacing: Theme.spacingSM) {
-                                Image(systemName: "apple.logo")
-                                    .font(.system(size: 18, weight: .medium))
-                                Text("Continue with Apple")
-                                    .font(.inter(Theme.fontSM))
-                            }
-                            .foregroundColor(.black)
-                            .frame(maxWidth: .infinity)
-                            .frame(height: 50)
-                            .background(Color.white)
-                            .clipShape(RoundedRectangle(cornerRadius: Theme.radius))
-                        }
-                        .padding(.top, Theme.spacingSM)
-                        .disabled(appleLoading || googleLoading || isLoading)
-                        .overlay {
-                            if appleLoading {
-                                RoundedRectangle(cornerRadius: Theme.radius)
-                                    .fill(Color.black.opacity(0.35))
-                                    .overlay(ProgressView().tint(.white))
-                            }
-                        }
-                        .accessibilityLabel("Sign in with Apple")
-
-                        // Privacy acknowledgment — required by Apple Guideline 5.1.1
-                        if !isSignIn {
-                            VStack(spacing: 4) {
-                                Text("You must be 13 or older to create an account.")
-                                    .font(.inter(Theme.fontXXS))
-                                    .foregroundColor(Theme.textMuted)
-                                    .multilineTextAlignment(.center)
-                                HStack(spacing: 8) {
-                                    Link("Terms of Service",
-                                         destination: URL(string: "https://fellowscript.com/#/terms")!)
-                                    Text("·").foregroundColor(Theme.textMuted)
-                                    Link("Privacy Policy",
-                                         destination: URL(string: "https://fellowscript.com/#/privacy")!)
-                                }
-                                .font(.inter(Theme.fontXXS))
-                                .foregroundColor(Theme.gold)
-                            }
-                            .padding(.top, Theme.spacingXS)
-                            .accessibilityLabel("You must be 13 or older. View our Terms of Service and Privacy Policy.")
-
-                            // Guideline 1.2 — required EULA acceptance, gates the sign-up
-                            // button AND the Google/Apple buttons above.
-                            Button(action: { termsAccepted.toggle() }) {
-                                HStack(alignment: .top, spacing: 8) {
-                                    Image(systemName: termsAccepted ? "checkmark.square.fill" : "square")
-                                        .foregroundColor(termsAccepted ? Theme.gold : Theme.textMuted)
-                                    Text("I agree to the zero-tolerance policy for objectionable content and abusive behavior in our Terms of Service.")
-                                        .font(.inter(Theme.fontXXS))
-                                        .foregroundColor(Theme.textMuted)
-                                        .multilineTextAlignment(.leading)
-                                }
-                            }
-                            .buttonStyle(.plain)
-                            .padding(.top, Theme.spacingXS)
-                            .accessibilityLabel("I agree to the Terms of Service, including its zero-tolerance policy for objectionable content and abusive behavior.")
-                            .accessibilityAddTraits(termsAccepted ? [.isButton, .isSelected] : .isButton)
-
-                            // Optional invite code (task 20261003-ios-friend-offer-code-redeem).
-                            // A bad code never blocks signup and its validity is never shown.
-                            Button(action: { showInviteCode.toggle() }) {
-                                Text("Have an invite code?")
-                                    .font(.inter(Theme.fontSM)).foregroundColor(Theme.gold)
-                                    .frame(minHeight: 44)
-                            }
-                            .accessibilityIdentifier("signupInviteDisclosure")
-                            if showInviteCode {
-                                TextField("Invite code", text: $inviteCode)
-                                    .font(.inter(Theme.fontBody)).foregroundColor(Theme.parchment)
-                                    .textInputAutocapitalization(.characters)
-                                    .autocorrectionDisabled(true)
-                                    .keyboardType(.asciiCapable)
-                                    .padding(Theme.spacingSM)
-                                    .background(Theme.inputBg)
-                                    .clipShape(RoundedRectangle(cornerRadius: Theme.radius))
-                                    .overlay(RoundedRectangle(cornerRadius: Theme.radius).stroke(Theme.borderGoldDim, lineWidth: 1))
-                                    .accessibilityIdentifier("signupInviteCodeField")
-                            }
-                        }
-                    }
-                    .widgetCard()
-                    .padding(.horizontal, Theme.spacingLG)
-
-                    Spacer(minLength: 40)
-                }
-            }
-        }
-        // Shared keyboard-dismiss convention (task
-        // 20260831-interaction-polish-conventions) — covers the
-        // username/email/password fields above.
-        .dismissesKeyboardOnScrollAndTap()
-        .onAppear { isSignIn = initialSignIn }
-        .fullScreenCover(isPresented: Binding(
-            get: { pendingMfaUserId != nil },
-            set: { if !$0 { pendingMfaUserId = nil } }
-        )) {
-            if let uid = pendingMfaUserId {
-                MfaVerifyView(userId: uid, onComplete: {
-                    pendingMfaUserId = nil
-                    onComplete?()
-                })
-                .environmentObject(appState)
-            }
-        }
-        .sheet(isPresented: $showForgotPassword) {
-            ForgotPasswordView()
-        }
-    }
+    // Apple button (hand-built in AuthCardView):
+        // Sign in with Apple — required by Guideline 4.8 whenever a
+        // third-party social login (Google) is offered.
+        //
+        // Root cause (task 20260903-apple-signin-no-response): SwiftUI's
+        // SignInWithAppleButton (the ASAuthorizationAppleIDButton-backed
+        // UIViewRepresentable) never invoked its own request-building
+        // closure on tap in this view — confirmed live via 4 separate
+        // real XCUITest tap reproductions (full view, with/without the
+        // shared dismissesKeyboardOnScrollAndTap() modifier ruled out as
+        // the cause, with .disabled forced false, and a bare
+        // SignInWithAppleButton with zero surrounding modifiers in an
+        // isolated top-level ZStack) — every other Button in this exact
+        // view (Google, tab toggle, submit) fired reliably across the
+        // same taps. That isolates the bug to the native control's own
+        // UIKit touch-to-target-action forwarding, not this app's
+        // layout/gestures/state. Manually driving ASAuthorizationController
+        // from a plain SwiftUI Button (still Apple's own native auth
+        // APIs underneath — see AppleAuthSession.swift, same
+        // withCheckedContinuation + presentation-anchor pattern already
+        // established by GoogleAuthSession's ASWebAuthenticationSession
+        // bridge) sidesteps the broken control while keeping every
+        // downstream piece (handleAppleCompletion, AppState,
+        // NetworkService, backend) unchanged.
+        //
+        // Re-evaluated for ios-guidelines #4 (20260904-frontend-arch-
+        // sweep, "hand-built Apple sign-in button bypasses native HIG
+        // conformance"): not reverted to SignInWithAppleButton --
+        // that would resurrect the exact broken-tap regression this
+        // task fixed. Current styling (white background, black text,
+        // Apple logo + "Continue with Apple", 50pt height) matches a
+        // currently-approved HIG variant per that sweep's own review;
+        // re-diff against Apple's Sign in with Apple button HIG page
+        // if this button is touched again.
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 
@@ -481,74 +218,5 @@ struct AuthView: View {
         } catch {
             errorMsg = error.localizedDescription
         }
-    }
-
-    @ViewBuilder
-    private func tabButton(title: String, selected: Bool, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            VStack(spacing: 4) {
-                Text(title)
-                    .font(.inter(Theme.fontSM))
-                    .foregroundColor(selected ? Theme.gold : Theme.textMuted)
-                Rectangle()
-                    .fill(selected ? Theme.gold : Color.clear)
-                    .frame(height: 2)
-            }
-        }
-        .frame(maxWidth: .infinity)
-        .accessibilityLabel(title)
-        .accessibilityAddTraits(selected ? .isSelected : [])
-    }
-}
-
-// ── Shared text field ─────────────────────────────────────────────────────────
-struct FSTextField: View {
-    let placeholder: String
-    let icon: String
-    @Binding var text: String
-    let isSecure: Bool
-    /// Adds a show/hide eye toggle to a secure field. Off by default (phone layout).
-    var showsRevealToggle = false
-    @State private var revealed = false
-
-    var body: some View {
-        HStack(spacing: Theme.spacingSM) {
-            Image(systemName: icon)
-                .foregroundColor(Theme.textGoldMuted)
-                .frame(width: 18)
-                .accessibilityHidden(true)
-
-            if isSecure && !revealed {
-                SecureField(placeholder, text: $text)
-                    .font(.inter(Theme.fontBody))
-                    .foregroundColor(Theme.textPrimary)
-                    .autocapitalization(.none)
-            } else {
-                TextField(placeholder, text: $text)
-                    .font(.inter(Theme.fontBody))
-                    .foregroundColor(Theme.textPrimary)
-                    .autocapitalization(.none)
-                    .disableAutocorrection(true)
-            }
-
-            if isSecure && showsRevealToggle {
-                Button { revealed.toggle() } label: {
-                    Image(systemName: revealed ? "eye.slash" : "eye")
-                        .foregroundColor(Theme.parchment.opacity(0.6))
-                        .frame(width: 44, height: 44)
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel(revealed ? "Hide password" : "Show password")
-            }
-        }
-        .padding(.vertical, showsRevealToggle ? 0 : Theme.spacingMD)
-        .padding(.leading, Theme.spacingMD)
-        .padding(.trailing, showsRevealToggle && isSecure ? 0 : Theme.spacingMD)
-        .background(Theme.inputBg)
-        .clipShape(RoundedRectangle(cornerRadius: Theme.radius))
-        .overlay(
-            RoundedRectangle(cornerRadius: Theme.radius)
-                .stroke(Theme.borderGoldDim, lineWidth: 1)
-        )
     }
 }
