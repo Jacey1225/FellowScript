@@ -19,7 +19,7 @@ struct FSFormScaffold<Content: View, Banner: View, Bar: View>: View {
 
     var body: some View {
         ZStack {
-            Theme.bgPage.ignoresSafeArea()
+            Color.clear.warmBloomBackground()
             VStack(spacing: 0) {
                 navBar
                 if let rail { rail }

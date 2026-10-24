@@ -180,7 +180,7 @@ struct PostTourPromptScaffold<Extra: View>: View {
 
     var body: some View {
         ZStack(alignment: .top) {
-            Theme.bgPage.ignoresSafeArea()
+            Color.clear.warmBloomBackground()
 
             ScrollView {
                 VStack(spacing: 0) {

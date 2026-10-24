@@ -39,7 +39,7 @@ struct AuthCardView: View {
 
     var body: some View {
         ZStack {
-            Theme.bgPage.ignoresSafeArea()
+            Color.clear.warmBloomBackground()
             VStack(spacing: 0) {
                 ScrollView {
                     VStack(spacing: Theme.spacingMD) {

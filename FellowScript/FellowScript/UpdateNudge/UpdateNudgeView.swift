@@ -27,7 +27,7 @@ struct UpdateNudgeView: View {
 
     var body: some View {
         ZStack {
-            Theme.bgPage.ignoresSafeArea()
+            Color.clear.warmBloomBackground()
 
             VStack(spacing: Theme.spacingLG) {
                 dragHandle

@@ -6,20 +6,20 @@
 
 import SwiftUI
 
-struct GroupInfoChipRow<Trailing: View>: View {
+struct GroupInfoChipRow: View {
     let categories: [GroupInfoCategory]
     @Binding var selected: GroupInfoCategory?
     let pinCount: Int
     /// Phone width: slightly smaller chips (full labels, still 44pt tall hit area).
     var compact: Bool = false
-    /// Pinned at the right end, outside the horizontal scroller so it is always visible (Sessions).
-    @ViewBuilder var trailing: () -> Trailing
+    /// Sessions is the last chip in the scrolling row, same style as the others (it opens a
+    /// menu, so it never shows the selected state).
+    var onSessions: (() -> Void)? = nil
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @AccessibilityFocusState private var focusedChip: GroupInfoCategory?
 
     var body: some View {
-        HStack(spacing: 8) {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
                 ForEach(categories) { category in
@@ -33,13 +33,13 @@ struct GroupInfoChipRow<Trailing: View>: View {
                     }
                     .accessibilityFocused($focusedChip, equals: category)
                 }
+                if let onSessions {
+                    GroupInfoChip(category: nil, label: "Sessions", value: "", isSelected: false, compact: compact,
+                                  action: onSessions)
+                        .accessibilityIdentifier("group-info-sessions")
+                }
             }
-            .padding(.leading, Theme.spacingMD)
-            .padding(.trailing, 4)
-        }
-            trailing()
-                .frame(minHeight: 44)
-                .padding(.trailing, Theme.spacingMD)
+            .padding(.horizontal, Theme.spacingMD)
         }
         .padding(.vertical, Theme.spacingSM)
         // Focus returns to the chip that opened the panel once it closes.
@@ -51,7 +51,7 @@ struct GroupInfoChipRow<Trailing: View>: View {
 }
 
 private struct GroupInfoChip: View {
-    let category: GroupInfoCategory
+    let category: GroupInfoCategory?
     let label: String
     let value: String
     let isSelected: Bool
@@ -82,9 +82,9 @@ private struct GroupInfoChip: View {
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(category.title)
+        .accessibilityLabel(category?.title ?? label)
         .accessibilityValue(value)
-        .accessibilityHint("Opens the list")
+        .accessibilityHint(category == nil ? "View and schedule study sessions" : "Opens the list")
         .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 }

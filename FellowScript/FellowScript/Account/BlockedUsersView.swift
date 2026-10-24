@@ -73,7 +73,7 @@ struct BlockedUsersView: View {
                 .scrollContentBackground(.hidden)
             }
         }
-        .background(Theme.bgPage)
+        .warmBloomBackground()
         .navigationTitle("Blocked Users")
         .navigationBarTitleDisplayMode(.inline)
         .task { await load() }

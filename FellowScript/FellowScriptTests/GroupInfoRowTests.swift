@@ -184,28 +184,20 @@ final class GroupInfoRowTests: XCTestCase {
                       "Sessions is the trailing item of the group chip row")
         let row = try src("Chat/GroupInfoChipRow.swift")
         let chips = try XCTUnwrap(row.range(of: "ForEach(categories)")?.lowerBound)
-        let trailing = try XCTUnwrap(row.range(of: "trailing()")?.lowerBound)
-        XCTAssertTrue(chips < trailing)
-        XCTAssertTrue(row.contains(".frame(minHeight: 44)"))
+        let sessions = try XCTUnwrap(row.range(of: "if let onSessions")?.lowerBound)
+        XCTAssertTrue(chips < sessions, "Sessions follows the other chips")
     }
 
-    func test_sessionsChip_isIconOnly_pinnedOutsideScroller_withSessionsLabel() throws {
+    func test_sessionsChip_isAScrollingChipLikeTheOthers_noSeparateGoldButton() throws {
         let row = try src("Chat/GroupInfoChipRow.swift")
-        let scrollEnd = try XCTUnwrap(row.range(of: "trailing()")?.lowerBound)
         let scrollStart = try XCTUnwrap(row.range(of: "ScrollView(.horizontal")?.lowerBound)
-        let chips = try XCTUnwrap(row.range(of: "ForEach(categories)")?.lowerBound)
-        XCTAssertTrue(scrollStart < chips && chips < scrollEnd)
-        // The scroller closes before trailing() so Sessions never scrolls away.
-        let between = String(row[chips..<scrollEnd])
-        XCTAssertTrue(between.hasSuffix("        }\n            "), "ScrollView closes right before trailing()")
+        let sessions = try XCTUnwrap(row.range(of: "label: \"Sessions\"")?.lowerBound)
+        let scrollEnd = try XCTUnwrap(row.range(of: ".padding(.vertical, Theme.spacingSM)")?.lowerBound)
+        XCTAssertTrue(scrollStart < sessions && sessions < scrollEnd, "Sessions scrolls with the chips")
+        XCTAssertFalse(row.contains("trailing()"))
         XCTAssertTrue(row.contains("compact ? 12.5 : 13.5"), "compact chips are slightly smaller")
         XCTAssertTrue(row.contains("compact ? 5 : 3"), "compact chips keep a 44pt hit area")
         let s = try src("Chat/ChatThreadView.swift")
-        let start = try XCTUnwrap(s.range(of: "private var sessionsChip: some View {")?.lowerBound)
-        let chip = String(s[start...].prefix(1100))
-        XCTAssertFalse(chip.contains("Text(\"Sessions\")"), "icon only")
-        XCTAssertTrue(chip.contains(".accessibilityLabel(\"Sessions\")"))
-        XCTAssertTrue(chip.contains("openSessionsMenu()"))
-        XCTAssertTrue(chip.contains(".frame(minHeight: 44)"))
+        XCTAssertFalse(s.contains("private var sessionsChip"), "separate gold Sessions button removed")
     }
 }

@@ -18,7 +18,7 @@ struct FSAuthScaffold<Content: View>: View {
 
     var body: some View {
         ZStack {
-            Theme.bgPage.ignoresSafeArea()
+            Color.clear.warmBloomBackground()
             VStack(spacing: 0) {
                 if let onClose {
                     HStack {
