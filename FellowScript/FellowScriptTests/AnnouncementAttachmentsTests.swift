@@ -322,7 +322,7 @@ final class AnnouncementAttachmentsTests: XCTestCase {
     func testEachFormRowAndSectionIsGatedBySourcePin() throws {
         let host = try readSource("FellowScript/Chat/GroupAnnouncementFormView.swift")
         XCTAssertTrue(host.contains("private var extrasOn: Bool { linksOn || galleryOn || paymentsOn || rsvpOn || locationOn }"))
-        XCTAssertTrue(host.contains("if extrasOn {\n                            AnnouncementExtrasSection("), "whole section absent when all flags are off")
+        XCTAssertTrue(host.contains("if extrasOn {\n            AnnouncementExtrasSection("), "whole section absent when all flags are off")
         XCTAssertTrue(host.contains("capabilities.isEnabled(AnnouncementExtrasFlag.links)"))
         XCTAssertTrue(host.contains("capabilities.isEnabled(AnnouncementExtrasFlag.gallery)"))
         XCTAssertTrue(host.contains("capabilities.isEnabled(AnnouncementExtrasFlag.payments)"))
@@ -340,9 +340,10 @@ final class AnnouncementAttachmentsTests: XCTestCase {
         XCTAssertTrue(form.contains("@State private var open = false"))
         XCTAssertTrue(form.contains("Add extras (optional)"))
         let host = try readSource("FellowScript/Chat/GroupAnnouncementFormView.swift")
-        let publish = try XCTUnwrap(host.range(of: "if canReschedule { publishField }"))
+        // Stepper layout: extras live on the Style step, after the Content step's core fields.
+        let content = try XCTUnwrap(host.range(of: "@ViewBuilder private var contentStep"))
         let extras = try XCTUnwrap(host.range(of: "AnnouncementExtrasSection("))
-        XCTAssertLessThan(publish.lowerBound, extras.lowerBound, "extras come after the core fields")
+        XCTAssertLessThan(content.lowerBound, extras.lowerBound, "extras come after the core fields")
     }
 
     func testDetailBlocksHiddenWhenEmpty() throws {

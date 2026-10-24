@@ -172,7 +172,7 @@ final class AnnouncementTitleColorTests: XCTestCase {
         let src = try readSource("FellowScript/Chat/GroupAnnouncementFormView.swift")
         XCTAssertTrue(src.contains("!saving && !bannerBusy"))
         XCTAssertTrue(src.contains("!extrasBusy"), "gallery uploads also block submit (part E)")
-        XCTAssertTrue(src.contains(".disabled(!canSubmit)"))
+        XCTAssertTrue(src.contains("primaryDimmed: !canSubmit"))
         XCTAssertTrue(src.contains("bannerBusy || extrasBusy ? \"Uploading…\""), "label shows Uploading while a banner or gallery upload is in flight")
     }
 

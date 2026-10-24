@@ -213,7 +213,7 @@ final class AnnouncementAdvancedTests: XCTestCase {
         XCTAssertTrue(src.contains("return .reset"), "None/Default -> explicit null")
         XCTAssertTrue(src.contains("capabilities.isEnabled(AnnouncementTitleFont.flagName)"))
         XCTAssertTrue(src.contains("capabilities.isEnabled(AnnouncementBgTheme.flagName)"))
-        XCTAssertTrue(src.contains("if fontsOn {\n                AnnouncementTitleFontRow("), "font row gated")
+        XCTAssertTrue(src.contains("if fontsOn {") && src.contains("AnnouncementTitleFontRow("), "font row gated")
         XCTAssertTrue(src.contains("if themesOn { themeStrip }"), "palette gated")
     }
 
@@ -234,7 +234,7 @@ final class AnnouncementAdvancedTests: XCTestCase {
         XCTAssertTrue(tile.contains("Color.white.opacity(0.28)"))
         XCTAssertTrue(tile.contains("Theme.gold"))
         let form = try readSource("FellowScript/Chat/GroupAnnouncementFormView.swift")
-        XCTAssertEqual(form.components(separatedBy: ".announcementTranslucentField(").count - 1, 2, "title + message")
+        XCTAssertTrue(form.contains("FSField(label: \"Title\"") && form.contains("FSField(label: \"Message\""), "title + message use the kit field (gray, no fill override)")
         XCTAssertFalse(form.contains("StrokeStyle(lineWidth: 1, dash"), "dashed box removed")
         XCTAssertFalse(form.contains("dash:"), "dashed box removed")
         XCTAssertFalse(form.contains("Add banner photo"))

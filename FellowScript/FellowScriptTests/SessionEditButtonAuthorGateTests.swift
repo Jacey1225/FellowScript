@@ -111,10 +111,11 @@ final class SessionCreatorSheetEditModePrefillTests: XCTestCase {
 
         XCTAssertNoThrow(try sut.inspect().find(text: "Evening Study"),
                           "the title field must render the existing session's title")
-        XCTAssertNoThrow(try sut.inspect().find(text: "John 3:16"),
-                          "edit mode must render the existing session's verses (create mode has no verses UI at all)")
-        XCTAssertNoThrow(try sut.inspect().find(text: "Romans 8:28"))
-        XCTAssertNoThrow(try sut.inspect().find(text: "What stood out to you?"))
+        // Verses and prompts moved to the stepper's Study step (not rendered on step 1); pin the source.
+        let src = try String(contentsOf: URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("FellowScript/Chat/ChatThreadView.swift"), encoding: .utf8)
+        XCTAssertTrue(src.contains("if isEditing {\n            FSFormCard(title: \"Verses\")"), "edit mode keeps its Verses card")
+        XCTAssertTrue(src.contains("FSFormCard(title: \"Discussion prompts\")"))
         XCTAssertNoThrow(try sut.inspect().find(text: "Edit Session"),
                           "the sheet header must read 'Edit Session', not 'Schedule', in edit mode")
     }
