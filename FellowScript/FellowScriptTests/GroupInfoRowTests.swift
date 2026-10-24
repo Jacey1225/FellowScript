@@ -180,8 +180,7 @@ final class GroupInfoRowTests: XCTestCase {
         XCTAssertTrue(groupBranch.lowerBound < elseBranch.lowerBound)
         XCTAssertFalse(String(header[groupBranch.lowerBound..<elseBranch.lowerBound]).contains("sessionsPill"),
                        "no Sessions pill in the group header")
-        XCTAssertTrue(s.contains("GroupInfoChipRow(categories: groupInfoCategories, selected: $infoCategory, pinCount: vm.pinCount,\n                                     compact: !embedded) {\n                        sessionsChip"),
-                      "Sessions is the trailing item of the group chip row")
+        XCTAssertTrue(s.contains("onSessions: { openSessionsMenu() })"), "Sessions is a chip in the group chip row")
         let row = try src("Chat/GroupInfoChipRow.swift")
         let chips = try XCTUnwrap(row.range(of: "ForEach(categories)")?.lowerBound)
         let sessions = try XCTUnwrap(row.range(of: "if let onSessions")?.lowerBound)
