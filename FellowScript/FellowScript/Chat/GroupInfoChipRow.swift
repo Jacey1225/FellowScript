@@ -12,9 +12,8 @@ struct GroupInfoChipRow: View {
     let pinCount: Int
     /// Phone width: slightly smaller chips (full labels, still 44pt tall hit area).
     var compact: Bool = false
-    /// Sessions is the last chip in the scrolling row, same style as the others (it opens a
-    /// menu, so it never shows the selected state).
-    var onSessions: (() -> Void)? = nil
+    /// Unseen counts per chip, drawn as a red badge at each chip's top-left.
+    var badges: [GroupInfoCategory: Int] = [:]
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @AccessibilityFocusState private var focusedChip: GroupInfoCategory?
@@ -26,17 +25,13 @@ struct GroupInfoChipRow: View {
                     GroupInfoChip(category: category,
                                   label: category.chipLabel(pinCount: pinCount),
                                   value: category == .pinned ? (FSPinnedListCopy.buttonValue(count: pinCount) ?? "") : "",
-                                  isSelected: selected == category, compact: compact) {
+                                  isSelected: selected == category, compact: compact,
+                                  badge: badges[category] ?? 0) {
                         withMotionAwareAnimation(.easeOut(duration: 0.18), reduceMotion: reduceMotion) {
                             selected = GroupInfoCategory.toggled(selected, tapped: category)
                         }
                     }
                     .accessibilityFocused($focusedChip, equals: category)
-                }
-                if let onSessions {
-                    GroupInfoChip(category: nil, label: "Sessions", value: "", isSelected: false, compact: compact,
-                                  action: onSessions)
-                        .accessibilityIdentifier("group-info-sessions")
                 }
             }
             .padding(.horizontal, Theme.spacingMD)
@@ -51,11 +46,12 @@ struct GroupInfoChipRow: View {
 }
 
 private struct GroupInfoChip: View {
-    let category: GroupInfoCategory?
+    let category: GroupInfoCategory
     let label: String
     let value: String
     let isSelected: Bool
     var compact: Bool = false
+    var badge: Int = 0
     let action: () -> Void
 
     @ScaledMetric(relativeTo: .body) private var chipHeight: CGFloat = 38
@@ -82,9 +78,16 @@ private struct GroupInfoChip: View {
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(category?.title ?? label)
-        .accessibilityValue(value)
-        .accessibilityHint(category == nil ? "View and schedule study sessions" : "Opens the list")
+        .overlay(alignment: .topLeading) {
+            if badge > 0 {
+                NavCountBadge(count: badge, ring: Theme.bgPage)
+                    .offset(x: -5, y: compact ? -3 : -5)
+                    .allowsHitTesting(false)
+            }
+        }
+        .accessibilityLabel(category.title)
+        .accessibilityValue(badge > 0 ? "\(value) \(badge) new".trimmingCharacters(in: .whitespaces) : value)
+        .accessibilityHint(category == .sessions ? "View and schedule study sessions" : "Opens the list")
         .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 }

@@ -1209,6 +1209,7 @@ struct ChatThreadView: View {
     // pill opens this floating, translucent/blurred submenu listing every
     // session for the chat, with the create-session action folded inside it.
     @State private var showSessionsMenu: Bool = false
+    @State private var infoBadges: [GroupInfoCategory: Int] = [:]
     // Item-based (rather than reusing `showSession`'s Bool + `.first`
     // convention the old SessionBanner relied on) because any row in the
     // submenu's list -- not just "the next upcoming one" -- can now open a
@@ -1513,8 +1514,7 @@ struct ChatThreadView: View {
                 // (replaces the announcement banner and the floating pin button).
                 if GroupInfoCategory.rowShows(isGroup: contact.type == .group, isThreadOpen: vm.isThreadOpen) {
                     GroupInfoChipRow(categories: groupInfoCategories, selected: $infoCategory, pinCount: vm.pinCount,
-                                     compact: !embedded,
-                                     onSessions: { openSessionsMenu() })
+                                     compact: !embedded, badges: infoBadges)
                 }
 
                 // ── Reconnecting banner (dropped-socket lifecycle state) ───
@@ -2068,7 +2068,7 @@ struct ChatThreadView: View {
         GroupInfoCategory.visible(announcements: GroupAnnouncementsConfig.enabled,
                                   threads: appState.capabilities.isEnabled("threads"),
                                   pins: pinsAvailable,
-                                  media: appState.capabilities.groupMediaEnabled)
+                                  media: appState.capabilities.groupMediaEnabled) + [.sessions]
     }
 
     /// The bottom submenu layer over the message area (groups only, never in a thread).
@@ -2079,7 +2079,9 @@ struct ChatThreadView: View {
                 service: appState.service, pinsVM: vm,
                 onOpenThread: { openThread($0) },
                 onJumpToPin: { jumpToMessage($0.id, announce: "Jumped to pinned message from \($0.message.fromUser.isEmpty ? "someone" : $0.message.fromUser)") },
-                onJumpToMessage: { jumpToMessage($0, announce: "Jumped to message") })
+                onJumpToMessage: { jumpToMessage($0, announce: "Jumped to message") },
+                badges: $infoBadges,
+                sessionsContent: { AnyView(sessionsPanelContent) })
         }
     }
 
@@ -2563,6 +2565,7 @@ struct ChatThreadView: View {
     }
 
     private func closeSessionsMenu() {
+        if infoCategory == .sessions { infoCategory = nil }
         withMotionAwareAnimation(.easeOut(duration: 0.18), reduceMotion: reduceMotion) {
             showSessionsMenu = false
         }
@@ -2637,29 +2640,9 @@ struct ChatThreadView: View {
         )
     }
 
-    private var sessionsMenuCard: some View {
+    /// Schedule button + session list, shared by the DM floating card and the group submenu panel.
+    private var sessionsBody: some View {
         VStack(alignment: .leading, spacing: Theme.spacingSM) {
-            HStack {
-                Text(embedded ? "SESSIONS" : "Sessions")
-                    .font(.inter(embedded ? Theme.fontXS : Theme.fontSM, weight: .bold))
-                    .tracking(embedded ? 3 : 0)
-                    .foregroundColor(embedded ? Theme.goldLight : Theme.parchment)
-                    .accessibilityAddTraits(.isHeader)
-                Spacer()
-                Button {
-                    closeSessionsMenu()
-                } label: {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 11, weight: .bold))
-                        .foregroundColor(Theme.textGoldMuted)
-                        .frame(width: 24, height: 24)
-                        .background(Color.white.opacity(0.05))
-                        .clipShape(Circle())
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Close")
-            }
-
             Button {
                 closeSessionsMenu()
                 showSession = true
@@ -2717,8 +2700,43 @@ struct ChatThreadView: View {
                         }
                     }
                 }
-                .frame(maxHeight: 260)
+                .frame(maxHeight: infoCategory == .sessions ? .infinity : 260)
             }
+        }
+    }
+
+    /// The Sessions submenu inside the group info panel (same container as Announcements/Threads/Pinned).
+    private var sessionsPanelContent: some View {
+        sessionsBody
+            .padding(.horizontal, Theme.spacingMD)
+            .padding(.bottom, Theme.spacingMD)
+            .frame(maxHeight: .infinity, alignment: .top)
+    }
+
+    private var sessionsMenuCard: some View {
+        VStack(alignment: .leading, spacing: Theme.spacingSM) {
+            HStack {
+                Text(embedded ? "SESSIONS" : "Sessions")
+                    .font(.inter(embedded ? Theme.fontXS : Theme.fontSM, weight: .bold))
+                    .tracking(embedded ? 3 : 0)
+                    .foregroundColor(embedded ? Theme.goldLight : Theme.parchment)
+                    .accessibilityAddTraits(.isHeader)
+                Spacer()
+                Button {
+                    closeSessionsMenu()
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundColor(Theme.textGoldMuted)
+                        .frame(width: 24, height: 24)
+                        .background(Color.white.opacity(0.05))
+                        .clipShape(Circle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Close")
+            }
+
+            sessionsBody
         }
         .padding(Theme.spacingMD)
         .frame(width: WorkspaceLayout.popoverWidth)

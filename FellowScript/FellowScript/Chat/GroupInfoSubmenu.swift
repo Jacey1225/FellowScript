@@ -44,9 +44,13 @@ struct GroupInfoSubmenu<Content: View>: View {
         .frame(maxWidth: .infinity)
         .frame(height: height)
         .background(
+            // Same warm bloom ground as every other screen (not a flat dark fill).
             ZStack {
-                shape.fill(.ultraThinMaterial)
-                shape.fill(Theme.ink.opacity(0.88))
+                shape.fill(Theme.bgPage)
+                shape.fill(RadialGradient(colors: [Color(hex: "#D4922A").opacity(0.20), .clear],
+                                          center: UnitPoint(x: 0.12, y: 0.16), startRadius: 10, endRadius: 380))
+                shape.fill(RadialGradient(colors: [Color(hex: "#B8761D").opacity(0.12), .clear],
+                                          center: UnitPoint(x: 0.92, y: 0.60), startRadius: 10, endRadius: 340))
             }
         )
         .overlay(shape.stroke(Theme.parchment.opacity(0.14), lineWidth: 1))

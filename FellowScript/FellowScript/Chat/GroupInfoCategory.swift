@@ -5,7 +5,7 @@
 import Foundation
 
 enum GroupInfoCategory: String, CaseIterable, Identifiable, Equatable {
-    case announcements, threads, pinned, media
+    case announcements, threads, pinned, media, sessions
 
     var id: String { rawValue }
 
@@ -15,6 +15,7 @@ enum GroupInfoCategory: String, CaseIterable, Identifiable, Equatable {
         case .threads:       return "Threads"
         case .pinned:        return FSPinnedListCopy.title
         case .media:         return "Media"
+        case .sessions:      return "Sessions"
         }
     }
 
@@ -25,6 +26,7 @@ enum GroupInfoCategory: String, CaseIterable, Identifiable, Equatable {
         case .threads:       return "threads"
         case .pinned:        return "pins"
         case .media:         return "media"
+        case .sessions:      return "sessions"
         }
     }
 
@@ -72,6 +74,7 @@ enum GroupInfoCopy {
         case .threads:       return ("No threads yet.", "Start one from any message to keep a conversation tidy.")
         case .pinned:        return (FSPinnedListCopy.empty, FSPinnedListCopy.emptyHint)
         case .media:         return ("No photos or videos yet.", "Anything shared in this chat will gather here.")
+        case .sessions:      return ("No sessions scheduled yet.", "Schedule one to study together.")
         }
     }
 }

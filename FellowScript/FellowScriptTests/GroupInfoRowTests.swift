@@ -180,23 +180,56 @@ final class GroupInfoRowTests: XCTestCase {
         XCTAssertTrue(groupBranch.lowerBound < elseBranch.lowerBound)
         XCTAssertFalse(String(header[groupBranch.lowerBound..<elseBranch.lowerBound]).contains("sessionsPill"),
                        "no Sessions pill in the group header")
-        XCTAssertTrue(s.contains("onSessions: { openSessionsMenu() })"), "Sessions is a chip in the group chip row")
+        XCTAssertTrue(s.contains("badges: infoBadges)"), "badges are passed to the chip row")
+        XCTAssertTrue(s.contains("media: appState.capabilities.groupMediaEnabled) + [.sessions]"), "Sessions is a normal chip in the group row")
         let row = try src("Chat/GroupInfoChipRow.swift")
         let chips = try XCTUnwrap(row.range(of: "ForEach(categories)")?.lowerBound)
-        let sessions = try XCTUnwrap(row.range(of: "if let onSessions")?.lowerBound)
-        XCTAssertTrue(chips < sessions, "Sessions follows the other chips")
+
     }
 
-    func test_sessionsChip_isAScrollingChipLikeTheOthers_noSeparateGoldButton() throws {
+    func test_sessionsIsACategoryChip_sameContainerAsTheOthers_noSeparateButton() throws {
+        XCTAssertEqual(GroupInfoCategory.visible(announcements: true, threads: true, pins: true, media: true) + [.sessions],
+                       [.announcements, .threads, .pinned, .media, .sessions])
+        XCTAssertEqual(GroupInfoCategory.sessions.title, "Sessions")
         let row = try src("Chat/GroupInfoChipRow.swift")
-        let scrollStart = try XCTUnwrap(row.range(of: "ScrollView(.horizontal")?.lowerBound)
-        let sessions = try XCTUnwrap(row.range(of: "label: \"Sessions\"")?.lowerBound)
-        let scrollEnd = try XCTUnwrap(row.range(of: ".padding(.vertical, Theme.spacingSM)")?.lowerBound)
-        XCTAssertTrue(scrollStart < sessions && sessions < scrollEnd, "Sessions scrolls with the chips")
         XCTAssertFalse(row.contains("trailing()"))
-        XCTAssertTrue(row.contains("compact ? 12.5 : 13.5"), "compact chips are slightly smaller")
-        XCTAssertTrue(row.contains("compact ? 5 : 3"), "compact chips keep a 44pt hit area")
+        XCTAssertFalse(row.contains("onSessions"))
+        let host = try src("Chat/GroupInfoPanelHost.swift")
+        XCTAssertTrue(host.contains("case .sessions:\n            sessionsContent()"), "Sessions renders in the shared panel")
         let s = try src("Chat/ChatThreadView.swift")
-        XCTAssertFalse(s.contains("private var sessionsChip"), "separate gold Sessions button removed")
+        XCTAssertFalse(s.contains("private var sessionsChip"))
+        XCTAssertTrue(s.contains("if infoCategory == .sessions { infoCategory = nil }"))
+    }
+
+    func test_submenuPanelUsesTheWarmBloomGround() throws {
+        let s = try src("Chat/GroupInfoSubmenu.swift")
+        XCTAssertFalse(s.contains("ultraThinMaterial"))
+        XCTAssertFalse(s.contains("Theme.ink.opacity(0.88)"))
+        XCTAssertTrue(s.contains("RadialGradient") && s.contains("Theme.bgPage"))
+    }
+
+    // MARK: badges
+
+    func test_badgeLogic_countsOnlyOthersItemsNewerThanTheWatermark() {
+        let t0 = Date(timeIntervalSince1970: 1_000)
+        let items = [GroupInfoBadgeLogic.Item(at: t0.addingTimeInterval(10), byMe: false),
+                     GroupInfoBadgeLogic.Item(at: t0.addingTimeInterval(20), byMe: true),
+                     GroupInfoBadgeLogic.Item(at: t0.addingTimeInterval(-5), byMe: false),
+                     GroupInfoBadgeLogic.Item(at: t0.addingTimeInterval(30), byMe: false)]
+        XCTAssertEqual(GroupInfoBadgeLogic.unseenCount(items, seen: t0), 2)
+        XCTAssertEqual(GroupInfoBadgeLogic.unseenCount(items, seen: nil), 0, "first run seeds, never badges")
+        XCTAssertEqual(GroupInfoBadgeLogic.unseenCount(items, seen: GroupInfoBadgeLogic.newest(items)), 0, "opening clears")
+        XCTAssertNil(GroupInfoBadgeLogic.newest([]))
+    }
+
+    func test_seenStore_roundTripsPerGroupAndCategory() {
+        let d = UserDefaults(suiteName: "groupinfo-badge-test")!
+        d.removePersistentDomain(forName: "groupinfo-badge-test")
+        let a = GroupInfoSeenStore(defaults: d, userId: "u", groupId: "g1")
+        let b = GroupInfoSeenStore(defaults: d, userId: "u", groupId: "g2")
+        XCTAssertNil(a.seen(.pinned))
+        a.setSeen(.pinned, Date(timeIntervalSince1970: 500))
+        XCTAssertEqual(a.seen(.pinned), Date(timeIntervalSince1970: 500))
+        XCTAssertNil(a.seen(.threads)); XCTAssertNil(b.seen(.pinned))
     }
 }

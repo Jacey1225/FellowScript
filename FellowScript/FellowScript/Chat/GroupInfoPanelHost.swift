@@ -16,9 +16,14 @@ struct GroupInfoPanelHost: View {
     let onOpenThread: (FSThreadSummary) -> Void
     let onJumpToPin: (FSPinnedMessage) -> Void
     let onJumpToMessage: (String) -> Void
+    /// Unseen counts for the chip badges (computed here, where the list models live).
+    @Binding var badges: [GroupInfoCategory: Int]
+    /// The Sessions submenu body (owned by the chat view, which has the session state).
+    let sessionsContent: () -> AnyView
 
     @EnvironmentObject private var appState: AppState
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.scenePhase) private var scenePhase
     @StateObject private var announcements: GroupAnnouncementsViewModel
     @StateObject private var threads: GroupThreadsViewModel
     @StateObject private var media: GroupMediaViewModel
@@ -28,7 +33,11 @@ struct GroupInfoPanelHost: View {
          visible: [GroupInfoCategory], service: DataServiceProtocol, pinsVM: ChatThreadViewModel,
          onOpenThread: @escaping (FSThreadSummary) -> Void,
          onJumpToPin: @escaping (FSPinnedMessage) -> Void,
-         onJumpToMessage: @escaping (String) -> Void) {
+         onJumpToMessage: @escaping (String) -> Void,
+         badges: Binding<[GroupInfoCategory: Int]>,
+         sessionsContent: @escaping () -> AnyView) {
+        _badges = badges
+        self.sessionsContent = sessionsContent
         self.contact = contact
         self.userId = userId
         _selected = selected
@@ -69,6 +78,14 @@ struct GroupInfoPanelHost: View {
             if let selected, !now.contains(selected) { close() }
         }
         .task { await consumePendingOpen() }
+        // Chip badges: quiet first-page loads, recomputed as the live lists change; opening
+        // a submenu marks it seen.
+        .task { await refreshBadgeSources() }
+        .onChange(of: scenePhase) { _, p in if p == .active { Task { await refreshBadgeSources() } } }
+        .onChange(of: announcements.items) { _, _ in recomputeBadges() }
+        .onChange(of: threads.threads) { _, _ in recomputeBadges() }
+        .onChange(of: pinsVM.pinsRevision) { _, _ in recomputeBadges() }
+        .onChange(of: selected) { _, _ in recomputeBadges() }
         .onChange(of: appState.pendingAnnouncementOpen) { _, _ in Task { await consumePendingOpen() } }
         .sheet(item: $viewing) { item in
             NavigationStack {
@@ -98,7 +115,68 @@ struct GroupInfoPanelHost: View {
                                 onSelect: { pin in close(); onJumpToPin(pin) }, inPanel: true)
         case .media:
             GroupInfoMediaGrid(vm: media) { id in close(); onJumpToMessage(id) }
+        case .sessions:
+            sessionsContent()
         }
+    }
+
+    // MARK: Badges
+
+    private var seenStore: GroupInfoSeenStore { GroupInfoSeenStore(userId: userId, groupId: contact.id) }
+
+    private func refreshBadgeSources() async {
+        async let a: Void = announcements.load()
+        async let t: Void = threads.load()
+        async let p: Void = pinsVM.loadPins(service: appState.service, contact: contact, userId: userId, reset: true, quiet: true)
+        _ = await (a, t, p)
+        recomputeBadges()
+    }
+
+    private func badgeItems(_ c: GroupInfoCategory) -> [GroupInfoBadgeLogic.Item]? {
+        switch c {
+        case .announcements:
+            guard announcements.loaded else { return nil }
+            return announcements.publishedItems.compactMap { a in
+                parseFlexibleISO8601(a.publish_at).map { GroupInfoBadgeLogic.Item(at: $0, byMe: a.creator_id == userId) }
+            }
+        case .threads:
+            guard threads.loaded else { return nil }
+            return threads.threads.compactMap { t in
+                parseFlexibleISO8601(t.lastActivityAt).map { GroupInfoBadgeLogic.Item(at: $0, byMe: t.createdBy == userId && t.replyCount == 0) }
+            }
+        case .pinned:
+            guard pinsVM.pinsState != .idle else { return nil }
+            return pinsVM.pins.compactMap { p in
+                p.pinnedAt.flatMap(parseFlexibleISO8601).map { GroupInfoBadgeLogic.Item(at: $0, byMe: p.pinnedById == userId) }
+            }
+        case .media, .sessions:
+            return nil
+        }
+    }
+
+    private func recomputeBadges() {
+        #if DEBUG
+        // Screenshot seam (UI tests only, mock data): fixed badge counts on the chips.
+        if ProcessInfo.processInfo.arguments.contains("UI-TESTING-BADGES") {
+            let fixed: [GroupInfoCategory: Int] = [.announcements: 2, .threads: 1, .pinned: 3]
+            badges = fixed.filter { $0.key != selected }
+            return
+        }
+        #endif
+        var next: [GroupInfoCategory: Int] = [:]
+        for c in [GroupInfoCategory.announcements, .threads, .pinned] {
+            guard let items = badgeItems(c) else { continue }
+            let newest = GroupInfoBadgeLogic.newest(items)
+            if selected == c {                       // looking at it: everything is seen
+                if let newest { seenStore.setSeen(c, newest) }
+                continue
+            }
+            guard let newest else { continue }
+            guard let seen = seenStore.seen(c) else { seenStore.setSeen(c, newest); continue }   // first run: seed
+            let n = GroupInfoBadgeLogic.unseenCount(items, seen: seen)
+            if n > 0 { next[c] = n }
+        }
+        if next != badges { badges = next }
     }
 
     private func readOnly(_ item: FSGroupAnnouncement) -> FSGroupAnnouncement {
