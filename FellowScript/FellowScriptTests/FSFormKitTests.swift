@@ -39,6 +39,18 @@ final class FSFormKitTests: XCTestCase {
         XCTAssertTrue(texts.contains("Next"))
     }
 
+    /// Option A (stacked): flush bar, primary above the secondary, no navBg fill or hairline.
+    func testPinnedActionBarSourcePinsOptionA() throws {
+        let url = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("FellowScript/Shared/Forms/FSPinnedActionBar.swift")
+        let src = try String(contentsOf: url, encoding: .utf8)
+        XCTAssertFalse(src.contains("Theme.navBg"), "bar must be flush with the form background")
+        XCTAssertFalse(src.contains("opacity(0.14)"), "no hairline")
+        XCTAssertTrue(src.contains("VStack(spacing: 2) { primary; secondary }"))
+        XCTAssertTrue(src.contains("minHeight: primaryDestructive ? 48 : 54"))
+        XCTAssertTrue(src.contains("keyboardWillShowNotification"))
+    }
+
     func testErrorSummaryPluralizesHeading() throws {
         let one = FSErrorSummaryCard(fields: [("t", "Title")]) { _ in }
         let two = FSErrorSummaryCard(fields: [("t", "Title"), ("m", "Message")]) { _ in }

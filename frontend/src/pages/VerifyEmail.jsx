@@ -4,11 +4,13 @@
 // message. The token is stripped from the address bar after the attempt.
 import React, { useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate, Link } from 'react-router-dom';
+import { useWarmCanvas } from '../hooks/useWarmCanvas.js';
 import { AuthPage } from '../components/forms/index.js';
 import Seo from '../components/Seo.jsx';
 import { verifyEmailToken } from '../lib/emailVerificationApi.js';
 
 export default function VerifyEmail() {
+  useWarmCanvas(); // same warm gradient canvas as sign-in
   const location = useLocation();
   const navigate = useNavigate();
   const token = new URLSearchParams(location.search).get('token') || '';

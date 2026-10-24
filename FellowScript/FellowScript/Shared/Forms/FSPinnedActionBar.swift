@@ -1,14 +1,18 @@
 // FSPinnedActionBar.swift
-// Pinned bottom action bar (spec 2.8): optional outlined secondary plus gold
-// gradient primary. The primary dims when invalid but stays tappable so the
-// tap runs validation (spec D8). `saving` swaps the label for a spinner.
+// Pinned bottom action bar (spec 2.8, option A "stacked"): flush with the form
+// background (no fill, hairline or shadow). Full-width 54pt gold primary on
+// top, the secondary (Back/Cancel) as a 48pt gold text button below. In a
+// destructive confirm the safe action (the secondary) is the gold primary and
+// the destructive action sits below it as a 48pt danger outline. With the
+// keyboard up the bar collapses to one row: a 54pt round chevron + the primary.
+// The primary dims when invalid but stays tappable so the tap runs validation
+// (spec D8). `saving` swaps the label for a spinner.
 
 import SwiftUI
 
 struct FSPinnedActionBar: View {
     var secondaryTitle: String? = nil
-    var secondaryIcon: String? = nil          // used by the tight variant
-    var secondaryDestructive: Bool = false
+    var secondaryIcon: String? = nil          // keyboard-up round button (default chevron.left)
     var onSecondary: (() -> Void)? = nil
     let primaryTitle: String
     var primaryTrailingIcon: String? = nil
@@ -17,47 +21,70 @@ struct FSPinnedActionBar: View {
     var primaryDestructive: Bool = false
     var primaryAccessibilityLabel: String? = nil
     var saving: Bool = false
-    var tight: Bool = false
     let onPrimary: () -> Void
-    @Environment(\.dynamicTypeSize) private var typeSize
+    @State private var keyboardUp = false
 
-    private var stacked: Bool { typeSize >= .accessibility2 }
+    /// Destructive confirm: the secondary is the safe action and takes the gold slot.
+    private var confirm: Bool { primaryDestructive && secondaryTitle != nil }
 
     var body: some View {
         Group {
-            if stacked && secondaryTitle != nil {
-                VStack(spacing: 8) { primary; secondary }
+            if keyboardUp && secondaryTitle != nil && !confirm {
+                HStack(spacing: 12) { secondaryRound; primary }
+                    .padding(.horizontal, 16).padding(.vertical, 10)
+            } else if confirm {
+                VStack(spacing: 8) { safeAction; primary }
+                    .padding(.horizontal, 16).padding(.top, 8).padding(.bottom, 16)
             } else {
-                HStack(spacing: 12) { secondary; primary }
+                VStack(spacing: 2) { primary; secondary }
+                    .padding(.horizontal, 16).padding(.top, 8).padding(.bottom, 16)
             }
         }
-        .padding(16)
-        .background(Theme.navBg.ignoresSafeArea(edges: .bottom))
-        .overlay(alignment: .top) { Rectangle().fill(Color.white.opacity(0.14)).frame(height: 1) }
+        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in keyboardUp = true }
+        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in keyboardUp = false }
         .disabled(saving)
         .accessibilityElement(children: .contain)
     }
 
+    /// 48pt gold text button (no outline, no fill).
     @ViewBuilder private var secondary: some View {
         if let secondaryTitle {
             Button { onSecondary?() } label: {
-                Group {
-                    if tight, let secondaryIcon {
-                        Image(systemName: secondaryIcon).font(.system(size: 16, weight: .bold))
-                            .frame(width: 52, height: 52)
-                    } else {
-                        Text(secondaryTitle).font(.system(size: 16, weight: .bold))
-                            .frame(maxWidth: stacked ? .infinity : nil, minHeight: 52)
-                            .padding(.horizontal, stacked ? 0 : 20)
-                    }
-                }
-                .foregroundColor(secondaryDestructive ? Theme.error : Theme.gold)
-                .background(Capsule().fill(secondaryDestructive ? Theme.dangerBg : Color.clear))
-                .overlay(Capsule().strokeBorder(secondaryDestructive ? Theme.errorStrong : Theme.borderGold, lineWidth: 1))
+                Text(secondaryTitle).font(.system(size: 16, weight: .semibold))
+                    .foregroundColor(Theme.gold)
+                    .frame(maxWidth: .infinity, minHeight: 48)
+                    .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .accessibilityLabel(secondaryTitle)
-            .frame(maxWidth: (tight || stacked) ? nil : UIScreen.main.bounds.width * 0.44)
+        }
+    }
+
+    /// Keyboard-up secondary: 54pt round chevron with a 1pt card ring, no fill.
+    @ViewBuilder private var secondaryRound: some View {
+        if let secondaryTitle {
+            Button { onSecondary?() } label: {
+                Image(systemName: secondaryIcon ?? "chevron.left").font(.system(size: 16, weight: .bold))
+                    .foregroundColor(Theme.gold)
+                    .frame(width: 54, height: 54)
+                    .overlay(Circle().strokeBorder(Theme.borderGray, lineWidth: 1))
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(secondaryTitle)
+        }
+    }
+
+    /// Destructive-confirm safe action: full-width gold primary slot.
+    @ViewBuilder private var safeAction: some View {
+        if let secondaryTitle {
+            Button { onSecondary?() } label: {
+                Text(secondaryTitle).font(.system(size: 16, weight: .bold))
+                    .foregroundColor(Theme.ink)
+                    .frame(maxWidth: .infinity, minHeight: 54)
+                    .background(Capsule().fill(Theme.goldGradient))
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(secondaryTitle)
         }
     }
 
@@ -74,7 +101,7 @@ struct FSPinnedActionBar: View {
             }
             .foregroundColor(primaryDestructive ? Theme.error.opacity(primaryDimmed ? 0.5 : 1)
                                                 : (primaryDimmed ? Theme.ink.opacity(0.5) : Theme.ink))
-            .frame(maxWidth: .infinity, minHeight: 52)
+            .frame(maxWidth: .infinity, minHeight: primaryDestructive ? 48 : 54)
             .background {
                 if primaryDestructive { Capsule().fill(Theme.dangerBg) }
                 else if primaryDimmed { Capsule().fill(Theme.goldDim.opacity(0.4)) }
