@@ -4146,3 +4146,21 @@ button.shared-note-card:focus-visible { outline: 2px solid var(--gold); outline-
 @media (max-width: 360px) {
   .agent-chats-label { display: none; }
 }
+
+/* Polls inside announcements (task 20261024-announcement-polls) */
+.ann-poll { gap: 0.6rem; }
+.ann-poll-question { margin: 0; font-size: 0.98rem; font-weight: 700; overflow-wrap: anywhere; }
+.ann-poll-options { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.45rem; }
+.ann-poll-option { position: relative; display: flex; align-items: center; gap: 0.55rem; width: 100%; min-height: 44px; padding: 0.55rem 0.75rem; box-sizing: border-box; overflow: hidden; text-align: left; color: inherit; font: inherit; cursor: pointer; background: rgba(245,234,208,0.06); border: 1px solid rgba(245,234,208,0.12); border-radius: 14px; }
+.ann-poll-option[aria-disabled="true"] { cursor: default; }
+.ann-poll-option-on { border-color: var(--gold, #D4922A); }
+.ann-poll-fill { position: absolute; inset: 0 auto 0 0; background: rgba(212,146,42,0.18); transition: width 0.25s ease; pointer-events: none; }
+.ann-poll-option-on .ann-poll-fill { background: rgba(212,146,42,0.30); }
+.ann-poll-mark { position: relative; width: 1.1rem; text-align: center; color: var(--gold, #D4922A); }
+.ann-poll-label { position: relative; flex: 1; min-width: 0; overflow-wrap: anywhere; font-weight: 600; font-size: 0.9rem; }
+.ann-poll-pct { position: relative; font-variant-numeric: tabular-nums; font-size: 0.82rem; opacity: 0.85; }
+.ann-poll-foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.5rem; }
+.ann-poll-form { display: flex; flex-direction: column; gap: 0.5rem; }
+.ann-poll-form-row { display: flex; align-items: center; gap: 0.5rem; }
+.ann-poll-form-row .group-info-input { flex: 1; min-width: 0; }
+@media (prefers-reduced-motion: reduce) { .ann-poll-fill { transition: none; } }

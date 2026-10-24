@@ -2,7 +2,7 @@ import { surfaceColor } from '../lib/announcementTitleColor.js';
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { PlusOutlined, MoreOutlined } from '@ant-design/icons';
 import {
-  fetchAnnouncements, createAnnouncement, updateAnnouncement, deleteAnnouncement, rsvpJoin, rsvpLeave,
+  fetchAnnouncements, createAnnouncement, updateAnnouncement, deleteAnnouncement, rsvpJoin, rsvpLeave, pollVote, pollRetract, pollClose,
 } from '../lib/announcementsApi.js';
 import GroupAnnouncementForm from './GroupAnnouncementForm.jsx';
 import GroupAnnouncementViewer, { formatDateTime } from './GroupAnnouncementViewer.jsx';
@@ -233,6 +233,18 @@ export default function GroupAnnouncements({ userId, groupId, onBack, onGroupGon
     return merged;
   };
 
+  // Poll actions from the viewer: merge the updated announcement into the list cache.
+  const pollMerge = async (item, updated) => {
+    const merged = { ...item, ...updated };
+    commit({ ...dataRef.current, announcements: (dataRef.current?.announcements || []).map(a => (a.id === item.id ? merged : a)) });
+    return merged;
+  };
+  const pollActionsFor = (item) => ({
+    vote: async (ids) => pollMerge(item, await pollVote(userId, groupId, item.id, ids)),
+    retract: async () => pollMerge(item, await pollRetract(userId, groupId, item.id)),
+    close: async () => pollMerge(item, await pollClose(userId, groupId, item.id)),
+  });
+
   const goUpgrade = () => onUpgrade?.();
   const viewing = route.name === 'view' ? items.find(a => a.id === route.id) || (data?.announcements || []).find(a => a.id === route.id) : null;
 
@@ -258,6 +270,7 @@ export default function GroupAnnouncements({ userId, groupId, onBack, onGroupGon
         onDelete={startDelete}
         onOpenLightbox={onOpenLightbox}
         onRsvp={(join) => rsvp(viewing, join)}
+        onPoll={pollActionsFor(viewing)}
       />
     );
   }

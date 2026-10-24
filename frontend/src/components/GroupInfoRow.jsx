@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState, useLayoutEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { CloseOutlined } from '@ant-design/icons';
-import { ANNOUNCEMENTS_ENABLED, rsvpJoin, rsvpLeave } from '../lib/announcementsApi.js';
+import { ANNOUNCEMENTS_ENABLED, rsvpJoin, rsvpLeave, pollVote, pollRetract } from '../lib/announcementsApi.js';
 import { MEDIA_FEATURE } from '../lib/groupMediaApi.js';
 import GroupAnnouncementViewer from './GroupAnnouncementViewer.jsx';
 import { PinnedListBody } from './PinnedMessagesPanel.jsx';
@@ -115,6 +115,11 @@ export default function GroupInfoSubmenu({
     return merged;
   };
 
+  const pollActions = {
+    vote: async (ids) => { const merged = { ...viewing, ...(await pollVote(userId, groupId, viewing.id, ids)) }; setViewing(merged); return merged; },
+    retract: async () => { const merged = { ...viewing, ...(await pollRetract(userId, groupId, viewing.id)) }; setViewing(merged); return merged; },
+  };
+
   const requestClose = (restoreFocus = true) => {
     if (prefersReducedMotion() || closing) { onClose(restoreFocus); return; }
     setClosing(true);
@@ -176,7 +181,7 @@ export default function GroupInfoSubmenu({
           onClick={(e) => { if (e.target === e.currentTarget) setViewing(null); }}>
           <div className="announce-widget-modal-body">
             {/* Read-only, like the old chat widget: Edit/Delete stay in group info. */}
-            <GroupAnnouncementViewer item={{ ...viewing, can_edit: false }} onBack={() => setViewing(null)} onRsvp={rsvp} />
+            <GroupAnnouncementViewer item={{ ...viewing, can_edit: false }} onBack={() => setViewing(null)} onRsvp={rsvp} onPoll={pollActions} />
           </div>
         </div>,
         document.body,

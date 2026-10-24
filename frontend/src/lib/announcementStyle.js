@@ -16,6 +16,7 @@ export const ANNOUNCEMENT_FLAGS = {
   payments: 'announcement_payments',
   rsvp: 'announcement_rsvp',
   location: 'announcement_location',
+  polls: 'announcement_polls',
 };
 
 // ── Background themes ────────────────────────────────────────────────────────
@@ -188,4 +189,34 @@ export function titleColorOnTheme(hex, themeKey, fallback) {
   if (!bg || !isValidHex(hex)) return fallback;
   const r = contrastRatio(hex, bg);
   return r != null && r >= 4.5 ? hex.toUpperCase() : fallback;
+}
+
+// ── Polls (task 20261024-announcement-polls) ────────────────────────────────
+export const POLL_LIMITS = { questionMax: 200, optionMax: 80, minOptions: 2, maxOptions: 6, horizonDays: 365 };
+
+const cleanLine = (v) => String(v ?? '').replace(/\s+/g, ' ').trim();
+
+// First reason a poll draft can't be saved ({question, options[], closes}), or null. The server
+// re-checks everything; this only keeps obvious mistakes from a round trip.
+export function pollError(draft, now = Date.now()) {
+  if (!cleanLine(draft.question)) return 'Add a question for the poll.';
+  const opts = (draft.options || []).map(cleanLine).filter(Boolean);
+  if (opts.length < POLL_LIMITS.minOptions) return `A poll needs at least ${POLL_LIMITS.minOptions} options.`;
+  if (new Set(opts.map((o) => o.toLowerCase())).size !== opts.length) return 'Each option has to be different.';
+  if (draft.closes) {
+    const t = new Date(draft.closes).getTime();
+    if (Number.isNaN(t) || t <= now) return 'Pick a close time in the future.';
+    if (t > now + POLL_LIMITS.horizonDays * 86400000) return `The close time can be at most ${POLL_LIMITS.horizonDays} days ahead.`;
+  }
+  return null;
+}
+
+// Request body for `poll` from a draft ({question, options[], multiple, closes}).
+export function pollBody(draft) {
+  return {
+    question: cleanLine(draft.question),
+    options: (draft.options || []).map(cleanLine).filter(Boolean),
+    multiple: !!draft.multiple,
+    closes_at: draft.closes ? new Date(draft.closes).toISOString() : null,
+  };
 }
