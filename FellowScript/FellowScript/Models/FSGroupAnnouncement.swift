@@ -48,6 +48,9 @@ struct FSGroupAnnouncement: Codable, Identifiable, Equatable {
     var capacity:         Int? = nil
     var rsvp_count:       Int? = nil
     var rsvp_joined:      Bool? = nil
+    /// Optional poll (flag announcement_polls, task 20261024-announcement-polls). Omitted by
+    /// the server while the flag is off, when there is no poll, and in old payloads.
+    var poll:             FSAnnouncementPoll? = nil
     /// Optional free-text place (flag announcement_location). Omitted by the server
     /// while the flag is off and in old payloads.
     var location:         String? = nil
@@ -60,6 +63,37 @@ struct FSGroupAnnouncement: Codable, Identifiable, Equatable {
     var repeat_active:     Bool?   = nil
     /// Editors only (prefill); the device zone is always re-sent on change.
     var repeat_tz:         String? = nil
+}
+
+/// Poll attached to an announcement. Votes are anonymous: only counts and the caller's own selection.
+struct FSAnnouncementPoll: Codable, Equatable {
+    var question:     String
+    var multiple:     Bool
+    var closes_at:    String?
+    var closed:       Bool
+    var total_voters: Int
+    var options:      [FSPollOption]
+    var my_votes:     [String]
+}
+
+struct FSPollOption: Codable, Equatable, Identifiable {
+    let id:      String
+    var label:   String
+    var votes:   Int
+    var percent: Int
+}
+
+/// What the create/edit form submits for the poll.
+struct FSPollDraft: Equatable {
+    var question: String
+    var options:  [String]
+    var multiple: Bool = false
+    var closesAt: Date? = nil
+
+    var jsonObject: [String: Any] {
+        ["question": question, "options": options, "multiple": multiple,
+         "closes_at": closesAt.map(FSAnnouncementDates.string(from:)) ?? NSNull()]
+    }
 }
 
 struct FSAnnouncementLink: Codable, Equatable, Identifiable {
@@ -147,6 +181,8 @@ struct FSAnnouncementDraft {
     var paymentHandles: Change<[FSPaymentHandle]> = .unchanged
     var capacity: Change<Int> = .unchanged
     var location: Change<String> = .unchanged
+    /// Poll: `.clear` removes it (and its votes); `.set` creates or replaces it.
+    var poll: Change<FSPollDraft> = .unchanged
     /// Recurring reminders; `.unchanged` omits every repeat key.
     var repeatChange: AnnouncementRepeatChange = .unchanged
     var includePublishAt: Bool = true
@@ -209,6 +245,11 @@ struct FSAnnouncementDraft {
         case .unchanged: break
         case .clear: o["location"] = NSNull()
         case .set(let s): o["location"] = s
+        }
+        switch poll {
+        case .unchanged: break
+        case .clear: o["poll"] = NSNull()
+        case .set(let d): o["poll"] = d.jsonObject
         }
         repeatChange.merge(into: &o)
         if includePublishAt {

@@ -61,6 +61,7 @@ struct AnnouncementExtrasSection: View {
     let paymentsOn: Bool
     let rsvpOn: Bool
     var locationOn: Bool = false
+    var pollsOn: Bool = false
     let saving: Bool
     @Binding var busy: Bool
     var upload: (Data) async throws -> String
@@ -72,11 +73,12 @@ struct AnnouncementExtrasSection: View {
     @State private var openPayments = false
     @State private var openSpots = false
     @State private var openLocation = false
+    @State private var openPoll = false
     @State private var picks: [PhotosPickerItem] = []
     @State private var galleryError: String?
     @Environment(\.dynamicTypeSize) private var typeSize
 
-    private var total: Int { extras.count(links: linksOn, gallery: galleryOn, payments: paymentsOn, rsvp: rsvpOn, location: locationOn) }
+    private var total: Int { extras.count(links: linksOn, gallery: galleryOn, payments: paymentsOn, rsvp: rsvpOn, location: locationOn, polls: pollsOn) }
     private var blocking: String? { extras.blockingError(links: linksOn, payments: paymentsOn, location: locationOn) }
 
     var body: some View {
@@ -90,6 +92,7 @@ struct AnnouncementExtrasSection: View {
                     if paymentsOn { paymentsRow }
                     if rsvpOn { spotsRow }
                     if locationOn { locationRow }
+                    if pollsOn { pollRow }
                     if let blocking {
                         Text(blocking).font(.system(size: Theme.fontXS)).foregroundColor(Theme.error)
                     }
@@ -304,6 +307,76 @@ struct AnnouncementExtrasSection: View {
                     .accessibilityValue("\(extras.capacity)")
                 }
                 Text("Members RSVP to this announcement. It doesn't add anyone to the group. Turning this off clears the RSVPs.")
+                    .font(.system(size: Theme.fontXS)).foregroundColor(Theme.parchment.opacity(0.6))
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    // ── Poll ─────────────────────────────────────────────────────────────────
+    private var pollRow: some View {
+        ExtrasDisclosure(title: "Poll", summary: extras.pollOn ? "1" : nil, isOpen: $openPoll) {
+            VStack(alignment: .leading, spacing: Theme.spacingSM) {
+                Toggle(isOn: $extras.pollOn) {
+                    Text("Add a poll").font(.system(size: Theme.fontSM)).foregroundColor(Theme.parchment)
+                }
+                .tint(Theme.gold).frame(minHeight: 44)
+                .onChange(of: extras.pollOn) { _, _ in onChange() }
+                if extras.pollOn {
+                    TextField("Question", text: $extras.pollQuestion, prompt: Text("What do you want to ask?").foregroundColor(Theme.parchment.opacity(0.65)))
+                        .font(.system(size: Theme.fontSM)).foregroundColor(Theme.parchment)
+                        .padding(.horizontal, Theme.spacingSM).frame(minHeight: 44)
+                        .announcementTranslucentField()
+                        .onChange(of: extras.pollQuestion) { _, v in
+                            if v.count > AnnouncementExtrasLimits.pollQuestionMax { extras.pollQuestion = String(v.prefix(AnnouncementExtrasLimits.pollQuestionMax)) }
+                            onChange()
+                        }
+                        .accessibilityLabel("Poll question")
+                    ForEach(extras.pollOptions.indices, id: \.self) { i in
+                        HStack(spacing: Theme.spacingXS) {
+                            TextField("Option \(i + 1)", text: Binding(get: { extras.pollOptions[i] }, set: { extras.pollOptions[i] = String($0.prefix(AnnouncementExtrasLimits.pollOptionMax)); onChange() }),
+                                      prompt: Text("Option \(i + 1)").foregroundColor(Theme.parchment.opacity(0.65)))
+                                .font(.system(size: Theme.fontSM)).foregroundColor(Theme.parchment)
+                                .padding(.horizontal, Theme.spacingSM).frame(minHeight: 44)
+                                .announcementTranslucentField()
+                                .disabled(extras.pollLocked)
+                                .accessibilityLabel("Poll option \(i + 1)")
+                            if !extras.pollLocked && extras.pollOptions.count > AnnouncementExtrasLimits.pollOptionCount.lowerBound {
+                                Button { extras.pollOptions.remove(at: i); onChange() } label: {
+                                    Image(systemName: "minus.circle").foregroundColor(Theme.error).frame(width: 44, height: 44).contentShape(Rectangle())
+                                }
+                                .accessibilityLabel("Remove option \(i + 1)")
+                            }
+                        }
+                    }
+                    if !extras.pollLocked && extras.pollOptions.count < AnnouncementExtrasLimits.pollOptionCount.upperBound {
+                        Button { extras.pollOptions.append(""); onChange() } label: {
+                            Label("Add option", systemImage: "plus.circle").font(.system(size: Theme.fontSM, weight: .semibold)).foregroundColor(Theme.gold)
+                                .frame(minHeight: 44, alignment: .leading)
+                        }
+                        .accessibilityLabel("Add option")
+                    }
+                    Toggle(isOn: $extras.pollMultiple) {
+                        Text("Let people pick more than one").font(.system(size: Theme.fontSM)).foregroundColor(Theme.parchment)
+                    }
+                    .tint(Theme.gold).frame(minHeight: 44).disabled(extras.pollLocked)
+                    .onChange(of: extras.pollMultiple) { _, _ in onChange() }
+                    Toggle(isOn: $extras.pollHasCloseTime) {
+                        Text("Close at a set time").font(.system(size: Theme.fontSM)).foregroundColor(Theme.parchment)
+                    }
+                    .tint(Theme.gold).frame(minHeight: 44)
+                    .onChange(of: extras.pollHasCloseTime) { _, _ in onChange() }
+                    if extras.pollHasCloseTime {
+                        DatePicker("Close time", selection: $extras.pollCloseTime, in: Date()..., displayedComponents: [.date, .hourAndMinute])
+                            .font(.system(size: Theme.fontSM)).foregroundColor(Theme.parchment).tint(Theme.gold)
+                            .onChange(of: extras.pollCloseTime) { _, _ in onChange() }
+                    }
+                    if extras.pollLocked {
+                        Text("People have voted, so the options can't change.")
+                            .font(.system(size: Theme.fontXS)).foregroundColor(Theme.parchment.opacity(0.75))
+                    }
+                }
+                Text("Votes are anonymous. Everyone in the group sees live results. Turning this off removes the votes.")
                     .font(.system(size: Theme.fontXS)).foregroundColor(Theme.parchment.opacity(0.6))
                     .fixedSize(horizontal: false, vertical: true)
             }

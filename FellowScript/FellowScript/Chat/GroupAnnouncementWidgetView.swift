@@ -14,12 +14,14 @@ final class GroupAnnouncementWidgetViewModel: ObservableObject {
     let groupId: String
     let userId:  String
     private let service: GroupAnnouncementsService?
+    private let pollService: AnnouncementPollsService?
 
     @Published var item: FSGroupAnnouncement?
     @Published var dismissedId: String?
 
     init(service: DataServiceProtocol, groupId: String, userId: String) {
         self.service = service as? GroupAnnouncementsService
+        self.pollService = service as? AnnouncementPollsService
         self.groupId = groupId
         self.userId  = userId
         self.dismissedId = UserDefaults.standard.string(forKey: dismissKey)
@@ -57,6 +59,15 @@ final class GroupAnnouncementWidgetViewModel: ObservableObject {
             await DiskCache.shared.save(FSLatestAnnouncement(announcement: updated), forKey: cacheKey)
         }
         return updated
+    }
+
+    /// Poll voting from the detail sheet; refreshes the widget's cached item too.
+    func pollActions(for item: FSGroupAnnouncement) -> AnnouncementPollActions? {
+        AnnouncementPollActions.make(service: pollService, userId: userId, groupId: groupId, item: item) { [weak self] updated in
+            guard let self, self.item?.id == updated.id else { return }
+            self.item = updated
+            await DiskCache.shared.save(FSLatestAnnouncement(announcement: updated), forKey: self.cacheKey)
+        }
     }
 
     func dismiss() {
@@ -100,7 +111,8 @@ struct GroupAnnouncementWidgetView: View {
             NavigationStack {
                 // Read-only here; edit/delete stay in the group info panel.
                 GroupAnnouncementDetailView(item: readOnly(item), onEdit: {}, onDelete: {},
-                                            onRSVP: { join in try await vm.rsvp(item, join: join) })
+                                            onRSVP: { join in try await vm.rsvp(item, join: join) },
+                                            pollActions: vm.pollActions(for: readOnly(item)))
                     .toolbar {
                         ToolbarItem(placement: .topBarLeading) {
                             Button("Close") { viewing = nil }

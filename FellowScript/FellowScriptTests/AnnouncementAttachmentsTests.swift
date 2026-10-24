@@ -321,7 +321,7 @@ final class AnnouncementAttachmentsTests: XCTestCase {
 
     func testEachFormRowAndSectionIsGatedBySourcePin() throws {
         let host = try readSource("FellowScript/Chat/GroupAnnouncementFormView.swift")
-        XCTAssertTrue(host.contains("private var extrasOn: Bool { linksOn || galleryOn || paymentsOn || rsvpOn || locationOn }"))
+        XCTAssertTrue(host.contains("private var extrasOn: Bool { linksOn || galleryOn || paymentsOn || rsvpOn || locationOn || pollsOn }"))
         XCTAssertTrue(host.contains("if extrasOn {\n            AnnouncementExtrasSection("), "whole section absent when all flags are off")
         XCTAssertTrue(host.contains("capabilities.isEnabled(AnnouncementExtrasFlag.links)"))
         XCTAssertTrue(host.contains("capabilities.isEnabled(AnnouncementExtrasFlag.gallery)"))

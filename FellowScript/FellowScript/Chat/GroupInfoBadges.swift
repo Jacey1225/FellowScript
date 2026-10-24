@@ -21,6 +21,9 @@ enum GroupInfoBadgeLogic {
         return items.filter { !$0.byMe && $0.at > seen }.count
     }
 
+    /// Watermark written the first time a list loads for this user and group.
+    static func seedWatermark(newest: Date?, now: Date = Date()) -> Date { newest ?? now }
+
     static func seenKey(userId: String, groupId: String, category: GroupInfoCategory) -> String {
         "groupinfo.seen.\(userId).\(groupId).\(category.rawValue)"
     }

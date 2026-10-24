@@ -94,7 +94,8 @@ struct GroupAnnouncementFormView: View {
     private var paymentsOn: Bool { capabilities.isEnabled(AnnouncementExtrasFlag.payments) }
     private var rsvpOn: Bool { capabilities.isEnabled(AnnouncementExtrasFlag.rsvp) }
     private var locationOn: Bool { capabilities.isEnabled(AnnouncementExtrasFlag.location) }
-    private var extrasOn: Bool { linksOn || galleryOn || paymentsOn || rsvpOn || locationOn }
+    private var pollsOn: Bool { capabilities.isEnabled(AnnouncementExtrasFlag.polls) }
+    private var extrasOn: Bool { linksOn || galleryOn || paymentsOn || rsvpOn || locationOn || pollsOn }
     private var extrasError: String? { extrasOn ? extras.blockingError(links: linksOn, payments: paymentsOn, location: locationOn) : nil }
     private var submitLabel: String { isEditing ? "Save" : (schedule ? "Schedule" : "Post") }
 
@@ -189,7 +190,7 @@ struct GroupAnnouncementFormView: View {
         }
         if extrasOn {
             AnnouncementExtrasSection(
-                extras: $extras, linksOn: linksOn, galleryOn: galleryOn, paymentsOn: paymentsOn, rsvpOn: rsvpOn, locationOn: locationOn,
+                extras: $extras, linksOn: linksOn, galleryOn: galleryOn, paymentsOn: paymentsOn, rsvpOn: rsvpOn, locationOn: locationOn, pollsOn: pollsOn,
                 saving: saving, busy: $extrasBusy,
                 upload: { data in try await vm.uploadBanner(data: data, contentType: "image/jpeg") },
                 onChange: { dirty = true })
@@ -464,7 +465,7 @@ struct GroupAnnouncementFormView: View {
                                       chosen: AnnouncementBgTheme.resolve(bgTheme).storedKey)
         }
         if extrasOn {
-            extras.apply(to: &draft, original: editing, links: linksOn, gallery: galleryOn, payments: paymentsOn, rsvp: rsvpOn, location: locationOn)
+            extras.apply(to: &draft, original: editing, links: linksOn, gallery: galleryOn, payments: paymentsOn, rsvp: rsvpOn, location: locationOn, polls: pollsOn)
         }
         draft.repeatChange = repeatDraft.change(from: AnnouncementRepeatDraft(from: editing))
         if schedule { draft.publishAt = when }

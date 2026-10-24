@@ -222,6 +222,16 @@ final class GroupInfoRowTests: XCTestCase {
         XCTAssertNil(GroupInfoBadgeLogic.newest([]))
     }
 
+    func test_seedWatermark_usesNewestItemOrNowWhenEmpty_soTheFirstNewItemStillBadges() {
+        let now = Date(timeIntervalSince1970: 5_000)
+        let newest = Date(timeIntervalSince1970: 4_000)
+        XCTAssertEqual(GroupInfoBadgeLogic.seedWatermark(newest: newest, now: now), newest)
+        let seed = GroupInfoBadgeLogic.seedWatermark(newest: nil, now: now)
+        XCTAssertEqual(seed, now)
+        let first = GroupInfoBadgeLogic.Item(at: now.addingTimeInterval(60), byMe: false)
+        XCTAssertEqual(GroupInfoBadgeLogic.unseenCount([first], seen: seed), 1)
+    }
+
     func test_seenStore_roundTripsPerGroupAndCategory() {
         let d = UserDefaults(suiteName: "groupinfo-badge-test")!
         d.removePersistentDomain(forName: "groupinfo-badge-test")

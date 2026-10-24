@@ -10,6 +10,8 @@ struct GroupAnnouncementDetailView: View {
     var onDelete: () -> Void
     /// Part E: join (true) / leave (false) the RSVP. Nil = no RSVP action (count only).
     var onRSVP: ((Bool) async throws -> FSGroupAnnouncement)? = nil
+    /// Poll voting (flag announcement_polls). Nil = results only.
+    var pollActions: AnnouncementPollActions? = nil
 
     @EnvironmentObject private var appState: AppState
     @State private var sharePayload: SharePayload?
@@ -45,7 +47,7 @@ struct GroupAnnouncementDetailView: View {
                     Text(item.description)
                         .font(.inter(Theme.fontSM)).foregroundColor(theme.readableText.opacity(0.9))
                         .fixedSize(horizontal: false, vertical: true)
-                    AnnouncementExtrasDetail(item: item, textColor: theme.readableText, onRSVP: onRSVP)
+                    AnnouncementExtrasDetail(item: item, textColor: theme.readableText, onRSVP: onRSVP, pollActions: pollActions)
                         .padding(.top, Theme.spacingSM)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)

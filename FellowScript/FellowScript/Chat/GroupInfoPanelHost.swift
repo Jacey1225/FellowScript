@@ -91,7 +91,8 @@ struct GroupInfoPanelHost: View {
             NavigationStack {
                 // Read-only here; edit/delete stay in the group info panel.
                 GroupAnnouncementDetailView(item: readOnly(item), onEdit: {}, onDelete: {},
-                                            onRSVP: { join in try await announcements.rsvp(item, join: join) })
+                                            onRSVP: { join in try await announcements.rsvp(item, join: join) },
+                                            pollActions: announcements.pollActions(for: readOnly(item)))
                     .toolbar {
                         ToolbarItem(placement: .topBarLeading) {
                             Button("Close") { viewing = nil }
@@ -171,8 +172,9 @@ struct GroupInfoPanelHost: View {
                 if let newest { seenStore.setSeen(c, newest) }
                 continue
             }
-            guard let newest else { continue }
-            guard let seen = seenStore.seen(c) else { seenStore.setSeen(c, newest); continue }   // first run: seed
+            // First run (no watermark): seed to the newest item, or to now when the list is empty,
+            // so the first item that ever arrives still badges.
+            guard let seen = seenStore.seen(c) else { seenStore.setSeen(c, GroupInfoBadgeLogic.seedWatermark(newest: newest)); continue }
             let n = GroupInfoBadgeLogic.unseenCount(items, seen: seen)
             if n > 0 { next[c] = n }
         }
