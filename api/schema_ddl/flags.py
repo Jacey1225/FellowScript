@@ -27,6 +27,7 @@ SEED_FLAG_NAMES = (
     "announcement_payments",
     "announcement_rsvp",
     "announcement_location",
+    "announcement_polls",
     "screen_share_enabled",
     "discussion_rooms",
     "message_reaction_push",

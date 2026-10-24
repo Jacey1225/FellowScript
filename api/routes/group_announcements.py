@@ -22,6 +22,7 @@ from backend.interactions.announcements import (
 )
 from backend.interactions.announcement_repeat_rules import RepeatLimitReached
 from backend.interactions.announcement_notifier import notify_on_create
+from backend.interactions.announcement_polls import PollClosed, PollForbidden, PollNotFound
 from backend.interactions.attachments import AttachmentConfigError
 from backend.moderation.content_filter import ContentRejected, check_clean, rejection_message
 from backend.rate_limiting import limiter
@@ -42,6 +43,20 @@ class PaymentHandleIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
     provider: str
     handle: str
+
+
+class PollIn(BaseModel):
+    """Optional poll attached to an announcement (flag ``announcement_polls``; 422 while off)."""
+    model_config = ConfigDict(extra="forbid")
+    question: str
+    options: list[str]
+    multiple: StrictBool = False
+    closes_at: str | None = None  # ISO-8601 with offset, in the future, <= 365d ahead
+
+
+class PollVoteIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    option_ids: list[str]
 
 
 EXTRA_FIELDS = ("links", "gallery_keys", "is_event", "payment_handles", "capacity", "location")
@@ -74,6 +89,7 @@ class AnnouncementCreateRequest(BaseModel):
     payment_handles: list[PaymentHandleIn] | None = None
     capacity: StrictInt | None = None
     location: str | None = None  # flag-gated (422 while off); blank/null = none
+    poll: PollIn | None = None  # flag-gated (422 while off)
     # Recurring reminder (ANNOUNCEMENT_REPEAT_ENABLED; a non-null interval is 422 while off).
     repeat_interval: str | None = None  # "daily" | "weekly" | "monthly"; null = no repeat
     repeat_until: str | None = None  # ISO-8601 with offset, after publish_at, <= 365d ahead
@@ -95,6 +111,7 @@ class AnnouncementUpdateRequest(BaseModel):
     payment_handles: list[PaymentHandleIn] | None = None
     capacity: StrictInt | None = None  # null clears (drops RSVPs)
     location: str | None = None  # null / blank clears
+    poll: PollIn | None = None  # null removes the poll (and its votes); options lock once anyone has voted
     repeat_interval: str | None = None  # null clears the whole repeat; editable after publish
     repeat_until: str | None = None  # null removes the end date
     repeat_tz: str | None = None  # null = UTC
@@ -125,6 +142,18 @@ def _clean(**fields: str | None) -> None:
         check_clean(**fields)
     except ContentRejected as e:
         raise HTTPException(status_code=422, detail=rejection_message(e))
+
+
+def _poll_text(poll) -> dict:
+    """Poll question/options as content-filter fields (empty when no poll)."""
+    if isinstance(poll, BaseModel):
+        poll = poll.model_dump()
+    if not isinstance(poll, dict):
+        return {}
+    out = {"poll_question": str(poll.get("question") or "")}
+    for i, o in enumerate(poll.get("options") or []):
+        out[f"poll_option_{i}"] = str(o)
+    return out
 
 
 def _publish_at(value: str | None):
@@ -163,7 +192,8 @@ async def create_announcement(
     manager = _open(user_id, group_id)
     try:
         _clean(title=body.title, description=body.description, location=body.location,
-               **{f"link_label_{i}": (l.label or "") for i, l in enumerate(body.links or [])})
+               **{f"link_label_{i}": (l.label or "") for i, l in enumerate(body.links or [])},
+               **_poll_text(body.poll))
         publish_at = _publish_at(body.publish_at)
         gate = check_limit(user_id, "announcements")
         if not gate["allowed"]:
@@ -173,6 +203,7 @@ async def create_announcement(
                                                 title_color=body.title_color,
                                                 title_font=body.title_font, bg_theme=body.bg_theme,
                                                 extra=_extra_fields({k: getattr(body, k) for k in body.model_fields_set}),
+                                                poll=body.poll.model_dump() if body.poll else None,
                                                 repeat={k: getattr(body, k) for k in REPEAT_KEYS
                                                         if k in body.model_fields_set})
             # Group push runs after the response (off the request path); the
@@ -230,10 +261,13 @@ async def update_announcement(
     """
     fields = {k: getattr(body, k) for k in body.model_fields_set}
     fields.update(_extra_fields(fields))
+    if isinstance(fields.get("poll"), BaseModel):
+        fields["poll"] = fields["poll"].model_dump()
     manager = _open(user_id, group_id)
     try:
         _clean(title=fields.get("title"), description=fields.get("description"), location=fields.get("location"),
-               **{f"link_label_{i}": (l.get("label") or "") for i, l in enumerate(fields.get("links") or [])})
+               **{f"link_label_{i}": (l.get("label") or "") for i, l in enumerate(fields.get("links") or [])},
+               **_poll_text(fields.get("poll")))
         if "publish_at" in fields:
             fields["publish_at"] = _publish_at(fields["publish_at"])
         try:
@@ -361,5 +395,69 @@ async def list_rsvps(
         raise HTTPException(status_code=404, detail="Announcement not found")
     except AnnouncementForbidden:
         raise HTTPException(status_code=403, detail="Only the host can see the attendee list")
+    finally:
+        manager.close()
+
+
+@group_announcements_router.post("/{user_id}/{group_id}/announcements/{announcement_id}/poll/vote")
+@limiter.limit("30/minute")
+async def poll_vote(
+    request: Request, user_id: str, group_id: str, announcement_id: str, body: PollVoteIn,
+    _: str = Depends(require_match("user_id")),
+) -> dict:
+    """Set the caller's answer(s), replacing any earlier choice (idempotent). Returns the
+    announcement with live counts. Votes are anonymous.
+
+    Raises: 403 not a member; 404 no votable poll / flag off; 409 poll closed;
+    422 unknown option or more answers than the poll allows."""
+    manager = _open(user_id, group_id)
+    try:
+        manager.poll_vote(announcement_id, body.option_ids)
+        return manager.get_announcement(announcement_id)
+    except (PollNotFound, AnnouncementNotFound):
+        raise HTTPException(status_code=404, detail="Poll not found")
+    except PollClosed:
+        raise HTTPException(status_code=409, detail="This poll is closed")
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    finally:
+        manager.close()
+
+
+@group_announcements_router.delete("/{user_id}/{group_id}/announcements/{announcement_id}/poll/vote")
+@limiter.limit("30/minute")
+async def poll_retract(
+    request: Request, user_id: str, group_id: str, announcement_id: str,
+    _: str = Depends(require_match("user_id")),
+) -> dict:
+    """Clear the caller's answer (idempotent). Raises: 403; 404; 409 closed."""
+    manager = _open(user_id, group_id)
+    try:
+        manager.poll_retract(announcement_id)
+        return manager.get_announcement(announcement_id)
+    except (PollNotFound, AnnouncementNotFound):
+        raise HTTPException(status_code=404, detail="Poll not found")
+    except PollClosed:
+        raise HTTPException(status_code=409, detail="This poll is closed")
+    finally:
+        manager.close()
+
+
+@group_announcements_router.post("/{user_id}/{group_id}/announcements/{announcement_id}/poll/close")
+@limiter.limit("30/minute")
+async def poll_close(
+    request: Request, user_id: str, group_id: str, announcement_id: str,
+    _: str = Depends(require_match("user_id")),
+) -> dict:
+    """Close the poll now (announcement creator or group creator; idempotent).
+    Raises: 403 not a member / not allowed; 404."""
+    manager = _open(user_id, group_id)
+    try:
+        manager.poll_close(announcement_id)
+        return manager.get_announcement(announcement_id)
+    except (PollNotFound, AnnouncementNotFound):
+        raise HTTPException(status_code=404, detail="Poll not found")
+    except PollForbidden:
+        raise HTTPException(status_code=403, detail="Not allowed to close this poll")
     finally:
         manager.close()

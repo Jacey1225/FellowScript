@@ -23,6 +23,7 @@ from backend.interactions import announcement_extras as extras
 from backend.interactions import announcement_repeat_rules as repeat_rules
 from backend.interactions import flags
 from backend.interactions.attachments import delete_object, generate_download_url
+from backend.interactions.announcement_polls import PollNotFound, PollsMixin, normalize_poll
 from backend.interactions.groups import GroupsManager
 
 # Feature flag (Configuration Philosophy: flag new functionality by default).
@@ -160,7 +161,7 @@ def normalize_description(description: str | None) -> str:
     return cleaned
 
 
-class AnnouncementsManager(GroupsManager):
+class AnnouncementsManager(PollsMixin, GroupsManager):
     """Announcement CRUD for one user/group context."""
 
     # ── helpers ───────────────────────────────────────────────────────────
@@ -237,6 +238,10 @@ class AnnouncementsManager(GroupsManager):
             for d in out:
                 if d.get("capacity") is not None:
                     d["rsvp_count"], d["rsvp_joined"] = counts.get(d["id"], (0, False))
+        polls = self.poll_summaries([d["id"] for d in out]) if out else {}
+        for d in out:
+            if d["id"] in polls:
+                d["poll"] = polls[d["id"]]
         return out
 
     def _rsvp_counts(self, ids: list[str]) -> dict[str, tuple[int, bool]]:
@@ -464,7 +469,7 @@ class AnnouncementsManager(GroupsManager):
                             banner_key: str | None, publish_at: datetime | None,
                             title_color: str | None = None, title_font: str | None = None,
                             bg_theme: str | None = None, extra: dict | None = None,
-                            repeat: dict | None = None) -> dict:
+                            repeat: dict | None = None, poll: dict | None = None) -> dict:
         """Insert an announcement. The caller must already have passed the
         free-limit gate. Raises ValueError (validation, incl. bad title_color),
         AnnouncementForbidden (foreign banner key), SaveFailedError."""
@@ -475,6 +480,11 @@ class AnnouncementsManager(GroupsManager):
                                     font_given=title_font is not None, theme_given=bg_theme is not None)
         self._check_banner_key(banner_key)
         ex = self._checked_extras(extra or {}, {"is_event": False, "payment_handles": None})
+        poll_def = None
+        if poll is not None:
+            if not self._polls_on():
+                raise ValueError("Polls aren't available right now")
+            poll_def = normalize_poll(poll)
         rp: dict = {}
         if repeat:
             if repeat.get("repeat_interval") is not None and publish_at is None:
@@ -498,6 +508,8 @@ class AnnouncementsManager(GroupsManager):
                  rp.get("repeat_started_at"), rp.get("next_repeat_at")),
             )
             new_id = self.cur.fetchone()[0]
+            if poll_def:
+                self._insert_poll(str(new_id), poll_def)
             self.conn.commit()
         except Exception:
             self.conn.rollback()
@@ -532,6 +544,9 @@ class AnnouncementsManager(GroupsManager):
             {k: fields[k] for k in ("links", "gallery_keys", "is_event", "payment_handles", "capacity", "location") if k in fields},
             {"is_event": bool(row[15]), "payment_handles": row[16]})
         sets.update(ex)
+        poll_given = "poll" in fields
+        if poll_given and fields["poll"] is not None and not self._polls_on():
+            raise ValueError("Polls aren't available right now")
         given_repeat = {k: fields[k] for k in REPEAT_KEYS if k in fields}
         new_publish = fields.get("publish_at") if fields.get("publish_at") is not None else row[7]
         if given_repeat:
@@ -553,11 +568,24 @@ class AnnouncementsManager(GroupsManager):
             if row[19] and not given_repeat:
                 # Rescheduling a still-unpublished repeating announcement moves its anchor.
                 sets["next_repeat_at"] = self._rearmed_next(row, fields["publish_at"])
-        if not sets:
+        if not sets and not poll_given:
             raise ValueError("No changes supplied")
         sets["updated_at"] = datetime.now(timezone.utc)
         if "capacity" in ex:
             self._guard_capacity_change(announcement_id, ex["capacity"])
+        if poll_given:
+            try:
+                self._apply_poll_edit(announcement_id, fields["poll"])
+                self.conn.commit()
+            except ValueError:
+                self.conn.rollback()
+                raise
+            except PollNotFound:
+                self.conn.rollback()
+                raise ValueError("Polls aren't available right now")
+            except Exception:
+                self.conn.rollback()
+                raise SaveFailedError()
         if not self.update("group_announcements", sets, {"_id": announcement_id, "group_id": self.group_id}):
             self.conn.rollback()
             raise SaveFailedError()

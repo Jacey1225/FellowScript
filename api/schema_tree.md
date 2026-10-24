@@ -142,6 +142,9 @@ message_pins (module "message_pins", flag `message_pins`, off by default)  # PK 
 message_pin_push_claims  # PK (chat_key, pinner_id -> users ON DELETE CASCADE), last_at; atomic throttle for the pin push + system line
 messages (module "message_pins")  # additive nullable system_kind TEXT ('pin' = server-generated "pinned a message" line, from_user = pinner)
 group_announcement_rsvps  # PK (announcement_id -> group_announcements ON DELETE CASCADE, user_id -> users ON DELETE CASCADE), created_at; an event sign-up, not group membership
+group_announcement_polls  # PK announcement_id -> group_announcements ON DELETE CASCADE; question, multiple, closes_at, closed_at (flag `announcement_polls`, off by default; response key `poll` omitted while off)
+group_announcement_poll_options  # _id, announcement_id -> polls CASCADE, position, label (2-6 per poll)
+group_announcement_poll_votes  # PK (option_id, user_id); anonymous: only counts are ever returned
 # <!-- /ANA -->
 ```
 
