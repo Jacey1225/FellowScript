@@ -110,9 +110,21 @@ textarea.ff-input { resize: vertical; min-height: 96px; padding: 0; line-height:
 .ff-rail__hit { min-width: 44px; min-height: 44px; background: transparent; border: 0; color: inherit; display: flex; flex-direction: column; align-items: center; gap: 6px; cursor: pointer; padding: 0; font: inherit; }
 
 /* Sticky action bar */
-.ff-actions { position: sticky; bottom: 0; display: flex; justify-content: flex-end; gap: 12px; padding: 16px; background: var(--ff-nav);
-  border-top: 1px solid var(--ff-card-border); }
-.ff-actions--panel .ff-btn { flex: 1; }
+/* Content fades out above the flush bar (mask only, adds no color) */
+.ff-body:has(+ .ff-actions) { -webkit-mask-image: linear-gradient(#000 calc(100% - 30px), transparent); mask-image: linear-gradient(#000 calc(100% - 30px), transparent); }
+
+/* Sticky action bar (option B, always ONE row): flush with the form background, no fill/hairline/shadow.
+   Back/Cancel hugs its label as a ghost pill (field recipe) on the left; the 54px primary fills the rest.
+   In a confirm (has a danger button) the safe action is the gold pill and the danger action an outline,
+   same row; long labels wrap to two lines, the row never stacks. */
+.ff-actions { position: sticky; bottom: 0; display: flex; flex-direction: row; flex-wrap: nowrap; align-items: stretch; gap: 12px;
+  padding: 8px 16px 16px; background: transparent; border: 0; box-shadow: none; }
+.ff-actions > .ff-btn { min-height: 54px; border-radius: 27px; line-height: 1.2; padding: 0 16px; }
+.ff-actions > .ff-btn--primary, .ff-actions > .ff-btn--danger { flex: 1 1 0; min-width: 0; }
+.ff-actions > .ff-btn--secondary { order: 0; flex: 0 0 auto; min-width: 92px; background: var(--ff-field); border-color: var(--ff-field-border); color: var(--ff-text); font-weight: 600; padding: 0 20px; }
+.ff-actions > .ff-btn--primary, .ff-actions > .ff-btn--danger { order: 1; }
+.ff-actions:has(> .ff-btn--danger) > .ff-btn--secondary { color: var(--ff-ink); font-weight: 700; padding: 0 20px;
+  background: linear-gradient(135deg, var(--ff-gold-light), var(--ff-gold), var(--ff-gold-dim)); }
 .ff-btn { min-height: 44px; padding: 0 24px; border-radius: 24px; font: inherit; font-size: 16px; font-weight: 700; cursor: pointer; border: 1px solid transparent; }
 .ff-btn--primary { background: linear-gradient(135deg, var(--ff-gold-light), var(--ff-gold), var(--ff-gold-dim)); color: var(--ff-ink); }
 .ff-btn--primary[aria-disabled="true"] { background: rgba(176,120,32,0.4); color: rgba(26,16,10,0.5); }
@@ -130,8 +142,6 @@ textarea.ff-input { resize: vertical; min-height: 96px; padding: 0; line-height:
 
 @media (max-width: 640px) {
   .ff-modal, .ff-modal--large, .ff-modal--confirm { width: 100%; max-height: 100vh; border-radius: 0; }
-  .ff-actions { flex-direction: row; }
-  .ff-actions .ff-btn { flex: 1; }
 }
 @media (prefers-reduced-motion: reduce) { .fs-form * { transition: none !important; animation: none !important; } }
 
@@ -165,7 +175,7 @@ textarea.ff-input { resize: vertical; min-height: 96px; padding: 0; line-height:
 .ff-code:focus-within .ff-code__box--active { border-color: var(--ff-gold); }
 .ff-formstack { display: flex; flex-direction: column; gap: 16px; }
 .ff-formstack .ff-actions { position: static; background: transparent; border: 0; padding: 0; }
-.ff-formstack .ff-actions .ff-btn { width: 100%; }
+.ff-formstack .ff-actions .ff-btn--primary { width: 100%; }
 
 /* antd form surfaces inside <FormSkin>: labels above, 14/600, soft errors */
 .fs-form .ant-form-item-label > label { font-weight: 600; }

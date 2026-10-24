@@ -30,6 +30,11 @@ struct FSFormScaffold<Content: View, Banner: View, Bar: View>: View {
                         .padding(.bottom, 24)
                 }
                 .scrollDismissesKeyboard(.interactively)
+                // Content fades out above the flush bar (mask only, adds no color).
+                .mask(VStack(spacing: 0) {
+                    Rectangle()
+                    LinearGradient(colors: [.black, .clear], startPoint: .top, endPoint: .bottom).frame(height: 24)
+                })
                 banner().padding(.horizontal, 16).padding(.bottom, 8)
                 bar()
             }

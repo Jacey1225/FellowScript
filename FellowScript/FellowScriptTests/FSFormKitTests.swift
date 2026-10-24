@@ -39,6 +39,19 @@ final class FSFormKitTests: XCTestCase {
         XCTAssertTrue(texts.contains("Next"))
     }
 
+    /// Option B, always one row: flush bar, secondary hugs left, primary fills, never stacks.
+    func testPinnedActionBarSourcePinsOneRowOptionB() throws {
+        let url = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("FellowScript/Shared/Forms/FSPinnedActionBar.swift")
+        let src = try String(contentsOf: url, encoding: .utf8)
+        XCTAssertFalse(src.contains("Theme.navBg"), "bar must be flush with the form background")
+        XCTAssertFalse(src.contains("opacity(0.14)"), "no hairline")
+        XCTAssertFalse(src.contains("VStack(spacing"), "the bar never stacks")
+        XCTAssertFalse(src.contains("keyboardWillShowNotification"), "same row with the keyboard up")
+        XCTAssertTrue(src.contains("HStack(spacing: 12)"))
+        XCTAssertTrue(src.contains("minWidth: 92, minHeight: 54"))
+    }
+
     func testErrorSummaryPluralizesHeading() throws {
         let one = FSErrorSummaryCard(fields: [("t", "Title")]) { _ in }
         let two = FSErrorSummaryCard(fields: [("t", "Title"), ("m", "Message")]) { _ in }

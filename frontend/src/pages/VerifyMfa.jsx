@@ -4,9 +4,11 @@ import { useAuth } from '../context/AuthContext.jsx';
 import { API } from '../config.js';
 import Seo from '../components/Seo.jsx';
 import { postAuthPath } from '../lib/pendingInvite.js';
+import { useWarmCanvas } from '../hooks/useWarmCanvas.js';
 import { AuthPage, CodeField, StickyActionBar, TermsReaccept } from '../components/forms/index.js';
 
 export default function VerifyMfa() {
+  useWarmCanvas(); // same warm gradient canvas as sign-in
   const { signIn } = useAuth();
   const navigate    = useNavigate();
   const location    = useLocation();

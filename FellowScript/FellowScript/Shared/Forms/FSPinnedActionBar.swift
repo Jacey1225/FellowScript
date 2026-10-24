@@ -1,14 +1,16 @@
 // FSPinnedActionBar.swift
-// Pinned bottom action bar (spec 2.8): optional outlined secondary plus gold
-// gradient primary. The primary dims when invalid but stays tappable so the
-// tap runs validation (spec D8). `saving` swaps the label for a spinner.
+// Pinned bottom action bar (spec 2.8, option B, always ONE row): flush with the
+// form background (no fill, hairline or shadow). Back/Cancel hugs its label as a
+// ghost pill on the left; the 54pt gold primary fills the rest. In a
+// destructive confirm the safe action is the gold pill and the destructive
+// action a danger outline pill, both in the same row; long labels wrap to two
+// lines, the row never stacks. The primary dims when invalid but stays tappable
+// so the tap runs validation (spec D8). `saving` swaps the label for a spinner.
 
 import SwiftUI
 
 struct FSPinnedActionBar: View {
     var secondaryTitle: String? = nil
-    var secondaryIcon: String? = nil          // used by the tight variant
-    var secondaryDestructive: Bool = false
     var onSecondary: (() -> Void)? = nil
     let primaryTitle: String
     var primaryTrailingIcon: String? = nil
@@ -17,47 +19,52 @@ struct FSPinnedActionBar: View {
     var primaryDestructive: Bool = false
     var primaryAccessibilityLabel: String? = nil
     var saving: Bool = false
-    var tight: Bool = false
     let onPrimary: () -> Void
-    @Environment(\.dynamicTypeSize) private var typeSize
-
-    private var stacked: Bool { typeSize >= .accessibility2 }
+    /// Destructive confirm: the secondary is the safe action and takes the gold slot.
+    private var confirm: Bool { primaryDestructive && secondaryTitle != nil }
 
     var body: some View {
-        Group {
-            if stacked && secondaryTitle != nil {
-                VStack(spacing: 8) { primary; secondary }
-            } else {
-                HStack(spacing: 12) { secondary; primary }
-            }
+        HStack(spacing: 12) {
+            if confirm { safeAction } else { secondary }
+            primary
         }
-        .padding(16)
-        .background(Theme.navBg.ignoresSafeArea(edges: .bottom))
-        .overlay(alignment: .top) { Rectangle().fill(Color.white.opacity(0.14)).frame(height: 1) }
+        .padding(.horizontal, 16).padding(.top, 8).padding(.bottom, 16)
         .disabled(saving)
         .accessibilityElement(children: .contain)
     }
 
+    /// Hugging ghost pill (field recipe: parchment 6% fill, 12% border, primary-text label), min 92pt wide.
     @ViewBuilder private var secondary: some View {
         if let secondaryTitle {
             Button { onSecondary?() } label: {
-                Group {
-                    if tight, let secondaryIcon {
-                        Image(systemName: secondaryIcon).font(.system(size: 16, weight: .bold))
-                            .frame(width: 52, height: 52)
-                    } else {
-                        Text(secondaryTitle).font(.system(size: 16, weight: .bold))
-                            .frame(maxWidth: stacked ? .infinity : nil, minHeight: 52)
-                            .padding(.horizontal, stacked ? 0 : 20)
-                    }
-                }
-                .foregroundColor(secondaryDestructive ? Theme.error : Theme.gold)
-                .background(Capsule().fill(secondaryDestructive ? Theme.dangerBg : Color.clear))
-                .overlay(Capsule().strokeBorder(secondaryDestructive ? Theme.errorStrong : Theme.borderGold, lineWidth: 1))
+                Text(secondaryTitle).font(.system(size: 16, weight: .semibold))
+                    .foregroundColor(Theme.textPrimary)
+                    .lineLimit(2).multilineTextAlignment(.center)
+                    .padding(.horizontal, 20)
+                    .frame(minWidth: 92, minHeight: 54)
+                    .background(Capsule().fill(Theme.fieldFill))
+                    .overlay(Capsule().strokeBorder(Theme.fieldBorder, lineWidth: 1))
             }
             .buttonStyle(.plain)
+            .fixedSize(horizontal: true, vertical: false)
             .accessibilityLabel(secondaryTitle)
-            .frame(maxWidth: (tight || stacked) ? nil : UIScreen.main.bounds.width * 0.44)
+        }
+    }
+
+    /// Destructive-confirm safe action: gold pill that hugs its label.
+    @ViewBuilder private var safeAction: some View {
+        if let secondaryTitle {
+            Button { onSecondary?() } label: {
+                Text(secondaryTitle).font(.system(size: 16, weight: .bold))
+                    .foregroundColor(Theme.ink)
+                    .lineLimit(2).multilineTextAlignment(.center)
+                    .padding(.horizontal, 20)
+                    .frame(minWidth: 92, minHeight: 54)
+                    .background(Capsule().fill(Theme.goldGradient))
+            }
+            .buttonStyle(.plain)
+            .fixedSize(horizontal: true, vertical: false)
+            .accessibilityLabel(secondaryTitle)
         }
     }
 
@@ -67,14 +74,14 @@ struct FSPinnedActionBar: View {
                 if saving { ProgressView().tint(Theme.ink) }
                 else {
                     HStack(spacing: 8) {
-                        Text(primaryTitle).font(.system(size: 16, weight: .bold))
+                        Text(primaryTitle).font(.system(size: 16, weight: .bold)).lineLimit(2).multilineTextAlignment(.center).padding(.horizontal, 8)
                         if let primaryTrailingIcon { Image(systemName: primaryTrailingIcon).font(.system(size: 14, weight: .bold)) }
                     }
                 }
             }
             .foregroundColor(primaryDestructive ? Theme.error.opacity(primaryDimmed ? 0.5 : 1)
                                                 : (primaryDimmed ? Theme.ink.opacity(0.5) : Theme.ink))
-            .frame(maxWidth: .infinity, minHeight: 52)
+            .frame(maxWidth: .infinity, minHeight: 54)
             .background {
                 if primaryDestructive { Capsule().fill(Theme.dangerBg) }
                 else if primaryDimmed { Capsule().fill(Theme.goldDim.opacity(0.4)) }

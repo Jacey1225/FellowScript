@@ -2,9 +2,11 @@ import React, { useState } from 'react';
 import { useLocation, Link } from 'react-router-dom';
 import { API } from '../config.js';
 import Seo from '../components/Seo.jsx';
+import { useWarmCanvas } from '../hooks/useWarmCanvas.js';
 import { AuthPage, Field, StickyActionBar } from '../components/forms/index.js';
 
 export default function ResetPassword() {
+  useWarmCanvas(); // same warm gradient canvas as sign-in
   const location = useLocation();
   const token     = new URLSearchParams(location.search).get('token') || '';
   const [password, setPassword] = useState('');

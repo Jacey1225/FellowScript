@@ -2,9 +2,11 @@ import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { API } from '../config.js';
 import Seo from '../components/Seo.jsx';
+import { useWarmCanvas } from '../hooks/useWarmCanvas.js';
 import { AuthPage, Field, StickyActionBar } from '../components/forms/index.js';
 
 export default function ForgotPassword() {
+  useWarmCanvas(); // same warm gradient canvas as sign-in
   const [email,   setEmail]   = useState('');
   const [error,   setError]   = useState('');
   const [sent,    setSent]    = useState(false);
