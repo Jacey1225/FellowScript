@@ -1203,6 +1203,25 @@ struct ChatThreadView: View {
     @State private var mentionMembers: [FSMentionCandidate]? = nil
     @State private var highlightedMessageId: String? = nil
 
+    // Top-edge alpha fade under the group chip row (20261024-chat-chips-edge-blur). The
+    // message scroll area is alpha-masked so bubbles reach zero alpha exactly at the clip
+    // line (no visible cut) and ramp to opaque over 36pt. The lower part of the mask is
+    // an opaque rectangle that ignores the safe area so nothing else is clipped. Masks
+    // never affect hit testing.
+    private var chipRowEdgeAlphaMask: some View {
+        VStack(spacing: 0) {
+            LinearGradient(stops: [
+                .init(color: .black.opacity(0.0), location: 0),
+                .init(color: .black.opacity(0.12), location: 0.3),
+                .init(color: .black.opacity(0.5), location: 0.6),
+                .init(color: .black, location: 1),
+            ], startPoint: .top, endPoint: .bottom)
+            .frame(height: 36)
+            Rectangle().fill(Color.black)
+        }
+        .ignoresSafeArea()
+    }
+
     // ── Sessions submenu (task 20260920-chat-sessions-submenu) ────────────────
     // Replaces the old always-visible inline SessionBanner + header
     // "Schedule" pill pairing with one entry point: the renamed "Sessions"
@@ -1723,6 +1742,16 @@ struct ChatThreadView: View {
                         // open the older-page gate (short threads keep the
                         // header on screen and load older pages from here).
                         settleBottomPin(proxy: proxy)
+                    }
+                }
+                // Task 20261024-chat-chips-edge-blur: bubbles fade to zero alpha at the
+                // clip line under the chip row (alpha mask on the scroll area, chip row
+                // only) instead of ending in a hard cut.
+                .mask {
+                    if GroupInfoCategory.rowShows(isGroup: contact.type == .group, isThreadOpen: vm.isThreadOpen) {
+                        chipRowEdgeAlphaMask
+                    } else {
+                        Rectangle().fill(Color.black).ignoresSafeArea()
                     }
                 }
                 .overlay { groupInfoPanelHost }
