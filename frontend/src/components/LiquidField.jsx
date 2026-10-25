@@ -2,10 +2,11 @@
 // surface: `live` = the stage layer (shown once the second fill starts, drift runs
 // while on screen); otherwise the frozen frame of the same composition (fallback
 // block, settle = 1, nothing animated). Pure data lives in lib/adamHands/field.js.
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
 import {
   FIELD_BLOBS, FIELD_UNDER, FIELD_UNDER_MOBILE, FIELD_BOTTOM_FADE, FIELD_GRAIN_URL, SWIRL_A, SWIRL_B, blobBg,
 } from '../lib/adamHands/field.js';
+import { createLiquidGl, flowDelta, LIQUID_RES, LIQUID_T0 } from '../lib/adamHands/liquidGl.js';
 
 
 export const LIQUID_CSS = `
@@ -14,6 +15,10 @@ export const LIQUID_CSS = `
 .adam-field { opacity: 0; visibility: hidden; }
 .adam-liquid-blobs { position: absolute; inset: 0; -webkit-mask-image: linear-gradient(180deg, #000 0, #000 60%, transparent 84%); mask-image: linear-gradient(180deg, #000 0, #000 60%, transparent 84%); }
 .adam-liquid-hilite { position: absolute; inset: 0; }
+/* WebGL ribbon layer (live only). Sits on the underlay, under the washes, bottom fade and grain; the CSS blobs and swirls hand over to it once it is drawing (data-gl). */
+.adam-gl { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; transition: opacity 0.9s ease; -webkit-mask-image: linear-gradient(180deg, #000 0, #000 60%, transparent 84%); mask-image: linear-gradient(180deg, #000 0, #000 60%, transparent 84%); }
+.adam-liquid[data-gl="true"] .adam-gl { opacity: 1; }
+.adam-liquid[data-gl="true"] [class*="adam-blob"], .adam-liquid[data-gl="true"] [class*="adam-swirl"] { display: none; }
 /* Static top-down warm wash (fades in with the settle). Centre band stays above y 30% and the corner columns keep out of x 18-82, so nothing reaches the text zone. */
 .adam-hilite-wash { position: absolute; pointer-events: none; }
 .adam-hilite-wash-c { left: 18%; width: 64%; top: 0; height: 30%; background: linear-gradient(180deg, rgba(224,166,72,.95) 0%, rgba(224,166,72,.85) 45%, rgba(224,166,72,.6) 80%, rgba(224,166,72,0) 100%); -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 14%, #000 86%, transparent 100%); mask-image: linear-gradient(90deg, transparent 0, #000 14%, #000 86%, transparent 100%); }
@@ -50,14 +55,79 @@ function Blob({ b, i }) {
   );
 }
 
+// Drives the WebGL ribbon layer: client only, live stage only. Draws only while the stage is on
+// screen, the tab is visible and the field is shown (data-live); time accumulates from clamped dt
+// so resuming never jumps. Flow quickens a little while the page scrolls.
+function useLiquidGl(rootRef, canvasRef, live, mobile) {
+  useEffect(() => {
+    const root = rootRef.current; const canvas = canvasRef.current;
+    if (!live || !root || !canvas || typeof window === 'undefined' || typeof window.requestAnimationFrame !== 'function') return undefined;
+    const api = createLiquidGl(canvas, { mobile, onLost: () => { delete root.dataset.gl; } });
+    if (!api) return undefined;
+    const fpsGap = 1000 / (mobile ? LIQUID_RES.mobile.fps : LIQUID_RES.desktop.fps) - 2;
+    let t = LIQUID_T0; let raf = 0; let last = 0; let lastDraw = 0; let onscreen = true; let speed = 0; let sy = null; let st = 0;
+    const size = () => { const r = root.getBoundingClientRect(); api.resize(r.width || 2, r.height || 2, window.devicePixelRatio || 1); };
+    const frame = (now) => {
+      raf = 0;
+      if (!onscreen || document.visibilityState === 'hidden') { last = 0; return; }
+      raf = window.requestAnimationFrame(frame);
+      const dt = last ? (now - last) / 1000 : 0; last = now;
+      if (now - st > 140) speed = 0;
+      if (root.dataset.live !== 'true') return;
+      if (now - lastDraw < fpsGap) { t += flowDelta(dt, speed); return; }
+      lastDraw = now;
+      t += flowDelta(dt, speed);
+      api.draw(t);
+      if (root.dataset.gl !== 'true') root.dataset.gl = 'true';
+    };
+    const kick = () => { if (!raf && onscreen && document.visibilityState !== 'hidden') raf = window.requestAnimationFrame(frame); };
+    const onScroll = (e) => {
+      const el = e.target; const y = el && el.scrollTop !== undefined && el !== document ? el.scrollTop : window.scrollY;
+      const now = performance.now();
+      if (sy !== null && st && now > st) speed += ((Math.abs(y - sy) / (now - st)) * 1000 - speed) * 0.35;
+      sy = y; st = now;
+    };
+    size();
+    let ro = null; let io = null;
+    if (typeof ResizeObserver !== 'undefined') { ro = new ResizeObserver(size); ro.observe(root); }
+    if (typeof IntersectionObserver !== 'undefined') { io = new IntersectionObserver((es) => { const e = es[es.length - 1]; if (e) { onscreen = e.isIntersecting; if (onscreen) kick(); } }); io.observe(root); }
+    document.addEventListener('visibilitychange', kick);
+    document.addEventListener('scroll', onScroll, { passive: true, capture: true });
+    // Debug / test hook (dev server or ?heroDebug=1): window.__liquid.freeze(t) draws one frame at flow time t and stops; resume() restarts.
+    const debug = (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.DEV) || /[?&]heroDebug=1/.test(window.location.search || '');
+    if (debug) {
+      window.__liquid = {
+        freeze(tt) { onscreen = false; if (raf) { window.cancelAnimationFrame(raf); raf = 0; } api.draw(tt === undefined ? t : tt); root.dataset.gl = 'true'; },
+        resume() { onscreen = true; last = 0; kick(); },
+      };
+    }
+    kick();
+    return () => {
+      if (raf) window.cancelAnimationFrame(raf);
+      if (ro) ro.disconnect();
+      if (io) io.disconnect();
+      document.removeEventListener('visibilitychange', kick);
+      document.removeEventListener('scroll', onScroll, { capture: true });
+      delete window.__liquid;
+      delete root.dataset.gl;
+      api.destroy();
+    };
+  }, [live, mobile, rootRef, canvasRef]);
+}
+
 export default function LiquidField({ live, mobile = false }) {
+  const rootRef = useRef(null);
+  const canvasRef = useRef(null);
+  useLiquidGl(rootRef, canvasRef, !!live, mobile);
   return (
     <div
+      ref={rootRef}
       className={live ? 'adam-liquid adam-field' : 'adam-liquid adam-liquid-frozen'}
       data-adam={live ? 'field' : undefined}
       data-live="false"
       aria-hidden="true"
     >
+      {live && <canvas ref={canvasRef} className="adam-gl" data-adam="gl" aria-hidden="true" />}
       {live && !mobile && <div className="adam-swirl adam-swirl-a" />}
       {live && !mobile && <div className="adam-swirl adam-swirl-b" />}
       <div className="adam-liquid-blobs">
