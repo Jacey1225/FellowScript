@@ -17,7 +17,40 @@ export const CANVAS = {
   mobile: { w: 900, h: 1600, tx: 450, ty: 736 },
 };
 
-export const RUNWAY_VH = { desktop: 320, mobile: 260 };
+// Scrub domain (design spec, task 20261022-hands-scroll-grain-gradient). p now runs
+// 0 .. P_END; every constant above 1.0 is new, everything at or below 1.0 is the
+// original hands/flood timeline and is unchanged (its drivers clamp, so they hold
+// their old end state for p > 1).
+export const BASE_SPAN_VH = { desktop: 220, mobile: 160 };
+export const WHITE_HOLD_P = 0.05;
+export const FILL2_START_P = FLOOD_END_P + WHITE_HOLD_P; // 1.02: the lens bloom starts to recede, revealing the field
+export const FILL2_DELAY_P = FILL2_START_P - TOUCH_P; // touch -> second fill (about 2 s of the mov)
+export const FILL2_SPAN_P = 0.09;
+export const FILL2_END_P = FILL2_START_P + FILL2_SPAN_P; // 1.11: bloom edge gone
+export const LENS_START_P = 0.86; // the star burst owns .80-.86; the lens swells from its core
+export const LENS_FULL_P = FLOOD_END_P; // every lobe fully grown
+export const LENS_RECEDE_P = [1.02, 1.14]; // fall back toward the centre
+export const LEAKS_END_P = 1.16; // lens hard off here, before the Family reveal
+export const SETTLE_SPAN_P = 0.12;
+export const SETTLE_END_P = FILL2_END_P + SETTLE_SPAN_P; // 1.23
+export const FAMILY_REVEAL_P = [1.19, 1.26];
+export const FAMILY_HIDE_P = [1.38, 1.46];
+export const VERSE_START_P = 1.40;
+export const VERSE_SPAN_P = { desktop: 2.60, mobile: 3.60 };
+const r6 = (x) => Math.round(x * 1e6) / 1e6;
+export const P_END = { desktop: r6(VERSE_START_P + VERSE_SPAN_P.desktop), mobile: r6(VERSE_START_P + VERSE_SPAN_P.mobile) };
+// Landscape-phone / stacked-verse mode: the pinned stage stops where the verses would start.
+export const P_END_STACK = VERSE_START_P;
+// Runway = one stage plus P_END base spans. Single place for the formula.
+export const runwayVh = (pEnd, baseSpanVh) => Math.round(100 + pEnd * baseSpanVh);
+export const RUNWAY_VH = {
+  desktop: runwayVh(P_END.desktop, BASE_SPAN_VH.desktop),
+  mobile: runwayVh(P_END.mobile, BASE_SPAN_VH.mobile),
+};
+export const RUNWAY_VH_STACK = {
+  desktop: runwayVh(P_END_STACK, BASE_SPAN_VH.desktop),
+  mobile: runwayVh(P_END_STACK, BASE_SPAN_VH.mobile),
+};
 // Scrub smoothing: time constant of the exponential chase. 0.2 s reaches 95% of
 // a jump in about 0.6 s ("scrub ~0.6").
 export const SMOOTH_TAU_S = 0.2;
@@ -182,12 +215,109 @@ export function eyebrowColor(c) {
   return a.map((v, i) => Math.round(lerp(v, b[i], c)));
 }
 
+// The cut-out hands dissolve under the growing bloom instead of sitting behind it as a faint arm
+// silhouette (they are fully gone before the second fill, p .98). Eased, scrub-reversible.
+export const HANDS_FADE_P = [0.90, 0.98];
+export const handsOpacity = (p) => 1 - smooth((p - HANDS_FADE_P[0]) / (HANDS_FADE_P[1] - HANDS_FADE_P[0]));
+
+// Lens bloom (design-spec.md section 2): light opens at the screen centre and swells
+// outward as six overlapping soft lobes of different size, tilt and delay, so the union
+// boundary has a different radius at every angle (no circle, no band, no vertical
+// direction). It holds a full-screen overexposed beat, then pulls back toward its own
+// centre, bright core last. Everything is a pure function of p (scrub-reversible).
+const lensEase = cubicBezier(0.2, 0.6, 0.3, 1);
+// Origin: the stage centre (Jacey's brief: light grows from the centre of the screen).
+export const LENS_ORIGIN = { x: 0.5, y: 0.5 };
+// dx, dy = offset and rx, ry = radii in u% (u = max(1cqw, 1cqh)); rot, rotDrift in deg; delay in w.
+export const LENS_LOBES = [
+  { id: 'L0', dx: 0, dy: 0, rx: 78, ry: 66, rot: -8, rotDrift: 14, delay: 0 },
+  { id: 'L1', dx: 9, dy: -5, rx: 92, ry: 52, rot: 14, rotDrift: -18, delay: 0.08 },
+  { id: 'L2', dx: -12, dy: 4, rx: 70, ry: 88, rot: -22, rotDrift: 20, delay: 0.14 },
+  { id: 'L3', dx: 4, dy: 10, rx: 100, ry: 60, rot: 31, rotDrift: -16, delay: 0.20 },
+  { id: 'L4', dx: -6, dy: -9, rx: 84, ry: 74, rot: 47, rotDrift: 12, delay: 0.26 },
+  { id: 'L5', dx: 15, dy: 2, rx: 110, ry: 46, rot: -4, rotDrift: -10, delay: 0.32 },
+];
+export const LENS_MOBILE_LOBES = 4;
+// Ghost glints: offset from the origin (u%) at full growth, size w x h (u%), peak opacity.
+export const LENS_GHOSTS = [
+  { id: 'G1', dx: -16, dy: 5, w: 5.0, h: 3.4, o: 0.55 },
+  { id: 'G2', dx: 21, dy: -7, w: 3.0, h: 2.2, o: 0.40 },
+  { id: 'G3', dx: 34, dy: -11, w: 8.0, h: 5.5, o: 0.28 },
+];
+export const LENS_GROW_SPAN = LENS_FULL_P - LENS_START_P;
+const lensZero = (n, ng) => ({
+  on: false, flat: 0,
+  lobes: Array.from({ length: n }, () => ({ g: 0, rot: 0, o: 0 })),
+  core: { g: 0, o: 0 },
+  flare: { sx: 0, o: 0 },
+  ghosts: Array.from({ length: ng }, () => ({ g: 0, o: 0 })),
+  rays: { rot: 0, o: 0 },
+});
+
+export function lensDrivers(p, mobile = false) {
+  const n = mobile ? LENS_MOBILE_LOBES : LENS_LOBES.length;
+  const ng = mobile ? 0 : LENS_GHOSTS.length;
+  if (p <= LENS_START_P || p >= LEAKS_END_P) {
+    const z = lensZero(n, ng);
+    z.on = p > LENS_START_P - 0.005 && p < LEAKS_END_P;
+    return z;
+  }
+  const w = clamp((p - LENS_START_P) / LENS_GROW_SPAN);
+  const [r0, r1] = LENS_RECEDE_P;
+  const outer = 1 - smooth((p - r0) / 0.12);
+  const shrink = lerp(1, 0.82, smooth((p - r0) / (r1 - r0)));
+  const grow = (delay) => lensEase(clamp((w - delay) / (1 - delay)));
+  const lobes = LENS_LOBES.slice(0, n).map((l) => {
+    const g = grow(l.delay);
+    // opacity ramps on the lobe's own linear progress (not the fast-start ease), so a lobe fades in while it grows instead of popping in
+    return { g: g * shrink, rot: l.rotDrift * g, o: outer * smooth(clamp((w - l.delay) / (1 - l.delay)) / 0.5) };
+  });
+  const g0 = grow(0);
+  const coreO = (1 - smooth((p - 1.035) / 0.08)) * smooth(w / 0.3);
+  const flareO = (1 - smooth((p - 1.06) / 0.08)) * smooth((p - LENS_START_P) / 0.04);
+  const flat = Math.min(smooth((p - 0.94) / 0.04), 1 - smooth((p - r0) / 0.08));
+  const ghosts = LENS_GHOSTS.slice(0, ng).map((gh, i) => ({
+    g: grow(0.1 + 0.06 * i),
+    o: (1 - smooth((p - 1.06) / 0.08)) * smooth((p - 0.88 - 0.01 * i) / 0.05),
+  }));
+  const raysO = (1 - smooth((p - 1.03) / 0.07)) * smooth((p - 0.88) / 0.05);
+  return {
+    on: true,
+    flat,
+    lobes,
+    core: { g: g0 * shrink, o: coreO },
+    flare: { sx: lerp(0.05, 1, grow(0.04)), o: flareO },
+    ghosts,
+    rays: mobile ? { rot: 0, o: 0 } : { rot: lerp(-8, 10, w), o: raysO },
+  };
+}
+
+// Field timing: the opaque field sits above the canvas once the lens hold is solid.
+export function fill2Drivers(p) {
+  return {
+    u: clamp((p - FILL2_START_P) / FILL2_SPAN_P),
+    settle: smooth((p - FILL2_END_P) / SETTLE_SPAN_P),
+    fieldOn: p >= FILL2_START_P - 0.005,
+    handsHidden: p >= FILL2_START_P,
+  };
+}
+
+// "Family" headline: reveal then hide before the first verse reaches mid-stage.
+// keep = true (stacked mode, no verses on the stage) never hides it.
+export function familyOpacity(p, keep = false) {
+  const [r0, r1] = FAMILY_REVEAL_P; const [h0, h1] = FAMILY_HIDE_P;
+  const reveal = smooth((p - r0) / (r1 - r0));
+  return keep ? reveal : reveal * (1 - smooth((p - h0) / (h1 - h0)));
+}
+
 // Scrub progress for a pinned section: distance scrolled into the runway over
-// the scrollable length (section height minus the pinned stage height).
-export function scrubProgress(rectTop, sectionHeight, stageHeight) {
-  const span = sectionHeight - stageHeight;
+// the base span (baseSpanVh of the stage height; equal to sectionHeight -
+// stageHeight for a runway of 100 + baseSpanVh), clamped to [0, pEnd]. Without
+// baseSpanVh it falls back to the original sectionHeight - stageHeight span.
+export function scrubProgress(rectTop, sectionHeight, stageHeight, baseSpanVh, pEnd = 1) {
+  const span = baseSpanVh ? (baseSpanVh / 100) * stageHeight : sectionHeight - stageHeight;
   if (span <= 0) return 0;
-  return clamp(-rectTop / span);
+  return clamp(-rectTop / span, 0, pEnd);
 }
 
 // Frame-rate independent exponential chase toward the target p.

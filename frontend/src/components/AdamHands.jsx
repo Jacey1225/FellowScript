@@ -1,117 +1,44 @@
 // Task 20261015-adam-hands-scroll-hero: pinned, scroll-scrubbed "Creation of
 // Adam" hero. Two marble hand layers approach on an ink stage, touch, and a
-// live-drawn light floods the stage to a grainy umber-to-honey field (rev 1).
+// live-drawn light floods the stage white; a lens-gleam bloom of irregular warm lobes grows
+// from the screen centre, holds, and falls back to its centre, revealing a grainy warm brown/honey liquid gradient (task 20261022-hands-scroll-grain-gradient) and
+// community verses descend through it in glass widgets (VerseDescent).
 //
 // Rendering model
 //  - Fallback (SSR / prerender / no-JS / prefers-reduced-motion): the touch-frame
 //    still at 100svh with the live eyebrow, then a static 24svh gradient strip.
 //    No pin, no scrub, no animation. This is also the first client render, so
 //    the markup the prerender emits and the first client render agree.
-//  - Live (client, motion allowed): a 320vh (260vh mobile) runway with a sticky
-//    100svh stage. Scroll progress p is smoothed (~0.6 s) and painted by writing
+//  - Live (client, motion allowed): a 980vh (900vh mobile) runway with a sticky
+//    100svh stage; p runs 0 .. P_END (4.0 / 5.0). Scroll progress p is smoothed (~0.6 s) and painted by writing
 //    styles straight onto the layer elements (no React re-render per frame).
 //    All maths lives in src/lib/adamHands/driver.js.
-//  - All light, the key filter, wash, cap and type are live; only the cut-out
+//  - All light, the key filter, lens bloom, cap and type are live; only the cut-out
 //    hand layers, edge-light, bounce, fan and spark sprites are image files
 //    (public/adam/).
 import React, { useEffect, useRef, useState } from 'react';
 import {
-  CANVAS, RUNWAY_VH, floodDrivers, lightParams, fanWeights, FAN_REF, handsPose,
-  bloomIntensity, ignite, beatGlow, typeReveal, warmGlowAlpha, eyebrowColor,
-  scrubProgress, smoothStep, coverScale, smooth, lerp,
+  CANVAS, RUNWAY_VH, RUNWAY_VH_STACK, BASE_SPAN_VH, P_END, P_END_STACK, floodDrivers, lightParams, fanWeights, FAN_REF,
+  handsPose, handsOpacity, bloomIntensity, ignite, beatGlow, warmGlowAlpha, eyebrowColor, fill2Drivers, familyOpacity,
+  scrubProgress, smoothStep, coverScale, smooth, lerp, clamp,
 } from '../lib/adamHands/driver.js';
+import {
+  FIELD_CAP, FIELD_INK, FIELD_UNDER, FIELD_GRAIN_URL, FIELD_BLOBS, FALLBACK_GRADIENT, adamPhase,
+} from '../lib/adamHands/field.js';
+import LiquidField, { LIQUID_CSS } from './LiquidField.jsx';
+import { LensBloom, LENS_CSS, collectLens, paintLens } from './LensBloom.jsx';
+import { VerseDescent, VerseStack, VERSE_CSS, paintVerses, createVerseRig } from './VerseDescent.jsx';
+import { VERSE_STACK_QUERY } from '../lib/verseDescent.js';
+
+// Palette, blob table and the text-contrast luminance rule live in lib/adamHands/field.js
+// (re-exported here: Home.jsx and the tests import them from this module).
+export {
+  FIELD_BASE, FIELD_END, FIELD_CAP, FIELD_INK, FIELD_UNDER, FIELD_GRAIN_URL, FIELD_BLOBS, FALLBACK_GRADIENT, adamPhase,
+  FIELD_WHITE, FIELD_ZONE_MAX, ADAM_ZONE, ADAM_ZONE_L_MAX, ADAM_STAGES, ADAM_LOBE_K, relLuminance, blobAlpha, blobLift, blobExtent,
+  blobInZone, zoneLift, swirlLift, FIELD_GRAIN_OPACITY, SWIRL_LIGHT_LOBES,
+} from '../lib/adamHands/field.js';
 
 const INK = '#17120F';
-
-// Rev 2: the end state is a grainy, brown-dominant liquid field. One shared set
-// of tokens: every surface (live field layer, data-flat stage, fallback strip,
-// fallback block, Home .hm-fam) reads the constants below.
-export const FIELD_BASE = '#5C3509'; // deep umber, base of the top ~62% of the field
-export const FIELD_END = '#EBC480'; // join colour handed to .hm-fam; also the canvas cap colour
-export const FIELD_CAP = FIELD_END; // bloom can never clamp lighter than honey
-export const FIELD_INK = '#FBF7F1'; // cream: the text sits on brown
-// Static underlayer: umber to the 62% line, then a honey pool that is exactly FIELD_END at 100%.
-export const FIELD_UNDER = `linear-gradient(180deg, ${FIELD_BASE} 0%, ${FIELD_BASE} 62%, #8A5217 74%, #B4712C 82%, #E0B066 90%, ${FIELD_END} 97%, ${FIELD_END} 100%)`;
-export const FIELD_GRAIN_OPACITY = 0.55;
-// Monochrome (colourless) grain tile, opaque grey from the noise red channel,
-// drawn with soft-light over the field so it never shifts hue or the mean.
-export const FIELD_GRAIN_URL = `url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='220' height='220'><filter id='g' x='0' y='0' width='100%' height='100%' color-interpolation-filters='sRGB'><feTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3' stitchTiles='stitch'/><feColorMatrix values='1 0 0 0 0  1 0 0 0 0  1 0 0 0 0  0 0 0 0 1'/></filter><rect width='220' height='220' filter='url(%23g)' opacity='${FIELD_GRAIN_OPACITY}'/></svg>")`;
-
-// Rev 3: no centred halo. The text-contrast guarantee lives in the blob table itself
-// (luminance rule below, tested from this table), so blobs may drift behind the text.
-// Hand-placed asymmetric set, identical in SSR and client (no PRNG during render).
-// x,y = centre in % of the field; w,h = size in % of the field; r = rotation deg;
-// a = peak alpha; t = half-cycle drift seconds; dx (cqw), dy (cqh), dr (deg) = drift;
-// m = shown on mobile; g = mobile size multiplier; l = optional second lobe
-// [px, py, rx, ry] in % of the element box (alpha factor ADAM_LOBE_K) so the silhouette is not a clean ellipse.
-export const ADAM_LOBE_K = 0.6;
-export const FIELD_BLOBS = [
-  { c: '#3A2410', a: 0.9, x: 38, y: 54, w: 90, h: 52, r: -14, t: 53, dx: 12, dy: -6, dr: 22, m: true, g: 1.25, l: [62, 40, 28, 28] },
-  { c: '#6B4116', a: 0.3, x: 72, y: 58, w: 60, h: 38, r: 26, t: 37, dx: -14, dy: 5, dr: -25, m: true, g: 1.25, l: [36, 58, 26, 28] },
-  { c: '#4A2C0E', a: 0.8, x: 58, y: 30, w: 44, h: 30, r: -40, t: 43, dx: 9, dy: 10, dr: 18, m: false, g: 1, l: [38, 58, 26, 26] },
-  { c: '#7B4F20', a: 0.2, x: 14, y: 66, w: 36, h: 22, r: 12, t: 47, dx: 8, dy: -8, dr: 10, m: true, g: 1.25 },
-  { c: '#8A5217', a: 0.12, x: 86, y: 44, w: 30, h: 50, r: -8, t: 59, dx: -9, dy: 8, dr: 14, m: false, g: 1 },
-  { c: '#B4712C', a: 0.85, x: 93, y: 6, w: 30, h: 18, r: -32, t: 31, dx: -6, dy: 4, dr: 16, m: true, g: 1 },
-  { c: '#E09A30', a: 0.8, x: 7, y: 12, w: 16, h: 14, r: 40, t: 29, dx: 5, dy: 6, dr: -18, m: false, g: 1 },
-  { c: '#EBC480', a: 0.5, x: 46, y: 3, w: 26, h: 10, r: -6, t: 61, dx: 10, dy: 3, dr: 8, m: true, g: 1 },
-  { c: '#B4712C', a: 0.7, x: 3, y: 58, w: 16, h: 30, r: 20, t: 41, dx: 4, dy: -6, dr: 12, m: false, g: 1 },
-  { c: '#E09A30', a: 0.55, x: 95, y: 74, w: 14, h: 18, r: -20, t: 51, dx: -4, dy: -4, dr: 10, m: false, g: 1 },
-  { c: '#8A5217', a: 0.55, x: 24, y: 8, w: 40, h: 16, r: 6, t: 57, dx: 12, dy: 4, dr: 6, m: true, g: 1 },
-];
-
-// Text-zone luminance rule (stage %). Any blob whose full drift envelope can reach the
-// zone is either dark (no lighter than FIELD_BASE) or a low-alpha lift, and the summed
-// lift stays under ADAM_ZONE_L_MAX - L(FIELD_BASE). Cream ink needs raw L <= 0.0725 for ~8:1.
-export const ADAM_ZONE = { desktop: { x: [18, 82], y: [30, 72] }, mobile: { x: [0, 100], y: [34, 66] } };
-export const ADAM_ZONE_L_MAX = 0.0725;
-// Stage pixel basis used for the extent maths (desktop, mobile portrait, landscape phone).
-export const ADAM_STAGES = { desktop: [1600, 900], mobile: [390, 844], landscape: [844, 390] };
-
-const hexRgb = (hex) => { const n = parseInt(hex.slice(1), 16); return [(n >> 16) & 255, (n >> 8) & 255, n & 255]; };
-const lin = (v) => { const c = v / 255; return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4; };
-export const relLuminance = (rgb) => 0.2126 * lin(rgb[0]) + 0.7152 * lin(rgb[1]) + 0.0722 * lin(rgb[2]);
-// Peak effective alpha of a blob (main gradient plus its second lobe, stacked).
-export const blobAlpha = (b) => (b.l ? 1 - (1 - b.a) * (1 - ADAM_LOBE_K * b.a) : b.a);
-// Luminance added at the blob peak over FIELD_BASE (0 for blobs that only darken).
-export function blobLift(b) {
-  const base = hexRgb(FIELD_BASE); const c = hexRgb(b.c); const a = blobAlpha(b);
-  const mix = base.map((v, i) => v + a * (c[i] - v));
-  return Math.max(0, relLuminance(mix) - relLuminance(base));
-}
-// Bounding box (stage %) of a blob over its whole drift envelope, rotation range and 100% radius.
-export function blobExtent(b, mobile, W = 1600, H = 900) {
-  const k = mobile ? b.g : 1;
-  const hw = (b.w * k / 100) * W / 2; const hh = (b.h * k / 100) * H / 2;
-  let ex = 0; let ey = 0;
-  for (let i = 0; i <= 12; i += 1) {
-    const th = ((b.r + (b.dr * i) / 12) * Math.PI) / 180;
-    ex = Math.max(ex, Math.hypot(hw * Math.cos(th), hh * Math.sin(th)));
-    ey = Math.max(ey, Math.hypot(hw * Math.sin(th), hh * Math.cos(th)));
-  }
-  const cx0 = Math.min(b.x, b.x + b.dx); const cx1 = Math.max(b.x, b.x + b.dx);
-  const cy0 = Math.min(b.y, b.y + b.dy); const cy1 = Math.max(b.y, b.y + b.dy);
-  return { x0: cx0 - (ex / W) * 100, x1: cx1 + (ex / W) * 100, y0: cy0 - (ey / H) * 100, y1: cy1 + (ey / H) * 100 };
-}
-export function blobInZone(b, mobile, W, H) {
-  const z = mobile ? ADAM_ZONE.mobile : ADAM_ZONE.desktop;
-  const e = blobExtent(b, mobile, W, H);
-  return e.x1 > z.x[0] && e.x0 < z.x[1] && e.y1 > z.y[0] && e.y0 < z.y[1];
-}
-// Summed lift of every blob that can reach the zone (tests assert <= ADAM_ZONE_L_MAX - L(FIELD_BASE)).
-export function zoneLift(mobile, W, H, table = FIELD_BLOBS) {
-  return table.filter((b) => (!mobile || b.m) && blobInZone(b, mobile, W, H)).reduce((s, b) => s + blobLift(b), 0);
-}
-// Client-only random drift start phase (seconds into the 2t cycle), applied in the live effect.
-export const adamPhase = (t, rnd) => +(rnd * 2 * t).toFixed(2);
-
-const hexRgba = (hex, a) => { const [r, g, b] = hexRgb(hex); return `rgba(${r},${g},${b},${a})`; };
-const blobBg = (b) => {
-  const main = `radial-gradient(closest-side, ${hexRgba(b.c, b.a)} 0%, ${hexRgba(b.c, +(b.a * 0.6).toFixed(3))} 55%, ${hexRgba(b.c, 0)} 100%)`;
-  if (!b.l) return main;
-  const [px, py, rx, ry] = b.l; const a = +(b.a * ADAM_LOBE_K).toFixed(3);
-  const lobe = `radial-gradient(ellipse ${rx}% ${ry}% at ${px}% ${py}%, ${hexRgba(b.c, a)} 0%, ${hexRgba(b.c, +(a * 0.6).toFixed(3))} 55%, ${hexRgba(b.c, 0)} 100%)`;
-  return `${lobe}, ${main}`;
-};
 
 // Headline face: Schibsted Grotesk, the same face as the nav wordmark (.fs-wordmark).
 // Change the face in this one place (live .adam-final-h and the fallback block both use it).
@@ -125,9 +52,6 @@ export const ADAM_EYEBROW = '// NOT JUST ONCE A WEEK';
 export const ADAM_FINAL_HEADLINE = 'Family';
 // Exact string from Jacey, typo ("comunity") kept verbatim.
 export const ADAM_FINAL_SUBTITLE = 'Welcoming scripture into a deeper comunity.';
-
-// Fallback strip: ink down into the field; last stop is exactly FIELD_BASE (the block's first colour).
-export const FALLBACK_GRADIENT = `#17120F 0%, #2B1B0B 22%, #3F2610 50%, ${FIELD_BASE} 100%`;
 
 const A = '/adam/';
 const FILES = {
@@ -173,20 +97,12 @@ const EDGE_MASK = 'radial-gradient(circle calc(var(--adam-d0) * 8) at var(--adam
 export const ADAM_CSS = `
 .adam-pin { position: relative; background: ${INK}; }
 .adam-pin[data-live="true"] { height: ${RUNWAY_VH.desktop}vh; }
+.adam-pin[data-live="true"][data-stack="true"] { height: ${RUNWAY_VH_STACK.desktop}vh; }
 .adam-stage { position: relative; height: 100vh; height: 100svh; overflow: hidden; background: ${INK}; container-type: size; }
 .adam-pin[data-live="true"] .adam-stage { position: sticky; top: 0; }
-.adam-stage[data-flat="true"] { background: ${FIELD_UNDER}; }
-.adam-liquid { position: absolute; inset: 0; overflow: hidden; isolation: isolate; container-type: size; pointer-events: none; background: ${FIELD_UNDER}; }
-.adam-field { opacity: 0; }
-.adam-liquid-blobs { position: absolute; inset: 0; -webkit-mask-image: linear-gradient(180deg, #000 0, #000 60%, transparent 84%); mask-image: linear-gradient(180deg, #000 0, #000 60%, transparent 84%); }
-.adam-blob { --k: 1; position: absolute; left: calc(var(--x) * 1%); top: calc(var(--y) * 1%); width: calc(var(--w) * var(--k) * 1%); height: calc(var(--h) * var(--k) * 1%); border-radius: 50%; transform: translate(-50%, -50%) rotate(calc(var(--r) * 1deg)); animation: adam-drift calc(var(--t) * 1s) ease-in-out infinite alternate; animation-play-state: paused; animation-delay: calc(var(--ph, 0) * -1s); }
-.adam-field[data-live="true"] .adam-blob { animation-play-state: running; will-change: transform; }
-.adam-liquid-frozen .adam-blob { animation: none; }
-/* Fallback block only: also fade blobs out at the top edge so it joins the ink-to-umber strip flat. */
-.adam-liquid-frozen .adam-liquid-blobs { -webkit-mask-image: linear-gradient(180deg, transparent 0, #000 16%, #000 60%, transparent 84%); mask-image: linear-gradient(180deg, transparent 0, #000 16%, #000 60%, transparent 84%); }
-@keyframes adam-drift { to { transform: translate(calc(-50% + var(--dx) * 1cqw), calc(-50% + var(--dy) * 1cqh)) rotate(calc((var(--r) + var(--dr)) * 1deg)); } }
-.adam-liquid::after { content: ''; position: absolute; inset: 0; background-image: ${FIELD_GRAIN_URL}; background-size: 220px 220px; mix-blend-mode: soft-light; }
-@media (prefers-reduced-motion: reduce) { .adam-blob { animation: none; } }
+${LIQUID_CSS}
+${LENS_CSS}
+${VERSE_CSS}
 .adam-fb-img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: 50% 48%; display: block; }
 .adam-eyebrow { position: absolute; margin: 0; left: 5.25cqw; top: 7cqh; font-family: ${HEAD_FONT}; font-size: clamp(11.5px, 0.8cqw, 14px); letter-spacing: 0.26em; text-transform: uppercase; line-height: 1.6; white-space: nowrap; color: #F0C08A; pointer-events: none; }
 .adam-pin[data-live="true"] .adam-eyebrow { left: 11.5cqw; top: 11.9cqh; transform: translateY(-50%); }
@@ -197,7 +113,7 @@ export const ADAM_CSS = `
 .adam-fbfield .adam-final-h { font-size: clamp(48px, 7vw, 88px); }
 .adam-fbfield .adam-final-b { max-width: 34em; margin-inline: auto; }
 .adam-canvas { position: absolute; left: 50%; top: 50%; transform-origin: 50% 50%; isolation: isolate; overflow: hidden; background: ${INK}; pointer-events: none; }
-.adam-stage[data-flat="true"] .adam-canvas { visibility: hidden; }
+.adam-stage[data-flat="true"] .adam-canvas { display: none; }
 .adam-layer { position: absolute; left: 0; top: 0; pointer-events: none; }
 .adam-img { position: absolute; left: 0; top: 0; display: block; max-width: none; pointer-events: none; user-select: none; }
 .adam-edge { -webkit-mask-image: ${EDGE_MASK}; mask-image: ${EDGE_MASK}; }
@@ -217,11 +133,10 @@ export const ADAM_CSS = `
 }
 @media (max-width: 899px), (pointer: coarse) {
   .adam-pin[data-live="true"] { height: ${RUNWAY_VH.mobile}vh; }
+  .adam-pin[data-live="true"][data-stack="true"] { height: ${RUNWAY_VH_STACK.mobile}vh; }
   .adam-fb-img { object-position: 50% 46%; }
   .adam-eyebrow { left: 9.33cqw; top: calc(5.6cqh + env(safe-area-inset-top, 0px)); font-size: max(2.89cqw, 12px); }
   .adam-pin[data-live="true"] .adam-eyebrow { left: 9.33cqw; top: calc(5.6cqh + env(safe-area-inset-top, 0px)); transform: translateY(-50%); }
-  .adam-blob-g { --k: 1.25; }
-  .adam-blob-d { display: none; }
   .adam-final-h { font-size: clamp(52px, min(17.5vw, 15svh), 96px); white-space: nowrap; letter-spacing: -0.025em; line-height: 0.98; }
   .adam-final-b { margin-top: 20px; max-width: none; font-size: 19px; line-height: 1.4; }
   .adam-fbfield .adam-final-h { font-size: clamp(52px, 17.5vw, 96px); }
@@ -273,14 +188,15 @@ function setOpacity(el, v) {
 }
 
 // Paints one frame by writing styles onto the cached layer elements.
-function paintFrame(refs, p, mobile) {
+function paintFrame(refs, p, mobile, stack) {
   const cv = mobile ? CANVAS.mobile : CANVAS.desktop;
   const { stage, canvas } = refs;
   const pose = handsPose(p, mobile);
   const d = floodDrivers(p);
   const L = lightParams(d.f, d.g);
   const ig = ignite(p);
-  const flat = d.w >= 0.9999;
+  const f2 = fill2Drivers(p);
+  const flat = f2.handsHidden; // hands, bloom and fans sit under the opaque field: stop compositing them
   stage.dataset.p = p.toFixed(3);
   stage.dataset.flat = flat ? 'true' : 'false';
 
@@ -290,6 +206,9 @@ function paintFrame(refs, p, mobile) {
   };
   place(refs.adamGroup, pose.adam);
   place(refs.godGroup, pose.god);
+  const ho = handsOpacity(p).toFixed(3);
+  if (refs.adamGroup) refs.adamGroup.style.opacity = ho;
+  if (refs.godGroup) refs.godGroup.style.opacity = ho;
 
   // Key filter (sRGB; slope/intercept from key_fixed). Dropped once identity.
   const keyId = `${pose.slope.map((s) => s.toFixed(4)).join(',')}|${pose.intercept.toFixed(4)}`;
@@ -326,10 +245,12 @@ function paintFrame(refs, p, mobile) {
   }
 
   // Touch light.
-  const bloomKey = `${L.r0.toFixed(1)}|${L.k.toFixed(3)}|${ig.toFixed(3)}`;
+  // Past f .35 the lens lobes own the wide light; fade the canvas radial so it never reads as a clean circle.
+  const igBloom = ig * (1 - 0.7 * smooth((d.f - 0.35) / 0.40));
+  const bloomKey = `${L.r0.toFixed(1)}|${L.k.toFixed(3)}|${igBloom.toFixed(3)}|${ig.toFixed(3)}`;
   if (refs.lastBloom !== bloomKey) {
     refs.lastBloom = bloomKey;
-    refs.bloom.style.background = bloomGradient(L, ig, cv.tx, cv.ty);
+    refs.bloom.style.background = bloomGradient(L, igBloom, cv.tx, cv.ty);
     refs.core.style.background = coreGradient(L.sigma, ig, cv.tx, cv.ty);
   }
   refs.bloom.style.visibility = ig > 0.002 ? 'visible' : 'hidden';
@@ -353,17 +274,21 @@ function paintFrame(refs, p, mobile) {
 
   setOpacity(refs.tip, d.tipS * ig);
 
-  setOpacity(refs.field, d.w);
+  // Lens bloom (style writes only), then the field underneath.
+  paintLens(refs, p, mobile);
+  setOpacity(refs.field, f2.fieldOn ? 1 : 0);
   if (refs.field) {
-    const on = d.w > 0.001 ? 'true' : 'false';
+    const on = f2.fieldOn ? 'true' : 'false';
     if (refs.field.dataset.live !== on) refs.field.dataset.live = on;
   }
+  if (refs.hilite) refs.hilite.style.opacity = f2.settle.toFixed(3);
+  if (refs.verses.length) paintVerses(refs.verses, p, mobile, refs.w, refs.h, refs.rig);
 
   // Type.
   const ec = eyebrowColor(d.c);
   refs.eyebrow.style.color = `rgb(${ec[0]},${ec[1]},${ec[2]})`;
   setOpacity(refs.eyebrow, d.e);
-  const tr = typeReveal(p);
+  const tr = familyOpacity(p, stack);
   refs.final.style.opacity = tr.toFixed(3);
   refs.final.style.transform = `translateY(${(12 * (1 - tr)).toFixed(2)}px)`;
 }
@@ -384,32 +309,11 @@ function collect(stage) {
     bloom: q('bloom'), core: q('core'),
     fanWrap: q('fan-wrap'), fan: { a: q('fan-a'), b: q('fan-b'), c: q('fan-c') },
     hair: q('hair'), streak: q('streak'), tip: q('tip'),
-    field: q('field'), eyebrow: q('eyebrow'), final: q('final'),
+    field: q('field'), hilite: q('hilite'), ...collectLens(q),
+    verses: qa('verse'), eyebrow: q('eyebrow'), final: q('final'),
+    w: 1, h: 1,
     lastKey: null, lastBloom: null,
   };
-}
-
-// One liquid field for every surface. `live` = the stage layer (opacity driven by w, drift
-// runs while visible); otherwise the frozen frame of the same composition (fallback block).
-function LiquidField({ live }) {
-  return (
-    <div
-      className={live ? 'adam-liquid adam-field' : 'adam-liquid adam-liquid-frozen'}
-      data-adam={live ? 'field' : undefined}
-      data-live="false"
-      aria-hidden="true"
-    >
-      <div className="adam-liquid-blobs">
-        {FIELD_BLOBS.map((b, i) => (
-          <div
-            key={i}
-            className={`adam-blob${b.m ? '' : ' adam-blob-d'}${b.g > 1 ? ' adam-blob-g' : ''}`}
-            style={{ '--x': b.x, '--y': b.y, '--w': b.w, '--h': b.h, '--r': b.r, '--t': b.t, '--dx': b.dx, '--dy': b.dy, '--dr': b.dr, background: blobBg(b) }}
-          />
-        ))}
-      </div>
-    </div>
-  );
 }
 
 function FallbackStage() {
@@ -434,7 +338,7 @@ function FallbackStage() {
   );
 }
 
-function LiveStage({ mobile }) {
+function LiveStage({ mobile, stack }) {
   const cv = mobile ? CANVAS.mobile : CANVAS.desktop;
   const files = mobile ? FILES.mobile : FILES.desktop;
   const grid = mobile ? GRID.mobile : GRID.desktop;
@@ -519,13 +423,15 @@ function LiveStage({ mobile }) {
 
       {/* Stage-level liquid field (opacity = w). Drift lives on this element only, so the
           data-flat stage background (FIELD_UNDER) never has to match a drift state. */}
-      <LiquidField live />
+      <LiquidField live mobile={mobile} />
+      <LensBloom mobile={mobile} />
 
       <p className="adam-eyebrow" data-adam="eyebrow" aria-hidden="true">{ADAM_EYEBROW}</p>
       <div className="adam-final" data-adam="final">
         <span className="adam-final-h">{ADAM_FINAL_HEADLINE}</span>
         <span className="adam-final-b">{ADAM_FINAL_SUBTITLE}</span>
       </div>
+      {!stack && <VerseDescent />}
     </>
   );
 }
@@ -533,7 +439,7 @@ function LiveStage({ mobile }) {
 export default function AdamHands() {
   // First render is always the fallback (SSR-equal); the effect below upgrades
   // to the live stack on the client when motion is allowed.
-  const [mode, setMode] = useState({ live: false, mobile: false });
+  const [mode, setMode] = useState({ live: false, mobile: false, stack: false });
   const sectionRef = useRef(null);
   const stageRef = useRef(null);
 
@@ -541,15 +447,16 @@ export default function AdamHands() {
     if (typeof window === 'undefined' || !window.matchMedia) return undefined;
     const rm = window.matchMedia('(prefers-reduced-motion: reduce)');
     const mo = window.matchMedia(ADAM_MOBILE_QUERY);
+    const sq = window.matchMedia(VERSE_STACK_QUERY);
     const update = () => setMode((m) => {
-      const next = { live: !rm.matches && typeof window.requestAnimationFrame === 'function', mobile: !!mo.matches };
-      return m.live === next.live && m.mobile === next.mobile ? m : next;
+      const next = { live: !rm.matches && typeof window.requestAnimationFrame === 'function', mobile: !!mo.matches, stack: !!sq.matches };
+      return m.live === next.live && m.mobile === next.mobile && m.stack === next.stack ? m : next;
     });
     update();
     const bind = (mq) => { if (mq.addEventListener) mq.addEventListener('change', update); else if (mq.addListener) mq.addListener(update); };
     const unbind = (mq) => { if (mq.removeEventListener) mq.removeEventListener('change', update); else if (mq.removeListener) mq.removeListener(update); };
-    bind(rm); bind(mo);
-    return () => { unbind(rm); unbind(mo); };
+    bind(rm); bind(mo); bind(sq);
+    return () => { unbind(rm); unbind(mo); unbind(sq); };
   }, []);
 
   useEffect(() => {
@@ -559,38 +466,107 @@ export default function AdamHands() {
     if (!section || !stage) return undefined;
     const refs = collect(stage);
     if (!refs.canvas) return undefined;
+    refs.rig = createVerseRig(mode.mobile);
 
     const fit = () => {
       const s = coverScale(stage.clientWidth || 1, stage.clientHeight || 1, mode.mobile);
       refs.canvas.style.transform = `translate(-50%, -50%) scale(${s.toFixed(5)})`;
+      refs.w = stage.clientWidth || 1; refs.h = stage.clientHeight || 1;
     };
+    const baseSpan = mode.mobile ? BASE_SPAN_VH.mobile : BASE_SPAN_VH.desktop;
+    const pEnd = mode.stack ? P_END_STACK : (mode.mobile ? P_END.mobile : P_END.desktop);
     const readTarget = () => {
       const rect = section.getBoundingClientRect();
-      return scrubProgress(rect.top, rect.height, stage.clientHeight || window.innerHeight);
+      return scrubProgress(rect.top, rect.height, stage.clientHeight || window.innerHeight, baseSpan, pEnd);
     };
 
     // Per-visit variety: random drift start phase per blob. Client only, after mount (never in render).
+    // DOM order is the non-highlight blobs, then the highlights (see LiquidField).
     const blobEls = stage.querySelectorAll('.adam-field .adam-blob');
-    blobEls.forEach((el, i) => { if (FIELD_BLOBS[i]) el.style.setProperty('--ph', adamPhase(FIELD_BLOBS[i].t, Math.random())); });
+    const domOrder = [...FIELD_BLOBS.filter((b) => !b.s), ...FIELD_BLOBS.filter((b) => b.s)];
+    blobEls.forEach((el, i) => { if (domOrder[i]) el.style.setProperty('--ph', adamPhase(domOrder[i].t, Math.random())); });
+
+    // Pause the drift when the stage is off screen (CSS keys animation-play-state on data-onscreen).
+    const fieldEl = refs.field;
+    if (fieldEl) fieldEl.dataset.onscreen = 'true';
+    let io = null;
+    if (fieldEl && typeof IntersectionObserver !== 'undefined') {
+      io = new IntersectionObserver((entries) => {
+        const e = entries[entries.length - 1];
+        if (e) {
+          fieldEl.dataset.onscreen = e.isIntersecting ? 'true' : 'false';
+          visible = e.isIntersecting;
+          if (!visible) { refs.rig.pointer(null, null); } else pkick();
+        }
+      });
+      io.observe(stage);
+    }
 
     let target = readTarget();
     let cur = target;
     let raf = 0;
     let last = 0;
     fit();
-    paintFrame(refs, cur, mode.mobile);
+    paintFrame(refs, cur, mode.mobile, mode.stack);
 
     const tick = (now) => {
       raf = 0;
       const dt = last ? Math.min(0.1, (now - last) / 1000) : 1 / 60;
       last = now;
       cur = smoothStep(cur, target, dt);
-      paintFrame(refs, cur, mode.mobile);
+      paintFrame(refs, cur, mode.mobile, mode.stack);
       if (cur !== target) raf = window.requestAnimationFrame(tick);
       else last = 0;
     };
     const kick = () => { if (!raf) raf = window.requestAnimationFrame(tick); };
     const onScroll = () => { target = readTarget(); kick(); };
+
+    // Cursor spring parallax (fine pointer, pinned verses only). Own rAF loop that sleeps once
+    // every card has settled; the scroll tick above also paints with the same spring offsets.
+    let praf = 0;
+    let plast = 0;
+    let visible = true;
+    const ptick = (now) => {
+      praf = 0;
+      const dt = plast ? Math.min(0.1, (now - plast) / 1000) : 1 / 60;
+      plast = now;
+      const active = refs.rig.step(dt);
+      if (refs.verses.length) paintVerses(refs.verses, cur, mode.mobile, refs.w, refs.h, refs.rig);
+      if (active && visible && document.visibilityState !== 'hidden') praf = window.requestAnimationFrame(ptick);
+      else plast = 0;
+    };
+    const pkick = () => { if (!praf) praf = window.requestAnimationFrame(ptick); };
+    const fine = !mode.mobile && !mode.stack && window.matchMedia && window.matchMedia('(pointer: fine)').matches;
+    const onPointerMove = (e) => {
+      const r = stage.getBoundingClientRect();
+      if (!r.width || !r.height) return;
+      const nx = clamp(((e.clientX - r.left) / r.width) * 2 - 1, -1, 1);
+      const ny = clamp(((e.clientY - r.top) / r.height) * 2 - 1, -1, 1);
+      refs.rig.pointer(nx, ny);
+      pkick();
+    };
+    const onPointerOut = (e) => { if (!e.relatedTarget) { refs.rig.pointer(null, null); pkick(); } };
+    const onBlur = () => { refs.rig.pointer(null, null); pkick(); };
+    if (fine) {
+      window.addEventListener('pointermove', onPointerMove, { passive: true });
+      document.addEventListener('pointerout', onPointerOut);
+      window.addEventListener('blur', onBlur);
+    }
+    // Debug / test hooks (dev server, or any build opened with ?heroDebug=1):
+    //  window.__verseParallax(nx, ny)  drives the spring without a real pointer (null releases).
+    //  window.__adamScrollToP(p)       scrolls the page so the hero scrub target is p (0 .. P_END).
+    const debug = (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.DEV) || /[?&]heroDebug=1/.test(window.location.search || '');
+    if (debug) {
+      if (fine) window.__verseParallax = (nx, ny) => { refs.rig.pointer(nx, ny); pkick(); };
+      window.__adamScrollToP = (pp) => {
+        let sc = section.parentElement;
+        while (sc && !(sc.scrollHeight > sc.clientHeight + 1 && /(auto|scroll)/.test(getComputedStyle(sc).overflowY))) sc = sc.parentElement;
+        sc = sc || document.scrollingElement || document.documentElement;
+        const span = (baseSpan / 100) * (stage.clientHeight || window.innerHeight);
+        sc.scrollTop += section.getBoundingClientRect().top + pp * span;
+        onScroll();
+      };
+    }
     const onResize = () => { fit(); onScroll(); };
 
     // Capture phase on document: the app scrolls inside #root (html/body/#root
@@ -603,26 +579,36 @@ export default function AdamHands() {
       document.removeEventListener('scroll', onScroll, { capture: true });
       window.removeEventListener('resize', onResize);
       if (ro) ro.disconnect();
+      if (io) io.disconnect();
+      window.removeEventListener('pointermove', onPointerMove);
+      document.removeEventListener('pointerout', onPointerOut);
+      window.removeEventListener('blur', onBlur);
+      delete window.__verseParallax; delete window.__adamScrollToP;
+      if (praf) window.cancelAnimationFrame(praf);
       if (raf) window.cancelAnimationFrame(raf);
     };
-  }, [mode.live, mode.mobile]);
+  }, [mode.live, mode.mobile, mode.stack]);
 
   return (
-    <section ref={sectionRef} className="adam-pin" data-live={mode.live ? 'true' : 'false'} data-testid="adam-hands">
-      <style>{ADAM_CSS}</style>
-      <div ref={stageRef} className="adam-stage" data-flat="false">
-        {mode.live ? <LiveStage key={mode.mobile ? 'm' : 'd'} mobile={mode.mobile} /> : <FallbackStage />}
-      </div>
-      {!mode.live && <div className="adam-grad" aria-hidden="true" />}
-      {!mode.live && (
-        <div className="adam-fbfield" data-testid="adam-fallback-field">
-          <LiquidField />
-          <div className="adam-fbfield-in">
-            <span className="adam-final-h">{ADAM_FINAL_HEADLINE}</span>
-            <span className="adam-final-b">{ADAM_FINAL_SUBTITLE}</span>
-          </div>
+    <>
+      <section ref={sectionRef} className="adam-pin" data-live={mode.live ? 'true' : 'false'} data-stack={mode.live && mode.stack ? 'true' : undefined} data-testid="adam-hands">
+        <style>{ADAM_CSS}</style>
+        <div ref={stageRef} className="adam-stage" data-flat="false">
+          {mode.live ? <LiveStage key={`${mode.mobile ? 'm' : 'd'}${mode.stack ? 's' : ''}`} mobile={mode.mobile} stack={mode.stack} /> : <FallbackStage />}
         </div>
-      )}
-    </section>
+        {!mode.live && <div className="adam-grad" aria-hidden="true" />}
+        {!mode.live && (
+          <div className="adam-fbfield" data-testid="adam-fallback-field">
+            <LiquidField />
+            <div className="adam-fbfield-in">
+              <span className="adam-final-h">{ADAM_FINAL_HEADLINE}</span>
+              <span className="adam-final-b">{ADAM_FINAL_SUBTITLE}</span>
+            </div>
+          </div>
+        )}
+        {!mode.live && <VerseStack />}
+      </section>
+      {mode.live && mode.stack && <VerseStack />}
+    </>
   );
 }

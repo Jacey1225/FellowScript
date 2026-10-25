@@ -10,10 +10,14 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import {
+  handsOpacity, HANDS_FADE_P,
   TOUCH_P, FLOOD_END_P, TABLE_STEP, CANVAS, RUNWAY_VH, SMOOTH_TAU_S,
   clamp, lerp, smooth, cubicBezier, floodCurve, easingB, getRows, lookupRow, handsPose,
   floodDrivers, lightParams, fanWeights, bloomIntensity, ignite, beatGlow, typeReveal,
   warmGlowAlpha, eyebrowColor, scrubProgress, smoothStep, coverScale,
+  BASE_SPAN_VH, WHITE_HOLD_P, FILL2_START_P, FILL2_DELAY_P, FILL2_SPAN_P, FILL2_END_P,
+  SETTLE_SPAN_P, SETTLE_END_P, FAMILY_REVEAL_P, FAMILY_HIDE_P, VERSE_START_P, VERSE_SPAN_P, P_END, P_END_STACK,
+  RUNWAY_VH_STACK, fill2Drivers, familyOpacity, lensDrivers, LENS_LOBES, LENS_GHOSTS, LENS_ORIGIN, LENS_MOBILE_LOBES, LENS_START_P, LENS_FULL_P, LENS_RECEDE_P, LEAKS_END_P
 } from './driver.js';
 import { DESKTOP_ROWS, MOBILE_ROWS, TABLE_COLUMNS } from './table.js';
 
@@ -303,7 +307,7 @@ describe('type and colour', () => {
 
 describe('scrub progress and smoothing', () => {
   test('scrubProgress maps the pinned runway: top of section = 0, end of runway = 1, clamped', () => {
-    const section = 3200; const stage = 900; // 320vh on a 900px viewport
+    const section = 3200; const stage = 900; // legacy two-span form: span = section - stage
     expect(Math.abs(scrubProgress(0, section, stage))).toBe(0);
     expect(scrubProgress(300, section, stage)).toBe(0);          // before the pin
     expect(scrubProgress(-(section - stage) / 2, section, stage)).toBeCloseTo(0.5, 6);
@@ -312,8 +316,22 @@ describe('scrub progress and smoothing', () => {
     expect(scrubProgress(0, 900, 900)).toBe(0);                  // no runway guard
   });
 
-  test('runway constants: 320vh desktop, 260vh mobile', () => {
-    expect(RUNWAY_VH).toEqual({ desktop: 320, mobile: 260 });
+  test('runway constants follow 100 + P_END * baseSpanVh: 980vh desktop, 900vh mobile', () => {
+    expect(RUNWAY_VH).toEqual({ desktop: 980, mobile: 900 });
+    expect(RUNWAY_VH_STACK).toEqual({ desktop: 408, mobile: 324 });
+    expect(P_END.desktop).toBeCloseTo(4.0, 9); expect(P_END.mobile).toBeCloseTo(5.0, 9);
+  });
+
+  test('scrubProgress with baseSpanVh/pEnd extends past 1 and is clamped to pEnd', () => {
+    const stage = 900; const section = (RUNWAY_VH.desktop / 100) * stage;
+    expect(Math.abs(scrubProgress(0, section, stage, 220, P_END.desktop))).toBe(0);
+    expect(scrubProgress(300, section, stage, 220, P_END.desktop)).toBe(0);
+    expect(scrubProgress(-220 * 9, section, stage, 220, P_END.desktop)).toBeCloseTo(1, 9);
+    expect(scrubProgress(-220 * 9 * 1.5, section, stage, 220, P_END.desktop)).toBeCloseTo(1.5, 9);
+    expect(scrubProgress(-99999, section, stage, 220, P_END.desktop)).toBe(P_END.desktop);
+    // the full runway scrolls exactly P_END spans
+    expect(scrubProgress(-(section - stage), section, stage, 220, P_END.desktop)).toBeCloseTo(P_END.desktop, 6);
+    expect(Math.abs(scrubProgress(0, 900, 900, 220, P_END.desktop))).toBe(0);
   });
 
   test('smoothStep chases the target, is frame-rate independent, ~95% in 0.6 s, and snaps when close', () => {
@@ -337,5 +355,122 @@ describe('scrub progress and smoothing', () => {
     expect(coverScale(1920, 900, false)).toBeCloseTo(1.2, 6);
     expect(coverScale(1600, 1200, false)).toBeCloseTo(1200 / 900, 6);
     expect(coverScale(390, 844, true)).toBeCloseTo(Math.max(390 / 900, 844 / 1600), 6);
+  });
+});
+
+describe('second fill, settle and family timeline (scrub domain past 1)', () => {
+  test('named timeline table and monotonic ordering', () => {
+    expect(BASE_SPAN_VH).toEqual({ desktop: 220, mobile: 160 });
+    expect(LENS_START_P).toBe(0.86); expect(WHITE_HOLD_P).toBe(0.05);
+    near(FILL2_START_P, 1.02, 9); near(FILL2_END_P, 1.11, 9); near(SETTLE_END_P, 1.23, 9);
+    near(FILL2_DELAY_P, 0.22, 9); near(FILL2_SPAN_P, 0.09, 9); near(SETTLE_SPAN_P, 0.12, 9);
+    const seq = [TOUCH_P, LENS_START_P, FLOOD_END_P, FILL2_START_P, FILL2_END_P, SETTLE_END_P,
+      FAMILY_REVEAL_P[0], FAMILY_REVEAL_P[1], FAMILY_HIDE_P[0], VERSE_START_P];
+    // wash starts after the touch; settle ends after family begins to reveal
+    expect(LENS_START_P).toBeGreaterThan(TOUCH_P);
+    expect(FLOOD_END_P).toBeLessThan(FILL2_START_P);
+    expect(FILL2_START_P).toBeLessThan(FILL2_END_P);
+    expect(FILL2_END_P).toBeLessThan(SETTLE_END_P);
+    expect(FAMILY_REVEAL_P[0]).toBeLessThan(FAMILY_REVEAL_P[1]);
+    expect(FAMILY_REVEAL_P[1]).toBeLessThanOrEqual(FAMILY_HIDE_P[0]);
+    expect(FAMILY_HIDE_P[0]).toBeLessThan(FAMILY_HIDE_P[1]);
+    expect(FAMILY_HIDE_P[0]).toBeLessThanOrEqual(VERSE_START_P);
+    expect(seq.length).toBe(10);
+    expect(P_END_STACK).toBe(VERSE_START_P);
+    expect(VERSE_SPAN_P).toEqual({ desktop: 2.6, mobile: 3.6 });
+  });
+
+  test('original hands/flood drivers are unchanged and saturate beyond 1', () => {
+    expect(TOUCH_P).toBe(0.80); expect(FLOOD_END_P).toBe(0.97);
+    expect(floodDrivers(1.5)).toEqual(floodDrivers(1));
+    expect(floodDrivers(2.6)).toEqual(floodDrivers(1));
+    expect(handsPose(2, false)).toEqual(handsPose(1, false));
+    expect(ignite(1.7)).toBe(1);
+  });
+
+  test('lensDrivers: windows are ordered, off outside them, mobile keeps a subset', () => {
+    expect(LENS_ORIGIN).toEqual({ x: 0.5, y: 0.5 });
+    expect(LENS_START_P).toBeGreaterThan(TOUCH_P); expect(LENS_FULL_P).toBe(FLOOD_END_P);
+    expect(LENS_RECEDE_P[0]).toBe(FILL2_START_P); expect(LENS_RECEDE_P[0]).toBeLessThan(LENS_RECEDE_P[1]);
+    expect(LEAKS_END_P).toBe(1.16); expect(LEAKS_END_P).toBeGreaterThan(LENS_RECEDE_P[1]);
+    expect(LEAKS_END_P).toBeLessThan(FAMILY_REVEAL_P[0]);
+    expect(lensDrivers(0.5).on).toBe(false); expect(lensDrivers(0.5).lobes.every((l) => l.g === 0 && l.o === 0)).toBe(true);
+    expect(lensDrivers(LENS_START_P + 0.001).on).toBe(true);
+    expect(lensDrivers(1.159).on).toBe(true); expect(lensDrivers(LEAKS_END_P).on).toBe(false);
+    expect(lensDrivers(2).lobes.every((l) => l.o === 0 && l.g === 0)).toBe(true);
+    expect(lensDrivers(2).core.o).toBe(0); expect(lensDrivers(2).rays.o).toBe(0);
+    // six distinct lobes: not one circle
+    expect(LENS_LOBES.length).toBe(6);
+    expect(new Set(LENS_LOBES.map((l) => `${l.rx}x${l.ry}@${l.rot}`)).size).toBe(6);
+    expect(LENS_LOBES.some((l) => l.rx !== l.ry)).toBe(true);
+    expect(new Set(LENS_LOBES.map((l) => l.delay)).size).toBe(6);
+    expect(LENS_GHOSTS.length).toBe(3);
+    // desktop vs mobile
+    const desk = lensDrivers(0.93, false); const mob = lensDrivers(0.93, true);
+    expect(desk.lobes.length).toBe(6); expect(desk.ghosts.length).toBe(3);
+    expect(mob.lobes.length).toBe(LENS_MOBILE_LOBES); expect(mob.ghosts.length).toBe(0); expect(mob.rays.o).toBe(0);
+    // growth is monotone outward over the grow window; lobes are staggered (not in lockstep)
+    let prev = 0;
+    for (let p = LENS_START_P; p <= LENS_FULL_P; p += 0.005) {
+      const g = lensDrivers(p).lobes[0].g; expect(g).toBeGreaterThanOrEqual(prev - 1e-9); prev = g;
+    }
+    expect(lensDrivers(LENS_FULL_P).lobes.every((l) => l.g > 0.99)).toBe(true);
+    const mid = lensDrivers(0.9).lobes.map((l) => l.g);
+    expect(mid[0]).toBeGreaterThan(mid[5]);
+    expect(new Set(mid.map((g) => g.toFixed(3))).size).toBeGreaterThan(3);
+    // full-screen beat: flat white solid inside the hold, off before the recede
+    expect(lensDrivers(0.99).flat).toBe(1); expect(lensDrivers(0.9).flat).toBe(0);
+    expect(lensDrivers(LENS_RECEDE_P[0] + 0.08).flat).toBe(0);
+    // lobes pull back toward the centre and fade, never a bottom-up wipe (no y-travel field exists)
+    expect(lensDrivers(1.1).lobes[0].g).toBeLessThan(lensDrivers(LENS_FULL_P).lobes[0].g);
+    expect(lensDrivers(1.14).lobes.every((l) => l.o < 0.01)).toBe(true);
+    // no abrupt pop: adjacent 0.005-p samples never step flat or a lobe opacity by more than 0.25
+    for (let p = 0.86; p < 1.2; p += 0.005) {
+      const a = lensDrivers(p); const b = lensDrivers(p + 0.005);
+      expect(Math.abs(a.flat - b.flat)).toBeLessThan(0.25);
+      a.lobes.forEach((l, i) => expect(Math.abs(l.o - b.lobes[i].o)).toBeLessThan(0.25));
+    }
+    // everything bounded 0..1
+    for (let p = 0.7; p <= 1.2; p += 0.01) {
+      const d = lensDrivers(p);
+      for (const l of d.lobes) { expect(l.g).toBeGreaterThanOrEqual(0); expect(l.g).toBeLessThanOrEqual(1); expect(l.o).toBeGreaterThanOrEqual(0); expect(l.o).toBeLessThanOrEqual(1); }
+      expect(d.flat).toBeGreaterThanOrEqual(0); expect(d.flat).toBeLessThanOrEqual(1);
+    }
+    // pure function of p (reverse scroll is exact)
+    expect(lensDrivers(1.055)).toEqual(lensDrivers(1.055));
+    expect(Object.keys(lensDrivers(0.93)).sort()).toEqual(['core', 'flare', 'flat', 'ghosts', 'lobes', 'on', 'rays']);
+  });
+
+  test('fill2Drivers: field on just before the band lifts, settle ramps, hands hidden from the lift-off', () => {
+    expect(fill2Drivers(1.0).fieldOn).toBe(false);
+    expect(fill2Drivers(FILL2_START_P - 0.004).fieldOn).toBe(true);
+    expect(fill2Drivers(FILL2_END_P).settle).toBe(0);
+    expect(fill2Drivers(SETTLE_END_P).settle).toBe(1);
+    expect(fill2Drivers(1.2).settle).toBeGreaterThan(0.5);
+    expect(fill2Drivers(FILL2_START_P - 0.001).handsHidden).toBe(false);
+    expect(fill2Drivers(FILL2_START_P).handsHidden).toBe(true);
+    expect(fill2Drivers(0.9).handsHidden).toBe(false);
+    expect(fill2Drivers(FILL2_START_P).u).toBe(0); expect(fill2Drivers(FILL2_END_P).u).toBe(1);
+  });
+
+  test('familyOpacity reveals 1.19-1.26, holds, hides 1.38-1.46; keep never hides', () => {
+    expect(familyOpacity(1.0)).toBe(0); expect(familyOpacity(1.19)).toBe(0);
+    expect(familyOpacity(1.26)).toBe(1); expect(familyOpacity(1.3)).toBe(1);
+    expect(familyOpacity(1.225)).toBeGreaterThan(0.4); expect(familyOpacity(1.225)).toBeLessThan(0.6);
+    expect(familyOpacity(1.38)).toBe(1); expect(familyOpacity(1.46)).toBe(0); expect(familyOpacity(2.5)).toBe(0);
+    expect(familyOpacity(2.5, true)).toBe(1); expect(familyOpacity(1.4, true)).toBe(1);
+  });
+
+  test('P_END and runway stay in the formula', () => {
+    expect(RUNWAY_VH_STACK.desktop).toBe(Math.round(100 + P_END_STACK * BASE_SPAN_VH.desktop));
+  });
+});
+
+describe('handsOpacity: hands dissolve under the bloom', () => {
+  test('1 before the bloom, 0 once the lens holds, eased and monotone', () => {
+    expect(handsOpacity(0)).toBe(1); expect(handsOpacity(0.8)).toBe(1);
+    expect(handsOpacity(HANDS_FADE_P[1])).toBe(0); expect(handsOpacity(1.2)).toBe(0);
+    let prev = 1;
+    for (let p = 0.8; p <= 1.0; p += 0.005) { const o = handsOpacity(p); expect(o).toBeLessThanOrEqual(prev + 1e-9); expect(prev - o).toBeLessThan(0.1); prev = o; }
   });
 });
