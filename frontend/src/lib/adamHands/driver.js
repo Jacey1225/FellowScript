@@ -36,7 +36,7 @@ export const SETTLE_END_P = FILL2_END_P + SETTLE_SPAN_P; // 1.23
 export const FAMILY_REVEAL_P = [1.19, 1.26];
 export const FAMILY_HIDE_P = [1.38, 1.46];
 export const VERSE_START_P = 1.40;
-export const VERSE_SPAN_P = { desktop: 1.20, mobile: 1.50 };
+export const VERSE_SPAN_P = { desktop: 2.60, mobile: 3.60 };
 const r6 = (x) => Math.round(x * 1e6) / 1e6;
 export const P_END = { desktop: r6(VERSE_START_P + VERSE_SPAN_P.desktop), mobile: r6(VERSE_START_P + VERSE_SPAN_P.mobile) };
 // Landscape-phone / stacked-verse mode: the pinned stage stops where the verses would start.

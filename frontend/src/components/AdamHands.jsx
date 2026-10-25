@@ -9,8 +9,8 @@
 //    still at 100svh with the live eyebrow, then a static 24svh gradient strip.
 //    No pin, no scrub, no animation. This is also the first client render, so
 //    the markup the prerender emits and the first client render agree.
-//  - Live (client, motion allowed): a 672vh (564vh mobile) runway with a sticky
-//    100svh stage; p runs 0 .. P_END (2.6 / 2.9). Scroll progress p is smoothed (~0.6 s) and painted by writing
+//  - Live (client, motion allowed): a 980vh (900vh mobile) runway with a sticky
+//    100svh stage; p runs 0 .. P_END (4.0 / 5.0). Scroll progress p is smoothed (~0.6 s) and painted by writing
 //    styles straight onto the layer elements (no React re-render per frame).
 //    All maths lives in src/lib/adamHands/driver.js.
 //  - All light, the key filter, lens bloom, cap and type are live; only the cut-out
@@ -20,14 +20,14 @@ import React, { useEffect, useRef, useState } from 'react';
 import {
   CANVAS, RUNWAY_VH, RUNWAY_VH_STACK, BASE_SPAN_VH, P_END, P_END_STACK, floodDrivers, lightParams, fanWeights, FAN_REF,
   handsPose, handsOpacity, bloomIntensity, ignite, beatGlow, warmGlowAlpha, eyebrowColor, fill2Drivers, familyOpacity,
-  scrubProgress, smoothStep, coverScale, smooth, lerp,
+  scrubProgress, smoothStep, coverScale, smooth, lerp, clamp,
 } from '../lib/adamHands/driver.js';
 import {
   FIELD_CAP, FIELD_INK, FIELD_UNDER, FIELD_GRAIN_URL, FIELD_BLOBS, FALLBACK_GRADIENT, adamPhase,
 } from '../lib/adamHands/field.js';
 import LiquidField, { LIQUID_CSS } from './LiquidField.jsx';
 import { LensBloom, LENS_CSS, collectLens, paintLens } from './LensBloom.jsx';
-import { VerseDescent, VerseStack, VERSE_CSS, paintVerses } from './VerseDescent.jsx';
+import { VerseDescent, VerseStack, VERSE_CSS, paintVerses, createVerseRig } from './VerseDescent.jsx';
 import { VERSE_STACK_QUERY } from '../lib/verseDescent.js';
 
 // Palette, blob table and the text-contrast luminance rule live in lib/adamHands/field.js
@@ -282,7 +282,7 @@ function paintFrame(refs, p, mobile, stack) {
     if (refs.field.dataset.live !== on) refs.field.dataset.live = on;
   }
   if (refs.hilite) refs.hilite.style.opacity = f2.settle.toFixed(3);
-  if (refs.verses.length) paintVerses(refs.verses, p, mobile, refs.w, refs.h);
+  if (refs.verses.length) paintVerses(refs.verses, p, mobile, refs.w, refs.h, refs.rig);
 
   // Type.
   const ec = eyebrowColor(d.c);
@@ -466,6 +466,7 @@ export default function AdamHands() {
     if (!section || !stage) return undefined;
     const refs = collect(stage);
     if (!refs.canvas) return undefined;
+    refs.rig = createVerseRig(mode.mobile);
 
     const fit = () => {
       const s = coverScale(stage.clientWidth || 1, stage.clientHeight || 1, mode.mobile);
@@ -492,7 +493,11 @@ export default function AdamHands() {
     if (fieldEl && typeof IntersectionObserver !== 'undefined') {
       io = new IntersectionObserver((entries) => {
         const e = entries[entries.length - 1];
-        if (e) fieldEl.dataset.onscreen = e.isIntersecting ? 'true' : 'false';
+        if (e) {
+          fieldEl.dataset.onscreen = e.isIntersecting ? 'true' : 'false';
+          visible = e.isIntersecting;
+          if (!visible) { refs.rig.pointer(null, null); } else pkick();
+        }
       });
       io.observe(stage);
     }
@@ -515,6 +520,53 @@ export default function AdamHands() {
     };
     const kick = () => { if (!raf) raf = window.requestAnimationFrame(tick); };
     const onScroll = () => { target = readTarget(); kick(); };
+
+    // Cursor spring parallax (fine pointer, pinned verses only). Own rAF loop that sleeps once
+    // every card has settled; the scroll tick above also paints with the same spring offsets.
+    let praf = 0;
+    let plast = 0;
+    let visible = true;
+    const ptick = (now) => {
+      praf = 0;
+      const dt = plast ? Math.min(0.1, (now - plast) / 1000) : 1 / 60;
+      plast = now;
+      const active = refs.rig.step(dt);
+      if (refs.verses.length) paintVerses(refs.verses, cur, mode.mobile, refs.w, refs.h, refs.rig);
+      if (active && visible && document.visibilityState !== 'hidden') praf = window.requestAnimationFrame(ptick);
+      else plast = 0;
+    };
+    const pkick = () => { if (!praf) praf = window.requestAnimationFrame(ptick); };
+    const fine = !mode.mobile && !mode.stack && window.matchMedia && window.matchMedia('(pointer: fine)').matches;
+    const onPointerMove = (e) => {
+      const r = stage.getBoundingClientRect();
+      if (!r.width || !r.height) return;
+      const nx = clamp(((e.clientX - r.left) / r.width) * 2 - 1, -1, 1);
+      const ny = clamp(((e.clientY - r.top) / r.height) * 2 - 1, -1, 1);
+      refs.rig.pointer(nx, ny);
+      pkick();
+    };
+    const onPointerOut = (e) => { if (!e.relatedTarget) { refs.rig.pointer(null, null); pkick(); } };
+    const onBlur = () => { refs.rig.pointer(null, null); pkick(); };
+    if (fine) {
+      window.addEventListener('pointermove', onPointerMove, { passive: true });
+      document.addEventListener('pointerout', onPointerOut);
+      window.addEventListener('blur', onBlur);
+    }
+    // Debug / test hooks (dev server, or any build opened with ?heroDebug=1):
+    //  window.__verseParallax(nx, ny)  drives the spring without a real pointer (null releases).
+    //  window.__adamScrollToP(p)       scrolls the page so the hero scrub target is p (0 .. P_END).
+    const debug = (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.DEV) || /[?&]heroDebug=1/.test(window.location.search || '');
+    if (debug) {
+      if (fine) window.__verseParallax = (nx, ny) => { refs.rig.pointer(nx, ny); pkick(); };
+      window.__adamScrollToP = (pp) => {
+        let sc = section.parentElement;
+        while (sc && !(sc.scrollHeight > sc.clientHeight + 1 && /(auto|scroll)/.test(getComputedStyle(sc).overflowY))) sc = sc.parentElement;
+        sc = sc || document.scrollingElement || document.documentElement;
+        const span = (baseSpan / 100) * (stage.clientHeight || window.innerHeight);
+        sc.scrollTop += section.getBoundingClientRect().top + pp * span;
+        onScroll();
+      };
+    }
     const onResize = () => { fit(); onScroll(); };
 
     // Capture phase on document: the app scrolls inside #root (html/body/#root
@@ -528,6 +580,11 @@ export default function AdamHands() {
       window.removeEventListener('resize', onResize);
       if (ro) ro.disconnect();
       if (io) io.disconnect();
+      window.removeEventListener('pointermove', onPointerMove);
+      document.removeEventListener('pointerout', onPointerOut);
+      window.removeEventListener('blur', onBlur);
+      delete window.__verseParallax; delete window.__adamScrollToP;
+      if (praf) window.cancelAnimationFrame(praf);
       if (raf) window.cancelAnimationFrame(raf);
     };
   }, [mode.live, mode.mobile, mode.stack]);

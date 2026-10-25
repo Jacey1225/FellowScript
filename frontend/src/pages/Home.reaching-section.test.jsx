@@ -92,7 +92,7 @@ describe('Adam section: fallback (first render, reduced motion, no-JS equivalent
     expect(p.querySelector('.adam-grad')).toBeTruthy();
     const css = p.querySelector('style').textContent;
     // The runway height is only ever applied under data-live="true".
-    expect(css).toMatch(/\.adam-pin\[data-live="true"\] \{ height: 672vh; \}/);
+    expect(css).toMatch(/\.adam-pin\[data-live="true"\] \{ height: 980vh; \}/);
     expect(css).toMatch(/\.adam-grad \{ position: relative; height: 24svh;/);
     expect(css).toMatch(/#17120F 0%, #2B1B0B 22%, #3F2610 50%, #5C3509 100%/);
     expect(css).toMatch(/#EBC480 100%/);
@@ -108,7 +108,7 @@ describe('Adam section: fallback (first render, reduced motion, no-JS equivalent
     expect(add.mock.calls.filter(([t, , o]) => t === 'scroll' && o && o.capture).length).toBe(0);
   });
 
-  test('motion allowed: goes live after mount, with a scroll listener (capture) and a 672vh runway attr', () => {
+  test('motion allowed: goes live after mount, with a scroll listener (capture) and a 980vh runway attr', () => {
     mockMotion(false);
     const add = vi.spyOn(document, 'addEventListener');
     const { container } = renderHome();
@@ -179,7 +179,7 @@ describe('Adam section: live stack is decorative and a11y-safe', () => {
     expect(css).not.toMatch(/Playfair|Inter\b/);
   });
 
-  test('mobile: 9:16 canvas, 1800px layers on 2x srcset, 564vh runway rule', () => {
+  test('mobile: 9:16 canvas, 1800px layers on 2x srcset, 900vh runway rule', () => {
     mockMotion(false, true);
     const { container } = renderHome();
     const p = pin(container);
@@ -189,7 +189,7 @@ describe('Adam section: live stack is decorative and a11y-safe', () => {
     expect(cv.style.height).toBe('1600px');
     const hand = p.querySelector('[data-adam="hand-img"]');
     expect(hand.getAttribute('srcset')).toMatch(/-900x1600\.webp 1x, .*-1800x3200\.webp 2x/);
-    expect(p.querySelector('style').textContent).toMatch(/height: 564vh/);
+    expect(p.querySelector('style').textContent).toMatch(/height: 900vh/);
   });
 
   test('image fallback: eyebrow text stays in the DOM even if the still fails', () => {

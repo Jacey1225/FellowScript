@@ -316,10 +316,10 @@ describe('scrub progress and smoothing', () => {
     expect(scrubProgress(0, 900, 900)).toBe(0);                  // no runway guard
   });
 
-  test('runway constants follow 100 + P_END * baseSpanVh: 672vh desktop, 564vh mobile', () => {
-    expect(RUNWAY_VH).toEqual({ desktop: 672, mobile: 564 });
+  test('runway constants follow 100 + P_END * baseSpanVh: 980vh desktop, 900vh mobile', () => {
+    expect(RUNWAY_VH).toEqual({ desktop: 980, mobile: 900 });
     expect(RUNWAY_VH_STACK).toEqual({ desktop: 408, mobile: 324 });
-    expect(P_END.desktop).toBeCloseTo(2.6, 9); expect(P_END.mobile).toBeCloseTo(2.9, 9);
+    expect(P_END.desktop).toBeCloseTo(4.0, 9); expect(P_END.mobile).toBeCloseTo(5.0, 9);
   });
 
   test('scrubProgress with baseSpanVh/pEnd extends past 1 and is clamped to pEnd', () => {
@@ -377,7 +377,7 @@ describe('second fill, settle and family timeline (scrub domain past 1)', () => 
     expect(FAMILY_HIDE_P[0]).toBeLessThanOrEqual(VERSE_START_P);
     expect(seq.length).toBe(10);
     expect(P_END_STACK).toBe(VERSE_START_P);
-    expect(VERSE_SPAN_P).toEqual({ desktop: 1.2, mobile: 1.5 });
+    expect(VERSE_SPAN_P).toEqual({ desktop: 2.6, mobile: 3.6 });
   });
 
   test('original hands/flood drivers are unchanged and saturate beyond 1', () => {

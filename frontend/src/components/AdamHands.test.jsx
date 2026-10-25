@@ -76,8 +76,8 @@ describe('AdamHands server / no-JS markup', () => {
   });
 
   test('CSS: runway only under data-live, 24svh gradient ending on FIELD_END, stage 100svh with 100vh fallback', () => {
-    expect(ADAM_CSS).toMatch(/\.adam-pin\[data-live="true"\] \{ height: 672vh; \}/);
-    expect(ADAM_CSS).toMatch(/height: 564vh/);
+    expect(ADAM_CSS).toMatch(/\.adam-pin\[data-live="true"\] \{ height: 980vh; \}/);
+    expect(ADAM_CSS).toMatch(/height: 900vh/);
     expect(ADAM_CSS).toMatch(/\[data-stack="true"\] \{ height: 408vh; \}/);
     expect(ADAM_CSS).toMatch(/\.adam-grad \{ position: relative; height: 24svh;/);
     expect(FIELD_END).toBe('#EBC480');
@@ -132,7 +132,7 @@ describe('AdamHands client behaviour', () => {
     const stage = container.querySelector('.adam-stage');
     Object.defineProperty(stage, 'clientHeight', { configurable: true, value: 900 });
     let top = 0;
-    const H = 6048; // 672vh on a 900px stage
+    const H = 8820; // 980vh on a 900px stage
     section.getBoundingClientRect = () => ({ top, height: H, bottom: top + H, left: 0, right: 0, width: 0, x: 0, y: top });
     const run = (frames) => { let t = 0; for (let i = 0; i < frames; i++) { t += 100; const q = rafQ.splice(0); q.forEach((cb) => cb(t)); } };
 
@@ -149,7 +149,7 @@ describe('AdamHands client behaviour', () => {
 
     top = -(9999); // end of runway: p clamps to P_END, verses have all passed, Family is gone
     act(() => { document.dispatchEvent(new Event('scroll')); run(80); });
-    expect(parseFloat(stage.dataset.p)).toBeCloseTo(2.6, 2);
+    expect(parseFloat(stage.dataset.p)).toBeCloseTo(4.0, 2);
     expect(parseFloat(container.querySelector('[data-adam="final"]').style.opacity)).toBe(0);
     container.querySelectorAll('[data-adam="verse"]').forEach((el) => expect(el.style.visibility).toBe('hidden'));
 
