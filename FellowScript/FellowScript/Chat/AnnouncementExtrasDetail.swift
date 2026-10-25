@@ -14,6 +14,8 @@ struct AnnouncementExtrasDetail: View {
     let textColor: Color
     /// Join (true) / leave (false). Nil = read-only (count only).
     var onRSVP: ((Bool) async throws -> FSGroupAnnouncement)?
+    /// Poll voting. Nil = read-only (live results only).
+    var pollActions: AnnouncementPollActions? = nil
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var safari: ExploreDestination?
@@ -21,6 +23,9 @@ struct AnnouncementExtrasDetail: View {
     @State private var override: (count: Int, joined: Bool)?
     @State private var rsvpBusy = false
     @State private var rsvpError: String?
+    @State private var pollOverride: FSAnnouncementPoll?
+    @State private var pollBusy = false
+    @State private var pollError: String?
 
     private var gallery: [FSAnnouncementGalleryImage] { (item.gallery ?? []).filter { $0.url.flatMap(URL.init(string:)) != nil } }
     private var links: [(link: FSAnnouncementLink, url: URL)] {
@@ -44,6 +49,7 @@ struct AnnouncementExtrasDetail: View {
             if !links.isEmpty { linksBlock }
             if !handles.isEmpty { paymentsBlock }
             if let place = locationText { locationBlock(place) }
+            if let poll = pollOverride ?? item.poll { pollBlock(poll) }
             if let cap = item.capacity { rsvpBlock(capacity: cap) }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -51,7 +57,7 @@ struct AnnouncementExtrasDetail: View {
         .fullScreenCover(isPresented: Binding(get: { viewerIndex != nil }, set: { if !$0 { viewerIndex = nil } })) {
             AnnouncementGalleryViewer(images: gallery, start: viewerIndex ?? 0) { viewerIndex = nil }
         }
-        .onChange(of: item) { _, _ in override = nil }
+        .onChange(of: item) { _, _ in override = nil; pollOverride = nil }
     }
 
     private func heading(_ t: String) -> some View {
@@ -186,6 +192,132 @@ struct AnnouncementExtrasDetail: View {
                         .font(.inter(Theme.fontXS)).foregroundColor(textColor.opacity(0.85))
                         .fixedSize(horizontal: false, vertical: true)
                 }
+            }
+        }
+    }
+
+    // ── Poll ─────────────────────────────────────────────────────────────────
+    private func pollBlock(_ poll: FSAnnouncementPoll) -> some View {
+        let canVote = pollActions != nil && item.published && !poll.closed
+        let mine = Set(poll.my_votes)
+        let lead = poll.options.map(\.votes).max() ?? 0
+        return VStack(alignment: .leading, spacing: Theme.spacingXS) {
+            heading("Poll")
+            card {
+                VStack(alignment: .leading, spacing: Theme.spacingSM) {
+                    Text(poll.question)
+                        .font(.inter(Theme.fontSM, weight: .bold)).foregroundColor(textColor)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .accessibilityAddTraits(.isHeader)
+                    ForEach(poll.options) { o in
+                        pollOptionRow(o, poll: poll, selected: mine.contains(o.id), canVote: canVote,
+                                      leading: poll.closed && lead > 0 && o.votes == lead)
+                    }
+                    HStack(spacing: Theme.spacingSM) {
+                        Text(pollFooter(poll))
+                            .font(.inter(Theme.fontXS)).foregroundColor(textColor.opacity(0.8))
+                            .fixedSize(horizontal: false, vertical: true)
+                        Spacer(minLength: 0)
+                    }
+                    HStack(spacing: Theme.spacingMD) {
+                        if canVote, !mine.isEmpty {
+                            pollTextButton("Clear my vote") { await pollRun { try await pollActions!.retract() } }
+                        }
+                        if item.can_edit, !poll.closed, let close = pollActions?.close {
+                            pollTextButton("Close poll") { await pollRun { try await close() } }
+                        }
+                    }
+                    if let pollError {
+                        Text(pollError).font(.inter(Theme.fontXS)).foregroundColor(Theme.error)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    Text("Votes are anonymous. Only counts are shown.")
+                        .font(.inter(Theme.fontXS)).foregroundColor(textColor.opacity(0.7))
+                }
+            }
+        }
+    }
+
+    private func pollFooter(_ poll: FSAnnouncementPoll) -> String {
+        var parts = ["\(poll.total_voters) \(poll.total_voters == 1 ? "person has" : "people have") voted"]
+        if poll.multiple { parts.append("pick all that apply") }
+        if poll.closed { parts.append("Poll closed") }
+        else if let c = poll.closes_at, let d = FSAnnouncementDates.parse(c) {
+            parts.append("closes \(d.formatted(date: .abbreviated, time: .shortened))")
+        }
+        return parts.joined(separator: " · ")
+    }
+
+    private func pollOptionRow(_ o: FSPollOption, poll: FSAnnouncementPoll, selected: Bool, canVote: Bool, leading: Bool) -> some View {
+        Button { if canVote { Task { await pollToggle(o, poll: poll) } } } label: {
+            ZStack(alignment: .leading) {
+                GeometryReader { geo in
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .fill(Theme.gold.opacity(selected ? 0.30 : (leading ? 0.26 : 0.18)))
+                        .frame(width: geo.size.width * CGFloat(max(0, min(100, o.percent))) / 100)
+                        .animation(reduceMotion ? nil : .easeOut(duration: 0.25), value: o.percent)
+                }
+                HStack(spacing: Theme.spacingSM) {
+                    Image(systemName: selected ? (poll.multiple ? "checkmark.square.fill" : "largecircle.fill.circle")
+                                               : (poll.multiple ? "square" : "circle"))
+                        .foregroundColor(Theme.gold)
+                    Text(o.label).font(.inter(Theme.fontSM, weight: .semibold)).foregroundColor(textColor)
+                        .multilineTextAlignment(.leading).fixedSize(horizontal: false, vertical: true)
+                    Spacer(minLength: 0)
+                    Text("\(o.percent)%").font(.inter(Theme.fontXS)).foregroundColor(textColor.opacity(0.85)).monospacedDigit()
+                }
+                .padding(.horizontal, Theme.spacingSM).padding(.vertical, 10)
+            }
+            .frame(minHeight: 44)
+            .background(Theme.parchment.opacity(0.06))
+            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(selected ? Theme.gold : Theme.parchment.opacity(0.12), lineWidth: 1))
+            .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .disabled(pollBusy)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(o.label), \(o.votes) \(o.votes == 1 ? "vote" : "votes"), \(o.percent) percent\(selected ? ", your choice" : "")")
+        .accessibilityHint(canVote ? (selected && !poll.multiple ? "Your current choice" : "Double tap to vote") : "")
+        .accessibilityAddTraits(selected ? [.isButton, .isSelected] : .isButton)
+    }
+
+    private func pollTextButton(_ title: String, _ action: @escaping () async -> Void) -> some View {
+        Button { Task { await action() } } label: {
+            Text(title).font(.inter(Theme.fontXS, weight: .semibold)).foregroundColor(Theme.gold)
+                .frame(minHeight: 44).contentShape(Rectangle())
+        }
+        .buttonStyle(.plain).disabled(pollBusy)
+    }
+
+    private func pollToggle(_ o: FSPollOption, poll: FSAnnouncementPoll) async {
+        guard let actions = pollActions else { return }
+        var next = Set(poll.my_votes)
+        if poll.multiple {
+            if next.contains(o.id) { next.remove(o.id) } else { next.insert(o.id) }
+            if next.isEmpty { await pollRun { try await actions.retract() }; return }
+        } else {
+            if next.contains(o.id) { return }
+            next = [o.id]
+        }
+        let ordered = poll.options.map(\.id).filter(next.contains)
+        await pollRun { try await actions.vote(ordered) }
+    }
+
+    private func pollRun(_ call: () async throws -> FSGroupAnnouncement) async {
+        guard !pollBusy else { return }
+        pollBusy = true; pollError = nil
+        defer { pollBusy = false }
+        do {
+            let updated = try await call()
+            if let p = updated.poll { pollOverride = p }
+        } catch {
+            if case AppError.networkError(let m) = error, m.localizedCaseInsensitiveContains("closed") {
+                pollError = "This poll just closed."
+            } else if case AppError.networkError(let m) = error, !m.isEmpty, m.count < 100, !m.hasPrefix("Server error") {
+                pollError = m
+            } else {
+                pollError = "Couldn't update the poll. Please try again."
             }
         }
     }

@@ -1,3 +1,4 @@
+import { FormSkin } from './forms/index.js';
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { Spin, Alert, Button, Tag, Input, Select, Modal } from 'antd';
 import {
@@ -6,15 +7,15 @@ import {
 } from '../lib/payoutsApi.js';
 
 const CARD = {
-  background: 'rgba(32,24,16,0.62)', border: '1px solid rgba(200,134,26,0.22)', backdropFilter: 'blur(14px)',
-  borderRadius: 22, marginBottom: '1.25rem', padding: '1.25rem 1.4rem',
+  background: 'rgba(154,154,154,0.16)', border: '1px solid rgba(255,255,255,0.14)',
+  borderRadius: 20, marginBottom: '1.25rem', padding: '1.25rem 1.4rem',
 };
 const LABEL = {
-  fontFamily: "'Inter', sans-serif", fontWeight: 600, fontSize: '0.62rem', letterSpacing: '0.22em',
+  fontFamily: 'inherit', fontWeight: 600, fontSize: '0.62rem', letterSpacing: '0.22em',
   textTransform: 'uppercase', color: 'rgba(224,170,60,0.78)', display: 'block', margin: '0 0 4px',
 };
-const MUTED = { fontFamily: "'Inter', sans-serif", fontSize: '0.8rem', color: 'rgba(244,228,193,0.5)' };
-const BODY = { fontFamily: "'Inter', sans-serif", fontSize: '0.9rem', color: 'rgba(244,228,193,0.85)', lineHeight: 1.6 };
+const MUTED = { fontFamily: 'inherit', fontSize: '0.8rem', color: 'rgba(244,228,193,0.5)' };
+const BODY = { fontFamily: 'inherit', fontSize: '0.9rem', color: 'rgba(244,228,193,0.85)', lineHeight: 1.6 };
 const FIELD = { display: 'block', marginBottom: '0.8rem' };
 const ERR = { color: '#ff7875', fontSize: '0.78rem', margin: '2px 0 0' };
 const BLANK = { routing_number: '', account_number: '', account_confirm: '', account_type: 'checking', holder_name: '' };
@@ -114,6 +115,7 @@ export default function AffiliatePayouts() {
   const digits = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value.replace(/\D/g, '') }));
 
   return (
+    <FormSkin>
     <div style={CARD} data-testid="payout-details">
       <h2 style={LABEL}>Payout details</h2>
       <p style={BODY}>
@@ -205,5 +207,6 @@ export default function AffiliatePayouts() {
         they are removed immediately, though encrypted backups may keep a copy until they expire.
       </p>
     </div>
+    </FormSkin>
   );
 }

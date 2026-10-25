@@ -1,3 +1,4 @@
+import { StepperRail, StickyActionBar, FormErrorSummary } from './forms/index.js';
 import React, { useState, useRef, useEffect } from 'react';
 import { Spin } from 'antd';
 import { PictureOutlined, BgColorsOutlined } from '@ant-design/icons';
@@ -11,6 +12,7 @@ import {
   ANNOUNCEMENT_FLAGS as FLAG, BG_THEMES, BG_THEME_GRADIENTS, BG_THEME_SOLIDS, TITLE_FONTS, TITLE_FONT_KEYS, EXTRAS_LIMITS,
   PAYMENT_PROVIDERS, resolveBgTheme, bgThemeStoredKey, bgThemeCss, bgThemeLabel, resolveTitleFont, titleFontStoredKey,
   titleFontLabel, titleFontStyle, bgThemeReadableText, titleColorOnTheme, parseLink, linkError, handleError, locationError,
+  POLL_LIMITS, pollError, pollBody,
 } from '../lib/announcementStyle.js';
 
 // Create/edit form for a group announcement (design-notes.md, "Create / edit
@@ -25,6 +27,9 @@ function toLocalInput(date) {
 export default function GroupAnnouncementForm({ userId, groupId, item, gate, gateHit, upgrade, onSubmit, onCancel, headingRef }) {
   const editing = !!item;
   const canReschedule = !editing || item.published === false;
+  const [step, setStep] = useState(0);
+  const [furthest, setFurthest] = useState(0);
+  const [showErrors, setShowErrors] = useState(false);
   const [title, setTitle] = useState(item?.title || '');
   const [titleColor, setTitleColor] = useState(normalizeHex(item?.title_color));
   const [description, setDescription] = useState(item?.description || '');
@@ -39,6 +44,13 @@ export default function GroupAnnouncementForm({ userId, groupId, item, gate, gat
   const [handles, setHandles] = useState(() => Object.fromEntries((item?.payment_handles || []).map((h) => [h.provider, h.handle])));
   const [rsvpOn, setRsvpOn] = useState(Number.isInteger(item?.capacity));
   const [capacity, setCapacity] = useState(Number.isInteger(item?.capacity) ? item.capacity : EXTRAS_LIMITS.capacityDefault);
+  // Poll: options and "multiple" lock once anyone has voted (server enforces too).
+  const pollLocked = (item?.poll?.total_voters || 0) > 0;
+  const [pollOn, setPollOn] = useState(!!item?.poll);
+  const [pollQuestion, setPollQuestion] = useState(item?.poll?.question || '');
+  const [pollOptions, setPollOptions] = useState(() => (item?.poll ? item.poll.options.map((o) => o.label) : ['', '']));
+  const [pollMultiple, setPollMultiple] = useState(!!item?.poll?.multiple);
+  const [pollCloses, setPollCloses] = useState(() => (item?.poll?.closes_at ? toLocalInput(new Date(item.poll.closes_at)) : ''));
   const linkId = useRef(0);
   const [links, setLinks] = useState(() => (item?.links || []).map((l) => ({ id: linkId.current++, url: l.url || '', label: l.label || '' })));
   const [gallery, setGallery] = useState(() => (item?.gallery || []).map((g) => ({ key: g.key, url: g.url || null })));
@@ -75,15 +87,17 @@ export default function GroupAnnouncementForm({ userId, groupId, item, gate, gat
   const showGallery = on(FLAG.gallery);
   const showPayments = on(FLAG.payments);
   const showRsvp = on(FLAG.rsvp);
-  const showExtras = showLocation || showLinks || showGallery || showPayments || showRsvp;
+  const showPolls = on(FLAG.polls);
+  const showExtras = showLocation || showLinks || showGallery || showPayments || showRsvp || showPolls;
   const trimmedLocation = location.trim().slice(0, EXTRAS_LIMITS.maxLocationLength);
   // First reason the extras can't be saved as they stand (the server stays the source of truth).
   const extrasError = (showLocation && locationError(location))
     || (showLinks && links.some((l) => linkError(l.url)) && 'Fix the highlighted link.')
     || (showPayments && isEvent && PAYMENT_PROVIDERS.some((p) => handleError(handles[p.key])) && 'Fix the highlighted payment handle.')
+    || (showPolls && pollOn && pollError({ question: pollQuestion, options: pollOptions, closes: pollCloses }))
     || null;
   const extrasCount = (showLocation && trimmedLocation ? 1 : 0) + (showLinks ? links.filter((l) => parseLink(l.url)).length : 0)
-    + (showGallery ? gallery.length : 0) + (showPayments && isEvent ? 1 : 0) + (showRsvp && rsvpOn ? 1 : 0);
+    + (showGallery ? gallery.length : 0) + (showPayments && isEvent ? 1 : 0) + (showRsvp && rsvpOn ? 1 : 0) + (showPolls && pollOn ? 1 : 0);
   const canSubmit = !!trimmedTitle && !!trimmedDesc && !scheduleInvalid && !extrasError && !saving && !bannerBusy && !galleryBusy;
   const dirty = touched;
 
@@ -153,6 +167,17 @@ export default function GroupAnnouncementForm({ userId, groupId, item, gate, gat
       const orig = Number.isInteger(item?.capacity) ? item.capacity : null;
       if (cur !== orig) body.capacity = cur;
     }
+    if (showPolls) {
+      if (pollOn) {
+        const cur = pollBody({ question: pollQuestion, options: pollOptions, multiple: pollMultiple, closes: pollCloses });
+        const orig = item?.poll
+          ? { question: item.poll.question, options: item.poll.options.map((o) => o.label), multiple: !!item.poll.multiple, closes_at: item.poll.closes_at ? new Date(item.poll.closes_at).toISOString() : null }
+          : null;
+        if (JSON.stringify(cur) !== JSON.stringify(orig)) body.poll = cur;
+      } else if (item?.poll) {
+        body.poll = null; // removing the poll also removes its votes
+      }
+    }
     if (canReschedule) {
       if (mode === 'schedule') body.publish_at = new Date(when).toISOString();
       else if (editing) body.publish_at = new Date().toISOString();
@@ -207,15 +232,27 @@ export default function GroupAnnouncementForm({ userId, groupId, item, gate, gat
   const stripStyle = stripTheme === 'none' ? undefined : { background: bgThemeCss(stripTheme), color: stripText };
   const stripTitleColor = titleColor ? (stripTheme === 'none' ? titleColor : titleColorOnTheme(titleColor, stripTheme, stripText)) : stripText;
   const heading = editing ? 'Edit announcement' : 'New announcement';
+  const STEP_NAMES = ['Content', 'Style', 'Publish'];
+  const contentValid = !!trimmedTitle && !!trimmedDesc;
+  const maxReachable = editing ? STEP_NAMES.length - 1 : furthest;
+  const goStep = (i) => { if (i <= maxReachable) setStep(i); };
+  const nextStep = () => {
+    if (step === 0 && !contentValid) { setShowErrors(true); document.getElementById(trimmedTitle ? 'announcement-description' : 'announcement-title')?.focus(); return; }
+    setShowErrors(false);
+    const n = Math.min(step + 1, STEP_NAMES.length - 1);
+    setFurthest((f) => Math.max(f, n));
+    setStep(n);
+  };
+  const submitLabelText = saving ? 'Saving…' : bannerBusy ? 'Uploading…' : (editing ? 'Save' : (mode === 'schedule' ? 'Schedule' : 'Post'));
+  const lastStep = step === STEP_NAMES.length - 1;
   return (
-    <div className="group-info-announcements-form-wrap">
+    <div className="group-info-announcements-form-wrap fs-form">
       <div className="group-info-announcements-bar">
-        <button type="button" className="ann-outline-pill" onClick={cancel}>Cancel</button>
+        <button type="button" className="ann-outline-pill" onClick={cancel} aria-label="Cancel">✕</button>
         <h3 ref={headingRef} tabIndex={-1} className="group-info-announcements-title">{heading}</h3>
-        <button type="button" className="ann-outline-pill ann-outline-pill-post" onClick={submit} disabled={!canSubmit}>
-          {saving ? <Spin size="small" /> : bannerBusy ? 'Uploading…' : (editing ? 'Save' : (mode === 'schedule' ? 'Schedule' : 'Post'))}
-        </button>
+        <span aria-hidden="true" style={{ width: 44 }} />
       </div>
+      <StepperRail steps={STEP_NAMES} current={step} maxReachable={maxReachable} onSelect={goStep} />
 
       {cropSource && <BannerCropper source={cropSource} onConfirm={onCropped} onCancel={() => setCropSource(null)} />}
 
@@ -229,7 +266,27 @@ export default function GroupAnnouncementForm({ userId, groupId, item, gate, gat
         </div>
       )}
 
-      <form className="group-info-announcements-form" onSubmit={(e) => { e.preventDefault(); submit(); }}>
+      <form className="group-info-announcements-form" onSubmit={(e) => { e.preventDefault(); if (lastStep) submit(); else nextStep(); }}>
+        <div className="ann-step" hidden={step !== 0}>
+        <div className="group-info-announcements-field">
+          <label className="group-info-label" htmlFor="announcement-title">Title</label>
+          <input id="announcement-title" className="group-info-input" value={title} disabled={saving} placeholder="Title"
+            maxLength={ANNOUNCEMENT_LIMITS.titleMax} aria-describedby="announcement-title-help"
+            onChange={(e) => { setTitle(e.target.value); setTouched(true); }} />
+          {title.length >= ANNOUNCEMENT_LIMITS.titleMax - 20 && <span className="group-info-counter">{title.length}/{ANNOUNCEMENT_LIMITS.titleMax}</span>}
+          {!trimmedTitle && <p id="announcement-title-help" className={showErrors ? "group-info-error" : "group-info-helper"} role={showErrors ? "alert" : undefined}>{showErrors ? "Add a title." : "Give it a title."}</p>}
+        </div>
+
+        <div className="group-info-announcements-field">
+          <label className="group-info-label" htmlFor="announcement-description">Message</label>
+          <textarea id="announcement-description" className="group-info-input group-info-announcements-textarea" rows={4}
+            value={description} disabled={saving} maxLength={ANNOUNCEMENT_LIMITS.descriptionMax}
+            aria-describedby="announcement-desc-help"
+            onChange={(e) => { setDescription(e.target.value); setTouched(true); }} />
+          {description.length >= ANNOUNCEMENT_LIMITS.descriptionMax - 200 && <span className="group-info-counter">{description.length}/{ANNOUNCEMENT_LIMITS.descriptionMax}</span>}
+          {!trimmedDesc && <p id="announcement-desc-help" className={showErrors ? "group-info-error" : "group-info-helper"} role={showErrors ? "alert" : undefined}>Write a message for the group.</p>}
+        </div>
+
         <div className="group-info-announcements-field">
           <span className="group-info-label">Banner photo (optional)</span>
           <div className="ann-banner-tile">
@@ -259,6 +316,12 @@ export default function GroupAnnouncementForm({ userId, groupId, item, gate, gat
             aria-hidden="true" tabIndex={-1} data-testid="announcement-banner-input" onChange={onFile} />
           {bannerError && <p className="group-info-error" role="alert">{bannerError}</p>}
 
+          {!currentBanner ? null : null}
+        </div>
+
+        </div>
+        <div className="ann-step" hidden={step !== 1}>
+        <div className="group-info-announcements-field">
           {showFont && (
             <div className="ann-font-row" role="radiogroup" aria-label="Title font">
               {TITLE_FONT_KEYS.map((k) => {
@@ -303,27 +366,8 @@ export default function GroupAnnouncementForm({ userId, groupId, item, gate, gat
         </div>
 
         <div className="group-info-announcements-field">
-          <label className="group-info-label" htmlFor="announcement-title">Title</label>
-          <input id="announcement-title" className="group-info-input" value={title} disabled={saving} placeholder="Title"
-            maxLength={ANNOUNCEMENT_LIMITS.titleMax} aria-describedby="announcement-title-help"
-            onChange={(e) => { setTitle(e.target.value); setTouched(true); }} />
-          {title.length >= ANNOUNCEMENT_LIMITS.titleMax - 20 && <span className="group-info-counter">{title.length}/{ANNOUNCEMENT_LIMITS.titleMax}</span>}
-          {!trimmedTitle && <p id="announcement-title-help" className="group-info-helper">Give it a title.</p>}
-        </div>
-
-        <div className="group-info-announcements-field">
           <span className="group-info-label">Title color</span>
           <TitleColorPicker value={titleColor} disabled={saving} onChange={(c) => { setTitleColor(c); setTouched(true); }} />
-        </div>
-
-        <div className="group-info-announcements-field">
-          <label className="group-info-label" htmlFor="announcement-description">Message</label>
-          <textarea id="announcement-description" className="group-info-input group-info-announcements-textarea" rows={4}
-            value={description} disabled={saving} maxLength={ANNOUNCEMENT_LIMITS.descriptionMax}
-            aria-describedby="announcement-desc-help"
-            onChange={(e) => { setDescription(e.target.value); setTouched(true); }} />
-          {description.length >= ANNOUNCEMENT_LIMITS.descriptionMax - 200 && <span className="group-info-counter">{description.length}/{ANNOUNCEMENT_LIMITS.descriptionMax}</span>}
-          {!trimmedDesc && <p id="announcement-desc-help" className="group-info-helper">Write a message for the group.</p>}
         </div>
 
         {showExtras && (
@@ -355,6 +399,53 @@ export default function GroupAnnouncementForm({ userId, groupId, item, gate, gat
                       min={EXTRAS_LIMITS.capacityMin} max={EXTRAS_LIMITS.capacityMax} value={capacity} disabled={saving}
                       onChange={(e) => { setCapacity(e.target.value); setTouched(true); }} />
                     <p className="group-info-helper">RSVP only. It doesn't change anyone's group membership.</p>
+                  </>
+                )}
+              </div>
+            )}
+
+            {showPolls && (
+              <div className="group-info-announcements-field ann-poll-form">
+                <label className="ann-toggle">
+                  <input type="checkbox" checked={pollOn} disabled={saving}
+                    onChange={(e) => { setPollOn(e.target.checked); setTouched(true); }} />
+                  <span>Add a poll</span>
+                </label>
+                {pollOn && (
+                  <>
+                    <label className="group-info-helper" htmlFor="announcement-poll-q">Question</label>
+                    <input id="announcement-poll-q" className="group-info-input" value={pollQuestion} disabled={saving}
+                      maxLength={POLL_LIMITS.questionMax} placeholder="What do you want to ask?"
+                      onChange={(e) => { setPollQuestion(e.target.value); setTouched(true); }} />
+                    <span className="group-info-helper">Options ({POLL_LIMITS.minOptions} to {POLL_LIMITS.maxOptions})</span>
+                    {pollOptions.map((opt, i) => (
+                      <div className="ann-poll-form-row" key={i}>
+                        <input className="group-info-input" aria-label={`Option ${i + 1}`} value={opt} disabled={saving || pollLocked}
+                          maxLength={POLL_LIMITS.optionMax} placeholder={`Option ${i + 1}`}
+                          onChange={(e) => { setPollOptions((o) => o.map((x, j) => (j === i ? e.target.value : x))); setTouched(true); }} />
+                        {!pollLocked && pollOptions.length > POLL_LIMITS.minOptions && (
+                          <button type="button" className="group-info-text-btn" aria-label={`Remove option ${i + 1}`} disabled={saving}
+                            onClick={() => { setPollOptions((o) => o.filter((_, j) => j !== i)); setTouched(true); }}>Remove</button>
+                        )}
+                      </div>
+                    ))}
+                    {!pollLocked && pollOptions.length < POLL_LIMITS.maxOptions && (
+                      <button type="button" className="group-info-text-btn" disabled={saving}
+                        onClick={() => { setPollOptions((o) => [...o, '']); setTouched(true); }}>+ Add option</button>
+                    )}
+                    <label className="ann-toggle">
+                      <input type="checkbox" checked={pollMultiple} disabled={saving || pollLocked}
+                        onChange={(e) => { setPollMultiple(e.target.checked); setTouched(true); }} />
+                      <span>Let people pick more than one</span>
+                    </label>
+                    <label className="group-info-helper" htmlFor="announcement-poll-close">Close time (optional)</label>
+                    <input id="announcement-poll-close" type="datetime-local" className="group-info-input" value={pollCloses} disabled={saving}
+                      onChange={(e) => { setPollCloses(e.target.value); setTouched(true); }} />
+                    {pollLocked && <p className="group-info-helper">People have voted, so the options can't change.</p>}
+                    <p className="group-info-helper">Votes are anonymous. Everyone in the group sees live results.</p>
+                    {pollError({ question: pollQuestion, options: pollOptions, closes: pollCloses }) && (
+                      <p className="group-info-error" role="alert">{pollError({ question: pollQuestion, options: pollOptions, closes: pollCloses })}</p>
+                    )}
                   </>
                 )}
               </div>
@@ -442,6 +533,8 @@ export default function GroupAnnouncementForm({ userId, groupId, item, gate, gat
         )}
         {extrasError && <p className="group-info-error" role="alert">{extrasError}</p>}
 
+        </div>
+        <div className="ann-step" hidden={step !== 2}>
         {canReschedule && (
           <div className="group-info-announcements-field">
             <span className="group-info-label" id="announcement-publish-label">Publish</span>
@@ -470,7 +563,20 @@ export default function GroupAnnouncementForm({ userId, groupId, item, gate, gat
 
         {gateHit && upgrade}
         {error && <p className="group-info-error" role="alert">{error}</p>}
+          <section className="ff-card" aria-label="Review">
+            <h3 className="ff-card__title">Review</h3>
+            <p className="group-info-helper">Title: {trimmedTitle || 'None'}</p>
+            <p className="group-info-helper">Message: {trimmedDesc ? trimmedDesc.slice(0, 80) : 'None'}</p>
+            <p className="group-info-helper">Banner: {currentBanner ? 'Added' : 'None'}</p>
+          </section>
+        </div>
       </form>
+      <StickyActionBar variant="panel"
+        secondaryLabel={step === 0 ? (editing ? 'Next' : undefined) : (editing && !lastStep ? 'Next' : 'Back')}
+        onSecondary={() => { if (editing && !lastStep) nextStep(); else setStep(step - 1); }}
+        primaryLabel={bannerBusy ? 'Uploading…' : (lastStep || editing ? submitLabelText : 'Next')}
+        primaryDisabled={bannerBusy || (lastStep || editing ? !canSubmit : (step === 0 && !contentValid))}
+        onPrimary={() => { if (lastStep || editing) { if (!contentValid) { setStep(0); setShowErrors(true); return; } submit(); } else nextStep(); }} />
     </div>
   );
 }

@@ -111,6 +111,24 @@ struct AccountView: View {
     @State var deleteConfirm  = ""
     @State var showDeleteAlert = false
     @State var deleteAccountError: String? = nil
+    @State var showDeleteSheet = false
+
+    // Tier-1 undo (spec 9.2 / SX6): agent and scheduled-devotion deletes hide the row,
+    // show a 6-second "Undo" snackbar, and only call the server when it expires.
+    @State var hiddenAgentIds: Set<String> = []
+    @State var hiddenEventIds: Set<String> = []
+    @State var undoMessage: String? = nil
+    @State var undoCommit: (() -> Void)? = nil
+    @State var undoRestore: (() -> Void)? = nil
+
+    /// Starts a tier-1 undoable delete. Any earlier pending delete is committed first.
+    func deferDelete(message: String, hide: @escaping () -> Void, restore: @escaping () -> Void, commit: @escaping () -> Void) {
+        undoCommit?(); undoCommit = nil; undoRestore = nil
+        hide()
+        undoCommit = commit
+        undoRestore = restore
+        undoMessage = message
+    }
 
     var body: some View {
         NavigationStack {
@@ -220,6 +238,15 @@ struct AccountView: View {
         // 20260831-interaction-polish-conventions) — covers every TextField
         // in this screen's Edit Profile / Danger Zone sections below.
         .dismissesKeyboardOnScrollAndTap()
+        .fsUndoSnackbar(message: $undoMessage,
+                        onUndo: { undoRestore?(); undoCommit = nil; undoRestore = nil },
+                        onExpire: { undoCommit?(); undoCommit = nil; undoRestore = nil })
+        .sheet(isPresented: $showDeleteSheet) {
+            DeleteAccountSheet(username: appState.currentUser?.username ?? "",
+                               userId: appState.currentUser?.user_id ?? "",
+                               onFailure: { deleteAccountError = $0 })
+                .environmentObject(appState)
+        }
         // A blocked action means the meters just changed (e.g. now full): refresh them.
         .onChange(of: upgradeCenter.blockCount) { _, _ in
             Task { await vm.refreshUsage() }
@@ -363,7 +390,7 @@ struct AccountView: View {
     // outline pill and ghost icon+label pill mirror NoteEditorView's header chips) ─
     func gradientPill(_ title: String, compact: Bool = false) -> some View {
         Text(title)
-            .font(.inter(compact ? Theme.fontXS : Theme.fontSM, weight: .semibold))
+            .font(.system(size: compact ? Theme.fontXS : Theme.fontSM, weight: .semibold))
             .foregroundColor(Color(hex: "#24170A"))
             .padding(.horizontal, compact ? 14 : 20)
             .frame(height: compact ? 32 : 36)
@@ -378,7 +405,7 @@ struct AccountView: View {
                    labelColor: Color = Theme.textSecondary,
                    strokeColor: Color = Theme.parchment.opacity(0.14)) -> some View {
         Text(title)
-            .font(.inter(compact ? Theme.fontXS : Theme.fontSM))
+            .font(.system(size: compact ? Theme.fontXS : Theme.fontSM))
             .foregroundColor(labelColor)
             .padding(.horizontal, compact ? 12 : 16)
             .frame(height: compact ? 32 : 36)
@@ -388,7 +415,7 @@ struct AccountView: View {
     func ghostLabelPill(icon: String, _ title: String, color: Color = Theme.gold) -> some View {
         HStack(spacing: 6) {
             Image(systemName: icon)
-            Text(title).font(.inter(Theme.fontSM))
+            Text(title).font(.system(size: Theme.fontSM))
         }
         .foregroundColor(color)
         .padding(.horizontal, 16).padding(.vertical, 8)

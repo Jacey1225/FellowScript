@@ -202,7 +202,7 @@ struct FellowScriptApp: App {
 
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            RootView()
                 .environmentObject(appState)
                 .environment(\.fsCapabilities, appState.capabilities)
                 .preferredColorScheme(.dark)
@@ -323,5 +323,16 @@ struct FellowScriptApp: App {
                 #endif
             }
         }
+    }
+}
+
+/// DEBUG builds can swap in a local poll preview for screenshots; release always shows ContentView.
+private struct RootView: View {
+    var body: some View {
+        #if DEBUG
+        RootOrPollsPreview()
+        #else
+        ContentView()
+        #endif
     }
 }

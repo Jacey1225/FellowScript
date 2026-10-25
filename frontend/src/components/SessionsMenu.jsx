@@ -30,9 +30,10 @@ export default function SessionsMenu({
   onJoin, onLeave, onEdit, onDelete, onOpenSessionCreator,
   user, talkingUserId, onNavigateVerse,
   videoEnabled, videoTiles, onToggleVideo, bindVideoTile, ringCandidates,
-  muted, onToggleMute, friends,
+  muted, onToggleMute, friends, onOpenChange, iconOnly = false,
 }) {
   const [open, setOpen] = useState(false);
+  useEffect(() => { onOpenChange?.(open); }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
   const [pos, setPos] = useState(null);
   const btnRef = useRef(null);
   const closeRef = useRef(null);
@@ -84,15 +85,16 @@ export default function SessionsMenu({
       <button
         ref={btnRef}
         type="button"
-        className={`sessions-menu-btn${open ? ' sessions-menu-btn-open' : ''}`}
+        className={`sessions-menu-btn${open ? ' sessions-menu-btn-open' : ''}${iconOnly ? ' sessions-menu-btn-icon' : ''}`}
         aria-haspopup="dialog"
         aria-expanded={open}
         aria-controls="sessions-menu"
         aria-label={label}
+        title={iconOnly ? 'Sessions' : undefined}
         onClick={() => (open ? close() : setOpen(true))}
       >
         <PhoneOutlined aria-hidden="true" />
-        <span>Sessions</span>
+        {!iconOnly && <span>Sessions</span>}
         {(inCall || listedError) && (
           <span aria-hidden="true" className={`sessions-menu-dot${!inCall && listedError ? ' sessions-menu-dot-error' : ''}`} />
         )}

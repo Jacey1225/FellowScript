@@ -254,7 +254,7 @@ struct NoteEditorView: View {
                                 if !isReadOnly {
                                     Button(action: { openVersePicker() }) {
                                         Text("+ Verse")
-                                            .font(.inter(Theme.fontXS))
+                                            .font(.system(size: Theme.fontXS))
                                             .foregroundColor(Theme.gold.opacity(0.70))
                                             .padding(.horizontal, Theme.spacingMD)
                                             .padding(.vertical, 4)
@@ -335,7 +335,7 @@ struct NoteEditorView: View {
                         VStack(alignment: .leading, spacing: Theme.spacingSM) {
                             // Title
                             TextField("Title", text: $titleVal, axis: .vertical)
-                                .font(.playfair(Theme.fontDisplayMD))
+                                .font(.system(size: Theme.fontDisplayMD, weight: .heavy))
                                 .foregroundColor(Theme.parchment)
                                 .focused($titleFocused)
                                 .submitLabel(.next)
@@ -355,7 +355,7 @@ struct NoteEditorView: View {
                                     // can cause SwiftUI to recreate the UIViewRepresentable,
                                     // calling makeUIView a second time and resetting htmlOutput.
                                     Text("Start writing…")
-                                        .font(.inter(Theme.fontBody))
+                                        .font(.system(size: Theme.fontBody))
                                         .foregroundColor(Theme.textMuted)
                                         .padding(.top, 2)
                                         .allowsHitTesting(false)
@@ -495,7 +495,7 @@ struct NoteEditorView: View {
                 Image(systemName: isPublic ? "pencil" : "lock")
                     .font(.system(size: 12, weight: .semibold))
                 Text(isPublic ? "Group Can Edit" : "Owner Only")
-                    .font(.inter(Theme.fontXS))
+                    .font(.system(size: Theme.fontXS))
             }
             .foregroundColor(Theme.textGoldMuted)
             .padding(.horizontal, Theme.spacingMD)
@@ -625,7 +625,7 @@ struct NoteEditorView: View {
             }
             Spacer(minLength: 0)
         }
-        .font(.inter(12))
+        .font(.system(size: 12))
         .foregroundColor(tint)
         .padding(.horizontal, Theme.spacingMD)
         .padding(.top, Theme.spacingSM)
@@ -849,7 +849,7 @@ struct VersePicker: View {
         VStack(alignment: .leading, spacing: Theme.spacingSM) {
             HStack {
                 Text("Attach Verse")
-                    .font(.inter(Theme.fontSM, weight: .bold))
+                    .font(.system(size: Theme.fontSM, weight: .bold))
                     .foregroundColor(Theme.parchment)
                 Spacer()
                 Button(action: onCancel) {
@@ -889,7 +889,7 @@ struct VersePicker: View {
                 onSelect(selectedBook, selectedChapter, selectedVerse)
             } label: {
                 Text("Add")
-                    .font(.inter(Theme.fontSM, weight: .bold))
+                    .font(.system(size: Theme.fontSM, weight: .bold))
                     .foregroundColor(Theme.ink)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 10)

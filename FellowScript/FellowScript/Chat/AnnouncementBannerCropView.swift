@@ -76,11 +76,11 @@ struct AnnouncementBannerCropView: View {
     private var panel: some View {
         VStack(spacing: Theme.spacingSM) {
             Text("Drag to position. Pinch or use the slider to zoom.")
-                .font(.inter(Theme.fontXS)).foregroundColor(Theme.parchment.opacity(0.7))
+                .font(.system(size: Theme.fontXS)).foregroundColor(Theme.parchment.opacity(0.7))
                 .multilineTextAlignment(.center)
             if let error {
                 Label(error, systemImage: "exclamationmark.triangle")
-                    .font(.inter(Theme.fontXS)).foregroundColor(Theme.error)
+                    .font(.system(size: Theme.fontXS)).foregroundColor(Theme.error)
                     .accessibilityLabel(error)
             }
             ViewThatFits(in: .horizontal) {
@@ -97,18 +97,18 @@ struct AnnouncementBannerCropView: View {
     private var header: some View {
         HStack {
             Button("Cancel", action: onCancel)
-                .font(.inter(Theme.fontSM)).foregroundColor(Theme.gold)
+                .font(.system(size: Theme.fontSM)).foregroundColor(Theme.gold)
                 .frame(minWidth: 44, minHeight: 44).fixedSize()
                 .disabled(encoding)
             Spacer()
-            Text("Crop banner").font(.inter(Theme.fontSM, weight: .semibold)).foregroundColor(Theme.parchment)
+            Text("Crop banner").font(.system(size: Theme.fontSM, weight: .semibold)).foregroundColor(Theme.parchment)
                 .lineLimit(1).minimumScaleFactor(0.8)
                 .accessibilityAddTraits(.isHeader)
             Spacer()
             Button(action: done) {
                 if encoding { ProgressView().tint(Theme.gold) } else { Text("Done").fontWeight(.bold) }
             }
-            .font(.inter(Theme.fontSM)).foregroundColor(Theme.gold)
+            .font(.system(size: Theme.fontSM)).foregroundColor(Theme.gold)
             .frame(minWidth: 44, minHeight: 44).fixedSize()
             .disabled(encoding || frame.width <= 0)
         }
@@ -163,7 +163,7 @@ struct AnnouncementBannerCropView: View {
         let plus = Button { setZoom(zoom + step) } label: { Image(systemName: "plus") }
             .frame(width: 44, height: 44).accessibilityLabel("Zoom in")
         let resetButton = Button("Reset") { reset() }
-            .font(.inter(Theme.fontSM)).frame(minWidth: 44, minHeight: 44).fixedSize().accessibilityLabel("Reset crop")
+            .font(.system(size: Theme.fontSM)).frame(minWidth: 44, minHeight: 44).fixedSize().accessibilityLabel("Reset crop")
         let slider = Slider(value: Binding(get: { Double(zoom) }, set: { setZoom(CGFloat($0)) }),
                             in: 1...Double(AnnouncementLimits.cropZoomMax))
             .tint(Theme.gold).frame(minHeight: 44).accessibilityLabel("Zoom")

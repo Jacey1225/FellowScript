@@ -2,6 +2,7 @@
 // link opens fellowscript.com/#/reset-password in Safari — no deep-linking
 // back into the app is configured), so this screen only covers the request
 // step. Mirrors frontend/src/pages/ForgotPassword.jsx.
+// Restyled onto the FSForm kit (task 20261023-forms-restyle): type C, S.
 
 import SwiftUI
 
@@ -13,84 +14,40 @@ struct ForgotPasswordView: View {
     @State private var sent = false
     @State private var errorMsg = ""
 
+    private var emailValid: Bool { email.contains("@") }
+
     var body: some View {
-        NavigationStack {
-            ZStack {
-                Theme.bgPage.ignoresSafeArea()
-
-                VStack(spacing: Theme.spacingLG) {
-                    Spacer(minLength: 40)
-
-                    VStack(spacing: Theme.spacingSM) {
-                        Text("Forgot password")
-                            .font(.playfair(Theme.fontDisplayMD))
-                            .foregroundColor(Theme.parchment)
-                        Text("Enter your account email and we'll send a reset link.")
-                            .font(.inter(Theme.fontSM))
-                            .foregroundColor(Theme.textMuted)
-                            .multilineTextAlignment(.center)
-                    }
-                    .padding(.horizontal, Theme.spacingLG)
-
-                    if sent {
-                        VStack(spacing: Theme.spacingSM) {
-                            Image(systemName: "envelope.badge.fill")
-                                .font(.system(size: 32))
-                                .foregroundColor(Theme.gold)
-                            Text("Check your email")
-                                .font(.inter(Theme.fontBody)).bold()
-                                .foregroundColor(Theme.parchment)
-                            Text("If an account with that email exists, a password reset link has been sent. It expires in 30 minutes.")
-                                .font(.inter(Theme.fontSM))
-                                .foregroundColor(Theme.textMuted)
-                                .multilineTextAlignment(.center)
-                        }
-                        .padding(.horizontal, Theme.spacingLG)
-                    } else {
-                        if !errorMsg.isEmpty {
-                            Text(errorMsg)
-                                .font(.inter(Theme.fontXS))
-                                .foregroundColor(.red)
-                                .padding(.horizontal, Theme.spacingLG)
-                        }
-
-                        FSTextField(placeholder: "Email", icon: "envelope", text: $email, isSecure: false)
-                            .keyboardType(.emailAddress)
-                            .textContentType(.emailAddress)
-                            .autocapitalization(.none)
-                            .padding(.horizontal, Theme.spacingLG)
-                            .accessibilityLabel("Email field")
-
-                        Button(action: { Task { await sendReset() } }) {
-                            HStack {
-                                if isLoading { ProgressView().tint(Theme.ink) }
-                                Text("Send reset link").font(.inter(Theme.fontSM)).bold()
-                            }
-                            .foregroundColor(Theme.ink)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, Theme.spacingMD)
-                            .background(Theme.gold)
-                            .clipShape(RoundedRectangle(cornerRadius: Theme.radius))
-                        }
-                        .disabled(isLoading || !email.contains("@"))
-                        .padding(.horizontal, Theme.spacingLG)
-                        .accessibilityLabel("Send reset link button")
-                    }
-
-                    Spacer()
+        FSAuthScaffold(
+            title: sent ? "Check your email" : "Forgot password",
+            subtitle: sent ? nil : "Enter your account email and we'll send a reset link.",
+            errorMessage: errorMsg,
+            primaryTitle: sent ? nil : "Send reset link",
+            primaryDimmed: !emailValid,
+            saving: isLoading,
+            onPrimary: { if emailValid && !isLoading { Task { await sendReset() } } },
+            onClose: { dismiss() }
+        ) {
+            if sent {
+                VStack(spacing: Theme.spacingSM) {
+                    Image(systemName: "envelope.badge.fill")
+                        .font(.system(size: 32))
+                        .foregroundColor(Theme.gold)
+                    Text("If an account with that email exists, a password reset link has been sent. It expires in 30 minutes.")
+                        .font(.system(size: 14))
+                        .foregroundColor(Theme.textSecondary)
+                        .multilineTextAlignment(.center)
                 }
+                .frame(maxWidth: .infinity)
+            } else {
+                FSField(label: "Email", text: $email, placeholder: "you@example.com",
+                        leadingSymbol: "envelope",
+                        contentType: .emailAddress, keyboard: .emailAddress,
+                        capitalization: .never, autocorrect: false,
+                        onSubmit: { if emailValid && !isLoading { Task { await sendReset() } } })
             }
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("Close") { dismiss() }.foregroundColor(Theme.textGoldMuted)
-                }
-            }
-            // Shared keyboard-dismiss convention (task
-            // 20260831-interaction-polish-conventions) — covers the email
-            // field above.
-            .dismissesKeyboardOnScrollAndTap()
         }
-        .preferredColorScheme(.dark)
+        // Shared keyboard-dismiss convention (task 20260831-interaction-polish-conventions).
+        .dismissesKeyboardOnScrollAndTap()
     }
 
     private func sendReset() async {

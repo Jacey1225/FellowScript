@@ -124,6 +124,12 @@ final class ChatThreadViewModel: ObservableObject {
     /// Bumped when an ack replaced a bubble's local id in place (no count
     /// change), so the view recomputes its id-keyed group/anchor caches.
     @Published private(set) var ackRevision = 0
+    /// Bumped whenever a message's reactions change in place (optimistic toggle,
+    /// server result, rollback, live frame). The count never changes for these,
+    /// and the view renders from a cached group list that only recomputes on
+    /// count/ack/older/thread changes, so without this signal the chip stayed
+    /// invisible until the next reload.
+    @Published private(set) var reactionRevision = 0
     private var olderCursor: FSMessageCursor? = nil
     /// Bumped by every load(); a response that returns after the thread was
     /// reloaded is discarded.
@@ -578,7 +584,9 @@ final class ChatThreadViewModel: ObservableObject {
                 id: id, text: old.text, mine: old.mine, sender: old.sender,
                 timestamp: (timestamp?.isEmpty == false ? timestamp! : old.timestamp),
                 attachmentKind: old.attachmentKind, attachmentURL: old.attachmentURL, attachmentMeta: old.attachmentMeta,
+                reactions: old.reactions,
                 reply: reply ?? old.reply,
+                pinned: old.pinned, systemKind: old.systemKind,
                 mentions: mentions ?? old.mentions
             )
         }
@@ -749,6 +757,7 @@ final class ChatThreadViewModel: ObservableObject {
             guard let idx = list.firstIndex(where: { $0.id == id }) else { return }
             list[idx].reactions = ReactionSummary.updatingCount(list[idx].reactions ?? [], emoji: emoji, count: count)
         }
+        reactionRevision += 1
     }
 
     private func frameBelongsToCurrentConversation(_ json: [String: Any]) -> Bool {
@@ -965,6 +974,7 @@ final class ChatThreadViewModel: ObservableObject {
             guard let idx = list.firstIndex(where: { $0.id == messageId }) else { return }
             list[idx].reactions = change(list[idx].reactions ?? [])
         }
+        reactionRevision += 1
     }
 
     // ── Pins (task 20261012-message-pins) ─────────────────────────────────────
@@ -1183,6 +1193,8 @@ struct ChatThreadView: View {
     // Task 20261012-message-pins: Pinned list sheet + the message briefly
     // outlined after jumping to it.
     @State private var showPinned: Bool = false
+    // Task 20261023-group-info-row: the open group info submenu (nil = closed).
+    @State private var infoCategory: GroupInfoCategory? = nil
     // Task 20261017-chat-mentions: the composer's recorded mentions, the text
     // they were last reconciled with, and the mentionable members (nil = not
     // available, so no picker).
@@ -1197,6 +1209,7 @@ struct ChatThreadView: View {
     // pill opens this floating, translucent/blurred submenu listing every
     // session for the chat, with the create-session action folded inside it.
     @State private var showSessionsMenu: Bool = false
+    @State private var infoBadges: [GroupInfoCategory: Int] = [:]
     // Item-based (rather than reusing `showSession`'s Bool + `.first`
     // convention the old SessionBanner relied on) because any row in the
     // submenu's list -- not just "the next upcoming one" -- can now open a
@@ -1485,7 +1498,8 @@ struct ChatThreadView: View {
                     header.modifier(pinsPresentation)
                     // Zero-height layer: the pin button floats over the top-right of the
                     // messages (which scroll up to the header divider) instead of taking a row.
-                    if pinsAvailable {
+                    // DMs only: in group chats the Pinned chip replaces it (20261023-group-info-row).
+                    if pinsAvailable && contact.type != .group {
                         Color.clear.frame(height: 0)
                             .overlay(alignment: .topTrailing) {
                                 pinButton
@@ -1496,9 +1510,11 @@ struct ChatThreadView: View {
                     }
                 }
 
-                // Task 20260929-announcement-push-widget: groups only, directly under the header.
-                if !vm.isThreadOpen, contact.type == .group, GroupAnnouncementsConfig.enabled, let uid = user?.user_id {
-                    GroupAnnouncementWidgetView(service: appState.service, groupId: contact.id, userId: uid)
+                // Task 20261023-group-info-row: groups only, directly under the header
+                // (replaces the announcement banner and the floating pin button).
+                if GroupInfoCategory.rowShows(isGroup: contact.type == .group, isThreadOpen: vm.isThreadOpen) {
+                    GroupInfoChipRow(categories: groupInfoCategories, selected: $infoCategory, pinCount: vm.pinCount,
+                                     compact: !embedded, badges: infoBadges)
                 }
 
                 // ── Reconnecting banner (dropped-socket lifecycle state) ───
@@ -1669,6 +1685,12 @@ struct ChatThreadView: View {
                         recomputeMessageGroups()
                         lastTailId = vm.messages.last?.id
                     }
+                    // A reaction changed in place (same count, same tail): the
+                    // cached groups hold stale FSMessage copies, so rebuild
+                    // them or the chip never appears until a reload.
+                    .onChange(of: vm.reactionRevision) { _ in
+                        recomputeMessageGroups()
+                    }
                     // Task 20261001-message-threads: entering/leaving a thread
                     // swaps the whole list (the count can be equal across the
                     // swap, so the count-based handler alone is not enough).
@@ -1703,6 +1725,7 @@ struct ChatThreadView: View {
                         settleBottomPin(proxy: proxy)
                     }
                 }
+                .overlay { groupInfoPanelHost }
             }
             // Shared keyboard-dismiss convention (task
             // 20260831-interaction-polish-conventions) — covers header/
@@ -1760,6 +1783,11 @@ struct ChatThreadView: View {
             }
         }
         .preferredColorScheme(.dark)
+        // Group info submenu coordination (20261023-group-info-row): opening it
+        // dismisses the keyboard and the Sessions overlay; focusing the composer or
+        // opening a thread closes it.
+        .modifier(GroupInfoCoordination(category: $infoCategory, composerFocused: $composerFocused,
+                                        showSessions: $showSessionsMenu, isThreadOpen: vm.isThreadOpen))
         .task {
             let uid = appState.currentUser?.user_id ?? ""
             memberNames = contact.memberNames
@@ -2035,6 +2063,28 @@ struct ChatThreadView: View {
         appState.capabilities.messagePinsEnabled && !vm.isThreadOpen && vm.pinsState != .unavailable
     }
 
+    /// Task 20261023-group-info-row: chips whose feature is on for this user.
+    private var groupInfoCategories: [GroupInfoCategory] {
+        GroupInfoCategory.visible(announcements: GroupAnnouncementsConfig.enabled,
+                                  threads: appState.capabilities.isEnabled("threads"),
+                                  pins: pinsAvailable,
+                                  media: appState.capabilities.groupMediaEnabled) + [.sessions]
+    }
+
+    /// The bottom submenu layer over the message area (groups only, never in a thread).
+    @ViewBuilder private var groupInfoPanelHost: some View {
+        if contact.type == .group, !vm.isThreadOpen, let uid = user?.user_id {
+            GroupInfoPanelHost(
+                contact: contact, userId: uid, selected: $infoCategory, visible: groupInfoCategories,
+                service: appState.service, pinsVM: vm,
+                onOpenThread: { openThread($0) },
+                onJumpToPin: { jumpToMessage($0.id, announce: "Jumped to pinned message from \($0.message.fromUser.isEmpty ? "someone" : $0.message.fromUser)") },
+                onJumpToMessage: { jumpToMessage($0, announce: "Jumped to message") },
+                badges: $infoBadges,
+                sessionsContent: { AnyView(sessionsPanelContent) })
+        }
+    }
+
     /// Pinned list sheet + count refresh triggers, attached to the header (not the
     /// screen body) to keep the body's type-check cheap.
     private var pinsPresentation: PinsPresentation {
@@ -2068,20 +2118,23 @@ struct ChatThreadView: View {
 
     /// Tap on a Pinned row: close the list, load the message if it is outside
     /// the paged window, scroll to it and outline it for 1.2 s.
-    private func jumpToPin(_ pin: FSPinnedMessage) {
+    private func jumpToPin(_ pin: FSPinnedMessage) { jumpToMessage(
+        pin.id, announce: "Jumped to pinned message from \(pin.message.fromUser.isEmpty ? "someone" : pin.message.fromUser)") }
+
+    /// Shared jump-and-highlight (pins and the Media grid's video cells).
+    private func jumpToMessage(_ id: String, announce: String) {
         showPinned = false
         let uid = appState.currentUser?.user_id ?? ""
         Task { @MainActor in
             try? await Task.sleep(nanoseconds: 350_000_000)   // let the sheet finish dismissing
-            guard await vm.ensureLoaded(pin.id, service: appState.service, contact: contact, userId: uid) else {
+            guard await vm.ensureLoaded(id, service: appState.service, contact: contact, userId: uid) else {
                 showToast("Couldn't find that message. It may have been removed.", seconds: 4)
                 return
             }
             recomputeMessageGroups()
-            jumpTarget = pin.id
-            let who = pin.message.fromUser.isEmpty ? "someone" : pin.message.fromUser
-            UIAccessibility.post(notification: .announcement, argument: "Jumped to pinned message from \(who)")
-            withMotionAwareAnimation(.easeOut(duration: 0.2), reduceMotion: reduceMotion) { highlightedMessageId = pin.id }
+            jumpTarget = id
+            UIAccessibility.post(notification: .announcement, argument: announce)
+            withMotionAwareAnimation(.easeOut(duration: 0.2), reduceMotion: reduceMotion) { highlightedMessageId = id }
             try? await Task.sleep(nanoseconds: 1_200_000_000)
             withMotionAwareAnimation(.easeOut(duration: 0.4), reduceMotion: reduceMotion) { highlightedMessageId = nil }
         }
@@ -2421,7 +2474,10 @@ struct ChatThreadView: View {
         HStack(spacing: 14) {
             RoundIconButton(systemIcon: "chevron.left") { goBack() }
                 .accessibilityLabel("Go back")
+                // Groups: the title gets the whole row and is centered; a hidden twin
+                // of the back button on the right keeps it truly centered.
 
+            if contact.type == .group { Spacer(minLength: 0) }
             Button(action: {
                 if contact.type == .group { showGroupInfo = true }
             }) {
@@ -2457,20 +2513,13 @@ struct ChatThreadView: View {
             .accessibilityLabel(contact.type == .group ? "Group info, \(displayName)" : contact.name)
             .accessibilityHint(contact.type == .group ? "Opens group settings, members, and shared media" : "")
 
-            Spacer(minLength: 8)
-
-            if embedded {
-                PillButton(title: "Sessions", systemIcon: "phone",
-                           textColor: Theme.goldLight,
-                           fill: AnyShapeStyle(Theme.gold.opacity(0.12))) {
-                    openSessionsMenu()
-                }
-                .accessibilityLabel("View and schedule study sessions")
+            if contact.type == .group {
+                // Sessions lives in the group info chip row (20261023-group-info-row).
+                Spacer(minLength: 0)
+                RoundIconButton(systemIcon: "chevron.left") {}.hidden().accessibilityHidden(true)
             } else {
-                PillButton(title: "Sessions", systemIcon: "calendar") {
-                    openSessionsMenu()
-                }
-                .accessibilityLabel("View and schedule study sessions")
+                Spacer(minLength: 8)
+                sessionsPill
             }
         }
         // Join-request push tap (task 20261016-push-notifications-and-ui).
@@ -2483,6 +2532,24 @@ struct ChatThreadView: View {
         }
     }
 
+    /// The gold Sessions pill: in the DM header, or the trailing item of the group chip row.
+    private var sessionsPill: some View {
+        Group {
+            if embedded {
+                PillButton(title: "Sessions", systemIcon: "phone",
+                           textColor: Theme.goldLight,
+                           fill: AnyShapeStyle(Theme.gold.opacity(0.12))) {
+                    openSessionsMenu()
+                }
+            } else {
+                PillButton(title: "Sessions", systemIcon: "calendar") {
+                    openSessionsMenu()
+                }
+            }
+        }
+        .accessibilityLabel("View and schedule study sessions")
+    }
+
     // ── Sessions submenu (task 20260920-chat-sessions-submenu) ────────────────
     // Replaces the old inline SessionBanner card: tapping the header's
     // "Sessions" pill opens this floating panel over a translucent, blurred
@@ -2491,12 +2558,14 @@ struct ChatThreadView: View {
     // request, rather than a full context switch away from the thread.
 
     private func openSessionsMenu() {
+        infoCategory = nil
         withMotionAwareAnimation(.spring(response: 0.35, dampingFraction: 0.82), reduceMotion: reduceMotion) {
             showSessionsMenu = true
         }
     }
 
     private func closeSessionsMenu() {
+        if infoCategory == .sessions { infoCategory = nil }
         withMotionAwareAnimation(.easeOut(duration: 0.18), reduceMotion: reduceMotion) {
             showSessionsMenu = false
         }
@@ -2558,7 +2627,7 @@ struct ChatThreadView: View {
                     .padding(.horizontal, Theme.spacingMD)
                 Spacer()
             }
-            .padding(.top, 76) // clears the header row so the card reads as anchored under the "Sessions" pill
+            .padding(.top, contact.type == .group ? 132 : 76) // clears the header (+ chip row in groups) so the card reads as anchored under the "Sessions" pill
             .frame(maxWidth: .infinity, alignment: .trailing)
         }
         .transition(
@@ -2571,29 +2640,9 @@ struct ChatThreadView: View {
         )
     }
 
-    private var sessionsMenuCard: some View {
+    /// Schedule button + session list, shared by the DM floating card and the group submenu panel.
+    private var sessionsBody: some View {
         VStack(alignment: .leading, spacing: Theme.spacingSM) {
-            HStack {
-                Text(embedded ? "SESSIONS" : "Sessions")
-                    .font(.inter(embedded ? Theme.fontXS : Theme.fontSM, weight: .bold))
-                    .tracking(embedded ? 3 : 0)
-                    .foregroundColor(embedded ? Theme.goldLight : Theme.parchment)
-                    .accessibilityAddTraits(.isHeader)
-                Spacer()
-                Button {
-                    closeSessionsMenu()
-                } label: {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 11, weight: .bold))
-                        .foregroundColor(Theme.textGoldMuted)
-                        .frame(width: 24, height: 24)
-                        .background(Color.white.opacity(0.05))
-                        .clipShape(Circle())
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Close")
-            }
-
             Button {
                 closeSessionsMenu()
                 showSession = true
@@ -2651,8 +2700,43 @@ struct ChatThreadView: View {
                         }
                     }
                 }
-                .frame(maxHeight: 260)
+                .frame(maxHeight: infoCategory == .sessions ? .infinity : 260)
             }
+        }
+    }
+
+    /// The Sessions submenu inside the group info panel (same container as Announcements/Threads/Pinned).
+    private var sessionsPanelContent: some View {
+        sessionsBody
+            .padding(.horizontal, Theme.spacingMD)
+            .padding(.bottom, Theme.spacingMD)
+            .frame(maxHeight: .infinity, alignment: .top)
+    }
+
+    private var sessionsMenuCard: some View {
+        VStack(alignment: .leading, spacing: Theme.spacingSM) {
+            HStack {
+                Text(embedded ? "SESSIONS" : "Sessions")
+                    .font(.inter(embedded ? Theme.fontXS : Theme.fontSM, weight: .bold))
+                    .tracking(embedded ? 3 : 0)
+                    .foregroundColor(embedded ? Theme.goldLight : Theme.parchment)
+                    .accessibilityAddTraits(.isHeader)
+                Spacer()
+                Button {
+                    closeSessionsMenu()
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundColor(Theme.textGoldMuted)
+                        .frame(width: 24, height: 24)
+                        .background(Color.white.opacity(0.05))
+                        .clipShape(Circle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Close")
+            }
+
+            sessionsBody
         }
         .padding(Theme.spacingMD)
         .frame(width: WorkspaceLayout.popoverWidth)
@@ -3164,35 +3248,41 @@ struct AddGroupMembersSheet: View {
     @State private var selectedIds = Set<String>()
 
     var body: some View {
-        NavigationStack {
-            ZStack {
-                Theme.bgPage.ignoresSafeArea()
-
+        FSFormScaffold(
+            title: "Add Members",
+            dirty: !selectedIds.isEmpty,
+            onClose: { dismiss() },
+            content: {
                 if candidates.isEmpty {
-                    VStack(spacing: Theme.spacingMD) {
-                        Image(systemName: "person.2.slash")
-                            .font(.system(size: 36, weight: .light))
-                            .foregroundColor(Theme.gold.opacity(0.35))
-                        Text("All your friends are already in this group.")
-                            .font(.inter(Theme.fontSM))
-                            .foregroundColor(Theme.textMuted)
-                            .multilineTextAlignment(.center)
-                            .padding(.horizontal, Theme.spacingXL)
+                    FSFormCard {
+                        VStack(spacing: Theme.spacingMD) {
+                            Image(systemName: "person.2.slash")
+                                .font(.system(size: 36, weight: .light))
+                                .foregroundColor(Theme.gold.opacity(0.6))
+                            Text("All your friends are already in this group.")
+                                .font(.system(size: Theme.fontSM))
+                                .foregroundColor(Theme.textSecondary)
+                                .multilineTextAlignment(.center)
+                        }
+                        .frame(maxWidth: .infinity)
                     }
                 } else {
-                    Form {
-                        Section("Add friends") {
-                            ForEach(candidates) { f in
+                    FSFormCard(title: "Add friends") {
+                        VStack(spacing: 0) {
+                            ForEach(Array(candidates.enumerated()), id: \.element.id) { idx, f in
                                 HStack {
-                                    Text(f.name)
-                                        .font(.inter(Theme.fontBody))
-                                        .foregroundColor(Theme.parchment.opacity(0.70))
+                                    Text(f.name).font(.fsBody).foregroundColor(Theme.textPrimary)
                                     Spacer()
-                                    if selectedIds.contains(f.id) {
-                                        Image(systemName: "checkmark")
-                                            .foregroundColor(Theme.gold)
+                                    ZStack {
+                                        RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                            .strokeBorder(selectedIds.contains(f.id) ? Theme.gold : Theme.fieldBorder, lineWidth: 2)
+                                            .frame(width: 22, height: 22)
+                                        if selectedIds.contains(f.id) {
+                                            Image(systemName: "checkmark").font(.system(size: 12, weight: .bold)).foregroundColor(Theme.gold)
+                                        }
                                     }
                                 }
+                                .frame(minHeight: 48)
                                 .contentShape(Rectangle())
                                 .onTapGesture {
                                     if selectedIds.contains(f.id) { selectedIds.remove(f.id) }
@@ -3200,29 +3290,22 @@ struct AddGroupMembersSheet: View {
                                 }
                                 .accessibilityLabel("\(f.name). \(selectedIds.contains(f.id) ? "Selected" : "Not selected")")
                                 .accessibilityAddTraits(selectedIds.contains(f.id) ? .isSelected : [])
+                                if idx < candidates.count - 1 { Divider().overlay(Theme.borderGray) }
                             }
                         }
                     }
-                    .scrollContentBackground(.hidden)
-                    .background(Theme.bgPage)
                 }
+            },
+            bar: {
+                FSPinnedActionBar(secondaryTitle: "Cancel", onSecondary: { dismiss() },
+                                  primaryTitle: "Add", primaryDimmed: selectedIds.isEmpty,
+                                  onPrimary: {
+                                      guard !selectedIds.isEmpty else { return }
+                                      onAdd(candidates.filter { selectedIds.contains($0.id) })
+                                      dismiss()
+                                  })
             }
-            .navigationTitle("Add Members")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Button("Cancel") { dismiss() }.foregroundColor(Theme.textGoldMuted)
-                }
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("Add") {
-                        onAdd(candidates.filter { selectedIds.contains($0.id) })
-                        dismiss()
-                    }
-                    .foregroundColor(Theme.gold)
-                    .disabled(selectedIds.isEmpty)
-                }
-            }
-        }
+        )
         .preferredColorScheme(.dark)
     }
 }
@@ -3384,7 +3467,7 @@ struct SessionDetailSheet: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                Theme.bgPage.ignoresSafeArea()
+                Color.clear.warmBloomBackground()
                 ScrollView {
                     VStack(alignment: .leading, spacing: Theme.spacingLG) {
                         // Join call CTA — start the persistent call, then close
@@ -3637,40 +3720,42 @@ struct SessionCreatorSheet: View {
         return SessionDuration.allCases.min(by: { abs($0.rawValue - minutes) < abs($1.rawValue - minutes) }) ?? .thirty
     }
 
+    @State private var step = 0
+    @State private var furthest = 0
+    @State private var dirty = false
+    private let stepNames = ["Basics", "Study", "Options"]
+    private var maxReachable: Int { isEditing ? stepNames.count - 1 : furthest }
+    private var titleValid: Bool { !title.trimmingCharacters(in: .whitespaces).isEmpty }
+    @State private var showErrors = false
+
     var body: some View {
-        ZStack {
-            Theme.bgPage.ignoresSafeArea()
-
-            VStack(spacing: 0) {
-                dragHandle
-                sheetHeader
-
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 26) {
-                        sessionTitleSection
-                        startTimeSection
-                        durationSection
-                        // Verses editing only exists in edit mode -- the
-                        // create path has never had a verses UI (session.verses
-                        // is always created empty) and this doesn't add one
-                        // there, per the intake spec's "don't alter create
-                        // behavior" scope.
-                        if isEditing {
-                            versesSection
-                        }
-                        discussionPromptsSection
-                        sessionOptionsSection
-                    }
-                    .padding(.top, 4)
-                    .padding(.bottom, Theme.spacingLG)
+        FSFormScaffold(
+            title: isEditing ? "Edit Session" : "Schedule",
+            dirty: dirty,
+            rail: AnyView(FSStepperRail(steps: stepNames, current: step, maxReachable: maxReachable) { i in
+                if i <= maxReachable { step = i }
+            }),
+            onClose: { dismiss() },
+            content: {
+                switch step {
+                case 0: basicsStep
+                case 1: studyStep
+                default: optionsStep
                 }
-            }
-            .padding(.horizontal, Theme.spacingLG)
-        }
+            },
+            bar: { actionBar }
+        )
         .presentationDetents([.large])
         .presentationDragIndicator(.hidden)
         .presentationCornerRadius(Theme.radiusXXL)
         .preferredColorScheme(.dark)
+        .onChange(of: title) { _, _ in dirty = true }
+        .onChange(of: startDate) { _, _ in dirty = true }
+        .onChange(of: duration) { _, _ in dirty = true }
+        .onChange(of: verses) { _, _ in dirty = true }
+        .onChange(of: prompts) { _, _ in dirty = true }
+        .onChange(of: recurring) { _, _ in dirty = true }
+        .onChange(of: summarize) { _, _ in dirty = true }
         .alert("Couldn't Save Changes", isPresented: Binding(
             get: { saveError != nil },
             set: { if !$0 { saveError = nil } }
@@ -3681,211 +3766,115 @@ struct SessionCreatorSheet: View {
         }
     }
 
-    // MARK: - Header
-
-    private var dragHandle: some View {
-        Capsule()
-            .fill(Color.white.opacity(0.2))
-            .frame(width: 36, height: 5)
-            .padding(.top, 8)
-            .padding(.bottom, 16)
-            .accessibilityHidden(true)
-    }
-
-    private var sheetHeader: some View {
-        HStack {
-            RoundIconButton(systemIcon: "xmark", diameter: 36) { dismiss() }
-                .accessibilityLabel("Cancel")
-
-            Spacer()
-
-            // isEditing branches to a distinct title rather than reusing
-            // "Schedule" for an edit -- the literal `Text("Schedule")` below
-            // stays reachable (and is still what renders) for the create
-            // path, unchanged.
-            if isEditing {
-                Text("Edit Session")
-                    .font(.inter(Theme.fontDisplayMD, weight: .bold))
-                    .foregroundColor(Theme.parchment)
-            } else {
-                Text("Schedule")
-                    .font(.inter(Theme.fontDisplayMD, weight: .bold))
-                    .foregroundColor(Theme.parchment)
-            }
-
-            Spacer()
-
-            // Small circular CTA (mirrors the composer's send-button
-            // treatment) rather than plain RoundIconButton styling, so this
-            // sheet's primary action keeps its solid-gold weight after
-            // losing its "Schedule" pill label.
-            Button(action: scheduleSession) {
-                Image(systemName: "calendar")
-                    .font(.system(size: 14, weight: .bold))
-                    .foregroundColor(Theme.ink)
-                    .frame(width: 36, height: 36)
-                    .background(Theme.goldGradient)
-                    .clipShape(Circle())
-                    .topEdgeHighlight(Circle())
-            }
-            .buttonStyle(.plain)
-            .disabled(title.isEmpty)
-            .opacity(title.isEmpty ? 0.4 : 1)
-            .accessibilityLabel("Schedule session")
+    // ── Steps (stepper: BASICS, STUDY, OPTIONS) ──────────────────────────────
+    @ViewBuilder private var basicsStep: some View {
+        FSFormCard(title: "Session") {
+            FSField(label: "Session title", required: true, text: $title, placeholder: "Evening Study",
+                    state: showErrors && !titleValid ? .error("Add a title.") : .normal,
+                    maxLength: 255, accessibilityName: "Session title")
         }
-        .padding(.bottom, 22)
-    }
-
-    // MARK: - Sections
-
-    private var sessionTitleSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            SectionEyebrow(title: "Session Title")
-            TextField("", text: $title, prompt: Text("Evening Study").foregroundColor(Theme.textSecondary))
-                .font(.inter(Theme.fontBody))
-                .foregroundColor(Theme.parchment)
-                .padding(.horizontal, 18)
-                .padding(.vertical, 14)
-                .background(Color.white.opacity(0.045))
-                .overlay(RoundedRectangle(cornerRadius: Theme.radiusXL).stroke(Theme.borderGoldDim, lineWidth: 1))
-                .clipShape(RoundedRectangle(cornerRadius: Theme.radiusXL))
-                .topEdgeHighlight(RoundedRectangle(cornerRadius: Theme.radiusXL))
-                .accessibilityLabel("Session title")
-        }
-    }
-
-    private var startTimeSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            SectionEyebrow(title: "Start Time")
+        FSFormCard(title: "Start time") {
             HStack(spacing: 10) {
                 DateTimeTile(systemIcon: "calendar", label: "Session start date",
                              date: $startDate, displayedComponents: .date)
                 DateTimeTile(systemIcon: "clock", label: "Session start time",
                              date: $startDate, displayedComponents: .hourAndMinute)
             }
-        }
-    }
-
-    private var durationSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            SectionEyebrow(title: "Duration")
-            SegmentedDurationControl(selection: $duration)
-        }
-    }
-
-    // Edit-mode only (see body's `if isEditing` gate above) -- mirrors
-    // discussionPromptsSection's own add/remove list pattern exactly so this
-    // doesn't invent a second list-editing style in the same sheet.
-    private var versesSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            SectionEyebrow(title: "Verses")
-
-            ForEach(Array(verses.enumerated()), id: \.offset) { i, v in
-                HStack {
-                    Text(v)
-                        .font(.inter(Theme.fontSM))
-                        .foregroundColor(Theme.parchment)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                    Button(action: { verses.remove(at: i) }) {
-                        Image(systemName: "xmark.circle.fill")
-                            .foregroundColor(Theme.textMuted)
-                    }
-                    .accessibilityLabel("Remove verse: \(v)")
-                }
-                .padding(.horizontal, 18)
-                .padding(.vertical, 12)
-                .background(Color.white.opacity(0.045))
-                .overlay(RoundedRectangle(cornerRadius: Theme.radiusXL).stroke(Theme.borderGoldDim, lineWidth: 1))
-                .clipShape(RoundedRectangle(cornerRadius: Theme.radiusXL))
-                .topEdgeHighlight(RoundedRectangle(cornerRadius: Theme.radiusXL))
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Duration").font(.fsLabel).foregroundColor(Theme.textPrimary)
+                SegmentedDurationControl(selection: $duration)
             }
-
-            HStack {
-                TextField("", text: $verseInput,
-                          prompt: Text("Add a verse reference…").foregroundColor(Theme.textSecondary))
-                    .font(.inter(Theme.fontBody))
-                    .foregroundColor(Theme.parchment)
-                    .accessibilityLabel("Verse reference input")
-
-                Button(action: addVerse) {
-                    Image(systemName: "plus")
-                        .font(.system(size: 14, weight: .bold))
-                        .foregroundColor(Theme.ink)
-                        .frame(width: 32, height: 32)
-                        .background(verseInput.isEmpty ? AnyShapeStyle(Theme.gold.opacity(0.35)) : AnyShapeStyle(Theme.goldGradient))
-                        .clipShape(Circle())
-                }
-                .disabled(verseInput.isEmpty)
-                .accessibilityLabel("Add verse")
-            }
-            .padding(.horizontal, 18)
-            .padding(.vertical, 12)
-            .background(Color.white.opacity(0.045))
-            .overlay(RoundedRectangle(cornerRadius: Theme.radiusXL).stroke(Theme.borderGoldDim, lineWidth: 1))
-            .clipShape(RoundedRectangle(cornerRadius: Theme.radiusXL))
-            .topEdgeHighlight(RoundedRectangle(cornerRadius: Theme.radiusXL))
         }
     }
 
-    private var discussionPromptsSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            SectionEyebrow(title: "Discussion Prompts")
-
+    @ViewBuilder private var studyStep: some View {
+        if isEditing {
+            FSFormCard(title: "Verses") {
+                ForEach(Array(verses.enumerated()), id: \.offset) { i, v in
+                    listRow(v, removeLabel: "Remove verse: \(v)") { verses.remove(at: i) }
+                }
+                addRow(text: $verseInput, placeholder: "Add a verse reference…", field: "Verse reference input",
+                       addLabel: "Add verse", action: addVerse)
+            }
+        }
+        FSFormCard(title: "Discussion prompts") {
             ForEach(Array(prompts.enumerated()), id: \.offset) { i, p in
-                HStack {
-                    Text(p)
-                        .font(.inter(Theme.fontSM))
-                        .foregroundColor(Theme.parchment)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                    Button(action: { prompts.remove(at: i) }) {
-                        Image(systemName: "xmark.circle.fill")
-                            .foregroundColor(Theme.textMuted)
-                    }
-                    .accessibilityLabel("Remove prompt: \(p)")
-                }
-                .padding(.horizontal, 18)
-                .padding(.vertical, 12)
-                .background(Color.white.opacity(0.045))
-                .overlay(RoundedRectangle(cornerRadius: Theme.radiusXL).stroke(Theme.borderGoldDim, lineWidth: 1))
-                .clipShape(RoundedRectangle(cornerRadius: Theme.radiusXL))
-                .topEdgeHighlight(RoundedRectangle(cornerRadius: Theme.radiusXL))
+                listRow(p, removeLabel: "Remove prompt: \(p)") { prompts.remove(at: i) }
             }
-
-            HStack {
-                TextField("", text: $promptInput,
-                          prompt: Text("Add a discussion question…").foregroundColor(Theme.textSecondary))
-                    .font(.inter(Theme.fontBody))
-                    .foregroundColor(Theme.parchment)
-                    .accessibilityLabel("Discussion prompt input")
-
-                Button(action: addPrompt) {
-                    Image(systemName: "plus")
-                        .font(.system(size: 14, weight: .bold))
-                        .foregroundColor(Theme.ink)
-                        .frame(width: 32, height: 32)
-                        .background(promptInput.isEmpty ? AnyShapeStyle(Theme.gold.opacity(0.35)) : AnyShapeStyle(Theme.goldGradient))
-                        .clipShape(Circle())
-                }
-                .disabled(promptInput.isEmpty)
-                .accessibilityLabel("Add prompt")
-            }
-            .padding(.horizontal, 18)
-            .padding(.vertical, 12)
-            .background(Color.white.opacity(0.045))
-            .overlay(RoundedRectangle(cornerRadius: Theme.radiusXL).stroke(Theme.borderGoldDim, lineWidth: 1))
-            .clipShape(RoundedRectangle(cornerRadius: Theme.radiusXL))
-            .topEdgeHighlight(RoundedRectangle(cornerRadius: Theme.radiusXL))
+            addRow(text: $promptInput, placeholder: "Add a discussion question…", field: "Discussion prompt input",
+                   addLabel: "Add prompt", action: addPrompt)
         }
     }
 
-    private var sessionOptionsSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            SectionEyebrow(title: "Session Options")
-            HStack(spacing: 10) {
-                ChipToggle(title: "Repeat weekly", isOn: $recurring)
-                ChipToggle(title: "Summarize", isOn: $summarize)
-            }
+    @ViewBuilder private var optionsStep: some View {
+        FSFormCard(title: "Session options") {
+            FSToggleRow(title: "Repeat weekly", helper: "Schedules the same session every week.", isOn: $recurring)
+            Divider().overlay(Theme.borderGray)
+            FSToggleRow(title: "Summarize with agent", helper: "An agent writes a summary after the session.", isOn: $summarize)
         }
+    }
+
+    private func listRow(_ text: String, removeLabel: String, remove: @escaping () -> Void) -> some View {
+        HStack {
+            Text(text).font(.system(size: Theme.fontSM)).foregroundColor(Theme.textPrimary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            Button(action: remove) {
+                Image(systemName: "xmark.circle.fill").foregroundColor(Theme.textSecondary).frame(width: 44, height: 44)
+            }
+            .accessibilityLabel(removeLabel)
+        }
+        .padding(.leading, 14)
+        .background(RoundedRectangle(cornerRadius: Theme.radius, style: .continuous).fill(Theme.fieldFill))
+        .overlay(RoundedRectangle(cornerRadius: Theme.radius, style: .continuous).strokeBorder(Theme.fieldBorder, lineWidth: 1))
+    }
+
+    private func addRow(text: Binding<String>, placeholder: String, field: String, addLabel: String, action: @escaping () -> Void) -> some View {
+        HStack {
+            TextField("", text: text, prompt: Text(placeholder).foregroundColor(Theme.textSecondary))
+                .font(.fsBody).foregroundColor(Theme.textPrimary)
+                .submitLabel(.done).onSubmit(action)
+                .accessibilityLabel(field)
+            Button(action: action) {
+                Image(systemName: "plus").font(.system(size: 14, weight: .bold)).foregroundColor(Theme.ink)
+                    .frame(width: 32, height: 32)
+                    .background(text.wrappedValue.isEmpty ? AnyShapeStyle(Theme.gold.opacity(0.35)) : AnyShapeStyle(Theme.goldGradient))
+                    .clipShape(Circle())
+                    .frame(width: 44, height: 44)
+            }
+            .disabled(text.wrappedValue.isEmpty)
+            .accessibilityLabel(addLabel)
+        }
+        .padding(.leading, 14)
+        .frame(minHeight: Theme.formFieldHeight)
+        .background(RoundedRectangle(cornerRadius: Theme.radius, style: .continuous).fill(Theme.fieldFill))
+        .overlay(RoundedRectangle(cornerRadius: Theme.radius, style: .continuous).strokeBorder(Theme.fieldBorder, lineWidth: 1))
+    }
+
+    @ViewBuilder private var actionBar: some View {
+        let last = step == stepNames.count - 1
+        let saveLabel = isEditing ? "Save" : "Schedule"
+        if isEditing && !last {
+            FSPinnedActionBar(secondaryTitle: "Next", onSecondary: { step += 1 },
+                              primaryTitle: saveLabel, primaryDimmed: !titleValid,
+                              primaryAccessibilityLabel: "Schedule session", saving: isSaving, onPrimary: { tapSave() })
+        } else if last {
+            FSPinnedActionBar(secondaryTitle: "Back", onSecondary: { step -= 1 },
+                              primaryTitle: saveLabel, primaryDimmed: !titleValid,
+                              primaryAccessibilityLabel: "Schedule session", saving: isSaving, onPrimary: { tapSave() })
+        } else if step == 0 {
+            FSPinnedActionBar(primaryTitle: "Next", primaryTrailingIcon: "arrow.right", primaryDimmed: !titleValid,
+                              onPrimary: { if titleValid { showErrors = false; furthest = max(furthest, 1); step = 1 } else { showErrors = true } })
+        } else {
+            FSPinnedActionBar(secondaryTitle: "Back", onSecondary: { step -= 1 },
+                              primaryTitle: "Next", primaryTrailingIcon: "arrow.right",
+                              onPrimary: { furthest = max(furthest, 2); step = 2 })
+        }
+    }
+
+    /// A dimmed primary still reacts (spec D8): jump back to the title and explain.
+    private func tapSave() {
+        if !titleValid { showErrors = true; step = 0; return }
+        scheduleSession()
     }
 
     private func addPrompt() {

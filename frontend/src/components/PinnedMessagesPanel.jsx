@@ -1,7 +1,7 @@
 import React, { useEffect, useLayoutEffect, useRef, useState, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { PushpinOutlined, PushpinFilled } from '@ant-design/icons';
-import { Avatar } from 'antd';
+import { Avatar, Spin } from 'antd';
 import { pinPreview, pinnedByLabel, PIN_LIST_ERROR } from '../lib/pins.js';
 
 // Task 20261012-message-pins. The Pinned list, opened from the pin icon in the
@@ -35,6 +35,77 @@ export function PinnedMessagesButton({ count, open, onClick, buttonRef }) {
       <PushpinOutlined aria-hidden="true" />
       {count > 0 && <span className="pins-badge" aria-hidden="true">{count > 99 ? '99+' : count}</span>}
     </button>
+  );
+}
+
+// The list body (loading / error / empty / rows / Show more), shared by the
+// anchored DM popover below and the group submenu (GroupInfoRow). `spinner`
+// swaps the skeleton rows for a plain spinner (design-spec section 5).
+export function PinnedListBody({ list, viewerId, onJump, onUnpin, onLoadMore, onRetry, spinner = false }) {
+  const { pins, status, hasMore, moreLoading } = list;
+  const loading = status === 'loading' && pins.length === 0;
+  const errored = status === 'error' && pins.length === 0;
+  const empty = status === 'ready' && pins.length === 0;
+  return (
+    <>
+      {loading && (spinner ? (
+        <div className="pins-state" role="status" aria-label="Loading pinned messages"><Spin /></div>
+      ) : (
+        <div className="pins-skeletons" aria-hidden="true">
+          <div className="pins-skeleton" /><div className="pins-skeleton" /><div className="pins-skeleton" />
+        </div>
+      ))}
+      {errored && (
+        <div className="pins-state">
+          <p>{list.error || PIN_LIST_ERROR}</p>
+          <button type="button" className="pins-text-btn" onClick={onRetry}>Try again</button>
+        </div>
+      )}
+      {empty && (
+        <div className="pins-state">
+          <PushpinOutlined aria-hidden="true" className="pins-empty-glyph" />
+          <p>No pinned messages yet.</p>
+          <p className="pins-hint">Use a message&apos;s menu to pin it.</p>
+        </div>
+      )}
+      {pins.length > 0 && (
+        <ul className="pins-rows">
+          {pins.map((p) => {
+            const who = p.message.from || 'Someone';
+            return (
+              <li key={p.messageId} className="pins-row">
+                <button type="button" className="pins-row-main" onClick={() => onJump(p)}>
+                  <Avatar size={24} style={{ background: 'rgba(255,198,26,0.12)', color: 'var(--gold)', flexShrink: 0 }}>
+                    {who[0].toUpperCase()}
+                  </Avatar>
+                  <span className="pins-row-text">
+                    <span className="pins-row-top">
+                      <span className="pins-row-name">{who}</span>
+                      <span className="pins-row-time">{whenLabel(p.message.timestamp)}</span>
+                    </span>
+                    <span className="pins-row-preview">{pinPreview(p)}</span>
+                    <span className="pins-row-by">{pinnedByLabel(p, viewerId)}</span>
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  className="pins-unpin-btn"
+                  aria-label={`Unpin message from ${who}`}
+                  onClick={() => onUnpin(p)}
+                >
+                  <PushpinFilled aria-hidden="true" />
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+      {pins.length > 0 && hasMore && (
+        <button type="button" className="pins-text-btn pins-more" disabled={moreLoading} onClick={onLoadMore}>
+          {moreLoading ? 'Loading…' : 'Show more'}
+        </button>
+      )}
+    </>
   );
 }
 
@@ -82,11 +153,6 @@ export default function PinnedMessagesPanel({
     else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
   };
 
-  const { pins, status, hasMore, moreLoading } = list;
-  const loading = status === 'loading' && pins.length === 0;
-  const errored = status === 'error' && pins.length === 0;
-  const empty = status === 'ready' && pins.length === 0;
-
   return createPortal(
     <>
       <div className="pins-scrim" aria-hidden="true" onClick={onClose} />
@@ -105,61 +171,7 @@ export default function PinnedMessagesPanel({
           <button type="button" className="pins-close-btn" onClick={onClose}>Done</button>
         </div>
         <div className="pins-panel-body">
-          {loading && (
-            <div className="pins-skeletons" aria-hidden="true">
-              <div className="pins-skeleton" /><div className="pins-skeleton" /><div className="pins-skeleton" />
-            </div>
-          )}
-          {errored && (
-            <div className="pins-state">
-              <p>{list.error || PIN_LIST_ERROR}</p>
-              <button type="button" className="pins-text-btn" onClick={onRetry}>Try again</button>
-            </div>
-          )}
-          {empty && (
-            <div className="pins-state">
-              <PushpinOutlined aria-hidden="true" className="pins-empty-glyph" />
-              <p>No pinned messages yet.</p>
-              <p className="pins-hint">Use a message&apos;s menu to pin it.</p>
-            </div>
-          )}
-          {pins.length > 0 && (
-            <ul className="pins-rows">
-              {pins.map((p) => {
-                const who = p.message.from || 'Someone';
-                return (
-                  <li key={p.messageId} className="pins-row">
-                    <button type="button" className="pins-row-main" onClick={() => onJump(p)}>
-                      <Avatar size={24} style={{ background: 'rgba(255,198,26,0.12)', color: 'var(--gold)', flexShrink: 0 }}>
-                        {who[0].toUpperCase()}
-                      </Avatar>
-                      <span className="pins-row-text">
-                        <span className="pins-row-top">
-                          <span className="pins-row-name">{who}</span>
-                          <span className="pins-row-time">{whenLabel(p.message.timestamp)}</span>
-                        </span>
-                        <span className="pins-row-preview">{pinPreview(p)}</span>
-                        <span className="pins-row-by">{pinnedByLabel(p, viewerId)}</span>
-                      </span>
-                    </button>
-                    <button
-                      type="button"
-                      className="pins-unpin-btn"
-                      aria-label={`Unpin message from ${who}`}
-                      onClick={() => onUnpin(p)}
-                    >
-                      <PushpinFilled aria-hidden="true" />
-                    </button>
-                  </li>
-                );
-              })}
-            </ul>
-          )}
-          {pins.length > 0 && hasMore && (
-            <button type="button" className="pins-text-btn pins-more" disabled={moreLoading} onClick={onLoadMore}>
-              {moreLoading ? 'Loading…' : 'Show more'}
-            </button>
-          )}
+          <PinnedListBody list={list} viewerId={viewerId} onJump={onJump} onUnpin={onUnpin} onLoadMore={onLoadMore} onRetry={onRetry} />
         </div>
       </div>
     </>,

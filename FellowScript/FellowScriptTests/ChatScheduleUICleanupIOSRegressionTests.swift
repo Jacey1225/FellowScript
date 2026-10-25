@@ -183,180 +183,50 @@ final class SessionCreatorSheetHeaderRegressionTests: XCTestCase {
         return String(source[start.lowerBound..<end.lowerBound])
     }
 
-    // ── Title text ───────────────────────────────────────────────────────
+    // Forms restyle (20261023): the header's circular Cancel/Schedule buttons were replaced by the
+    // FSForm scaffold (close X in the nav bar) and a sticky bar inside a 3-step stepper. These
+    // tests pin the new structure and the behavior that must survive the restyle.
 
     func test_sheetHeader_titleReadsSchedule_notScheduleASession() throws {
         let sut = makeSheet()
         XCTAssertNoThrow(try sut.inspect().find(text: "Schedule"),
-                          "the sheet header title must read 'Schedule'")
+                          "the sheet title must read 'Schedule'")
         XCTAssertThrowsError(try sut.inspect().find(text: "Schedule a Session"),
                               "the old, over-long 'Schedule a Session' title must no longer render") { _ in }
     }
 
-    // ── Cancel: circular xmark icon button, dismiss() preserved, accessible ─
-
-    func test_cancelButton_isCircularXmarkIcon() throws {
-        let sut = makeSheet()
-        let cancel = try findCancelIconButton(in: sut)
-        XCTAssertEqual(try cancel.actualView().systemIcon, "xmark",
-                       "Cancel must be a circular button carrying the xmark glyph")
-    }
-
-    func test_cancelButton_noLongerRendersVisibleCancelText() throws {
-        // The visible "Cancel" text is retired in favor of the icon-only
-        // button -- its accessibility label (asserted below) is what now
-        // carries that meaning.
-        let sut = makeSheet()
-        let cancel = try findCancelIconButton(in: sut)
-        XCTAssertThrowsError(try cancel.find(text: "Cancel"),
-                              "Cancel is now icon-only -- no visible 'Cancel' text should remain inside the button") { _ in }
-    }
-
-    func test_cancelButton_tapDoesNotThrow_dismissActionStillWired() throws {
-        // dismiss() is a no-op outside a real presentation host, so (mirroring
-        // this codebase's own established convention -- see
-        // NoteDetailViewDirectionBTests' test_closePill_isPresentAndTappable)
-        // this confirms the control exists and its tap doesn't throw/crash,
-        // rather than observing dismissal itself.
-        let sut = makeSheet()
-        let cancel = try findCancelIconButton(in: sut)
-        XCTAssertNoThrow(try cancel.find(ViewType.Button.self).tap())
-    }
-
-    func test_cancelButton_accessibilityLabelIsCancel() throws {
-        let sut = makeSheet()
-        let cancel = try findCancelIconButton(in: sut)
-        XCTAssertEqual(try cancel.accessibilityLabel().string(), "Cancel")
-    }
-
-    // ── Schedule submit: circular calendar icon button ──────────────────────
-
-    func test_scheduleButton_isCircularCalendarIcon() throws {
-        let sut = makeSheet()
-        let schedule = try findScheduleButton(in: sut)
-        let image = try schedule.find(ViewType.Image.self)
-        XCTAssertEqual(try image.actualImage().name(), "calendar",
-                       "the submit action must be a circular button carrying a clearly legible scheduling icon")
-    }
-
-    func test_scheduleButton_disabledAndDimmedWhenTitleIsEmpty() throws {
-        let sut = makeSheet()
-        let schedule = try findScheduleButton(in: sut)
-        XCTAssertTrue(try schedule.isDisabled(),
-                      "the submit button must stay disabled while the session title is empty, exactly as the original PillButton was")
-        XCTAssertEqual(try schedule.opacity(), 0.4, accuracy: 0.001,
-                       "the submit button must stay dimmed (opacity 0.4) while the session title is empty")
-    }
-
-    func test_scheduleButton_accessibilityLabelIsScheduleSession() throws {
-        let sut = makeSheet()
-        XCTAssertNoThrow(try findScheduleButton(in: sut))
-    }
-
-    // The "re-enables once a title is typed" half of acceptance criterion 3,
-    // and the tap -> scheduleSession() wiring, are pinned at the source
-    // level rather than by mutating `title` through ViewInspector's
-    // TextField.setInput(_:) and re-inspecting: that combination reliably
-    // failed fast against this project's ViewInspector 0.10.3 / iOS 26.5
-    // toolchain pairing while writing this suite (`title` is a private
-    // @State with no external seam, and ViewInspector's TextField binding
-    // reflection needs to match SwiftUI's current internal representation
-    // to round-trip a mutation back into a fresh render). The empty-title
-    // (disabled/dimmed) half above is proven live; this half proves the
-    // *condition* driving both states is unchanged.
-    func test_source_scheduleButton_disabledOpacityConditionAndActionWiring_unchanged() throws {
-        let header = try sheetHeaderSource()
-        XCTAssertTrue(header.contains("Button(action: scheduleSession)"),
-                      "the circular submit button's action must still be scheduleSession(), unchanged from before the restyle")
-        XCTAssertTrue(header.contains(".disabled(title.isEmpty)"),
-                      "the submit button must stay disabled exactly when the session title is empty, unchanged from the original PillButton")
-        XCTAssertTrue(header.contains(".opacity(title.isEmpty ? 0.4 : 1)"),
-                      "the submit button's dimmed/full-opacity condition must be unchanged from the original PillButton")
-    }
-
-    // ── Centering: symmetric 36pt buttons flank the title ───────────────────
-
-    func test_sheetHeader_cancelAndScheduleButtons_shareTheSame36ptDiameter() throws {
-        // Equal-diameter side controls (plus the existing symmetric Spacers
-        // on both sides of the title, unchanged from before this task) are
-        // what makes the title centering work -- pin the diameter equality
-        // directly rather than only visually.
-        let sut = makeSheet()
-
-        let cancelRoundIconButton = try sut.inspect().find(RoundIconButton.self)
-        XCTAssertEqual(try cancelRoundIconButton.actualView().diameter, 36,
-                       "Cancel's RoundIconButton must be 36pt to match the Schedule button's own 36pt frame")
-
-        let schedule = try findScheduleButton(in: sut)
-        let scheduleFrame = try schedule.find(ViewType.Image.self).fixedFrame()
-        XCTAssertEqual(scheduleFrame.width, 36, accuracy: 0.001)
-        XCTAssertEqual(scheduleFrame.height, 36, accuracy: 0.001)
-    }
-
-    func test_source_sheetHeader_titleSitsBetweenTwoSymmetricSpacers() throws {
-        // See sheetHeaderSource()'s own comment for why this is a source-pin
-        // rather than a ViewInspector traversal: this sheet's tree contains
-        // a real DatePicker, and a broad `find(HStack, where: nested find)`
-        // search across it hung indefinitely while writing this suite.
-        let header = try sheetHeaderSource()
-        XCTAssertEqual(header.components(separatedBy: "Spacer()").count - 1, 2,
-                       "the title must still sit between exactly two Spacers (one on each side) for centering to hold once the side buttons are equal width")
-        guard let cancelRange = header.range(of: "RoundIconButton(systemIcon: \"xmark\""),
-              let firstSpacerRange = header.range(of: "Spacer()"),
-              let titleRange = header.range(of: "Text(\"Schedule\")"),
-              let secondSpacerRange = header.range(of: "Spacer()", range: firstSpacerRange.upperBound..<header.endIndex),
-              let scheduleButtonRange = header.range(of: "Button(action: scheduleSession)") else {
-            XCTFail("expected to find Cancel, both Spacers, the title, and the Schedule button in sheetHeader's source")
-            return
-        }
-        XCTAssertTrue(
-            cancelRange.lowerBound < firstSpacerRange.lowerBound &&
-            firstSpacerRange.lowerBound < titleRange.lowerBound &&
-            titleRange.lowerBound < secondSpacerRange.lowerBound &&
-            secondSpacerRange.lowerBound < scheduleButtonRange.lowerBound,
-            "expected source order Cancel -> Spacer -> \"Schedule\" title -> Spacer -> Schedule button, so the title is symmetrically flanked"
-        )
-    }
-
-    // ── 3. "Summarize" chip label + unchanged toggle behavior ──────────────
-
-    func test_sessionOptionsSection_summarizeChip_labelIsShortened() throws {
-        let sut = makeSheet()
-        XCTAssertNoThrow(try sut.inspect().find(text: "Summarize"),
-                          "the chip must now read 'Summarize'")
-        XCTAssertThrowsError(try sut.inspect().find(text: "Summarize with agent"),
-                              "the old, over-long 'Summarize with agent' label must no longer render") { _ in }
-    }
-
-    func test_sessionOptionsSection_repeatWeeklyChip_isUntouchedByTheLabelChange() throws {
-        let sut = makeSheet()
-        XCTAssertNoThrow(try sut.inspect().find(text: "Repeat weekly"))
-    }
-
-    func test_summarizeChip_tapDoesNotThrow_toggleWiringStillIntact() throws {
-        // Mirrors the Cancel button's own "does not throw" convention above:
-        // $summarize is a private @State with no external seam, so the
-        // resulting on/off value isn't reliably re-observable through a
-        // second, separate ViewInspector inspection pass in this project's
-        // ViewInspector/iOS toolchain pairing (see the scheduleButton source
-        // note above for the same underlying limitation). ChipToggle's own
-        // toggle *mechanism* (isOn.toggle() on tap) is already independently
-        // covered by ChipToggleTests via an external Binding -- this confirms
-        // the shortened chip is still wired to a live, throw-free tap target.
-        let sut = makeSheet()
-        let chip = try sut.inspect().find(ChipToggle.self, where: { view in
-            (try? view.actualView().title) == "Summarize"
-        })
-        XCTAssertNoThrow(try chip.find(ViewType.HStack.self).callOnTapGesture())
-    }
-
-    func test_source_summarizeChip_stillBindsToTheSameSummarizeState() throws {
+    private func sessionCreatorSource() throws -> String {
         let source = try chatThreadViewSource()
-        XCTAssertTrue(
-            source.contains(#"ChipToggle(title: "Summarize", isOn: $summarize)"#),
-            "the shortened chip must still bind to the same $summarize state as before the label change, not a new/different property"
-        )
+        guard let start = source.range(of: "struct SessionCreatorSheet: View {") else {
+            XCTFail("SessionCreatorSheet not found"); return ""
+        }
+        return String(source[start.lowerBound...].prefix(14000))
     }
+
+    func test_source_sheetUsesScaffoldWithThreeStepRail_andCloseDismisses() throws {
+        let src = try sessionCreatorSource()
+        XCTAssertTrue(src.contains("FSFormScaffold("))
+        XCTAssertTrue(src.contains("title: isEditing ? \"Edit Session\" : \"Schedule\""))
+        XCTAssertTrue(src.contains("let stepNames = [\"Basics\", \"Study\", \"Options\"]"))
+        XCTAssertTrue(src.contains("onClose: { dismiss() }"), "closing must still dismiss the sheet")
+    }
+
+    func test_source_scheduleAction_isDimmedWithoutTitle_stillTappable_andKeepsItsAccessibilityLabel() throws {
+        let src = try sessionCreatorSource()
+        XCTAssertTrue(src.contains("primaryDimmed: !titleValid"))
+        XCTAssertTrue(src.contains("primaryAccessibilityLabel: \"Schedule session\""))
+        XCTAssertTrue(src.contains("private func tapSave()"), "a dimmed tap must still run validation (spec D8)")
+        XCTAssertTrue(src.contains("scheduleSession()"), "the save wiring must be unchanged")
+    }
+
+    func test_source_optionsStep_repeatWeekly_andSummarize_stillBindToTheSameState() throws {
+        let src = try sessionCreatorSource()
+        XCTAssertTrue(src.contains("FSToggleRow(title: \"Repeat weekly\""))
+        XCTAssertTrue(src.contains("isOn: $recurring"))
+        XCTAssertTrue(src.contains("title: \"Summarize with agent\""))
+        XCTAssertTrue(src.contains("isOn: $summarize"))
+    }
+
 }
 
 // MARK: - 4. Composer top divider removal

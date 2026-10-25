@@ -80,8 +80,8 @@ final class SubmenuVisualRedesignRegressionTests: XCTestCase {
         }
         let end = source.range(of: "\nstruct ", range: structRange.upperBound..<source.endIndex)?.lowerBound ?? source.endIndex
         let body = String(source[structRange.upperBound..<end])
-        XCTAssertTrue(body.contains(".warmBloomBackground()"), "AddFriendSheet must use the shared warm-bloom-ground modifier")
-        XCTAssertFalse(body.contains("Theme.bgPage.ignoresSafeArea()"), "must not keep the old flat-fill background alongside the new one")
+        XCTAssertTrue(body.contains("FSFormScaffold("), "AddFriendSheet must use the FSForm scaffold (page ground)")
+        XCTAssertFalse(body.contains("Theme.bgPage.ignoresSafeArea()"), "scaffold owns the page ground")
     }
 
     func test_addGroupSheet_appliesSharedWarmBloomBackground() throws {
@@ -91,8 +91,8 @@ final class SubmenuVisualRedesignRegressionTests: XCTestCase {
         }
         let end = source.range(of: "\nstruct ", range: structRange.upperBound..<source.endIndex)?.lowerBound ?? source.endIndex
         let body = String(source[structRange.upperBound..<end])
-        XCTAssertTrue(body.contains(".warmBloomBackground()"), "AddGroupSheet must use the shared warm-bloom-ground modifier")
-        XCTAssertFalse(body.contains("Theme.bgPage.ignoresSafeArea()"), "must not keep the old flat-fill background alongside the new one")
+        XCTAssertTrue(body.contains("FSFormScaffold("), "AddGroupSheet must use the FSForm scaffold (page ground)")
+        XCTAssertFalse(body.contains("Theme.bgPage.ignoresSafeArea()"), "scaffold owns the page ground")
     }
 
     func test_newAgentSheet_appliesSharedWarmBloomBackground() throws {
@@ -104,7 +104,7 @@ final class SubmenuVisualRedesignRegressionTests: XCTestCase {
         }
         let end = source.range(of: "\nstruct ", range: structRange.upperBound..<source.endIndex)?.lowerBound ?? source.endIndex
         let body = String(source[structRange.upperBound..<end])
-        XCTAssertTrue(body.contains(".warmBloomBackground()"), "NewAgentSheet must use the shared warm-bloom-ground modifier")
+        XCTAssertTrue(body.contains("FSFormScaffold("), "NewAgentSheet must use the shared FSForm scaffold (page ground)")
     }
 
     func test_eventSetupSheet_allThreeSteps_applySharedWarmBloomBackground() throws {
@@ -187,8 +187,8 @@ final class SubmenuVisualRedesignRegressionTests: XCTestCase {
         let body = String(source[structRange.upperBound..<end])
         XCTAssertFalse(body.contains("Form {") || body.contains("Form(") || body.contains("Section("),
                        "AddFriendSheet must be restructured off native Form/Section")
-        XCTAssertTrue(body.contains("ScrollView") && body.contains(".widgetCard()"),
-                      "AddFriendSheet must use the ScrollView + widgetCard() shell")
+        XCTAssertTrue(body.contains("FSFormScaffold(") && body.contains("FSFormCard("),
+                      "AddFriendSheet must use the FSForm scaffold + card shell")
     }
 
     func test_addGroupSheet_noLongerUsesFormOrSectionOrList() throws {
@@ -201,8 +201,8 @@ final class SubmenuVisualRedesignRegressionTests: XCTestCase {
         XCTAssertFalse(body.contains("Form {") || body.contains("Form(") || body.contains("Section("),
                        "AddGroupSheet must be restructured off native Form/Section")
         XCTAssertFalse(body.contains("List("), "AddGroupSheet's member list must no longer be a native List")
-        XCTAssertTrue(body.contains("ScrollView") && body.contains(".widgetCard()") && body.contains("ForEach("),
-                      "AddGroupSheet must use the ScrollView + widgetCard() + manual ForEach shell")
+        XCTAssertTrue(body.contains("FSFormScaffold(") && body.contains("FSFormCard(") && body.contains("ForEach("),
+                      "AddGroupSheet must use the FSForm scaffold + card + manual ForEach shell")
     }
 
     func test_newAgentSheet_noLongerUsesFormOrSection() throws {
@@ -227,8 +227,8 @@ final class SubmenuVisualRedesignRegressionTests: XCTestCase {
         let body = String(source[range.upperBound..<end])
         XCTAssertFalse(body.contains("Form {") || body.contains("Form(") || body.contains("Section("),
                        "EventSetupSheet.detailsScreen must be restructured off native Form/Section")
-        XCTAssertTrue(body.contains("ScrollView") && body.contains(".widgetCard()"),
-                      "EventSetupSheet.detailsScreen must use the ScrollView + widgetCard() shell matching recurrenceScreen/dayPickerScreen")
+        XCTAssertTrue(body.contains("ScrollView") && body.contains(".fsCard()"),
+                      "EventSetupSheet.detailsScreen must use the ScrollView + fsCard() (gray glass) shell matching recurrenceScreen/dayPickerScreen")
     }
 
     // MARK: - D. No behavioral regression: callbacks, disabled predicates, group-picker, prefill/buildTimestamps
@@ -237,8 +237,8 @@ final class SubmenuVisualRedesignRegressionTests: XCTestCase {
         let source = try readSource("FellowScript/Chat/ChatRootView.swift")
         XCTAssertTrue(source.contains("let onSend: (String) -> Void"), "onSend signature must be unchanged")
         XCTAssertTrue(source.contains("onSend(username)"), "Send Request must still call onSend with the raw username")
-        XCTAssertTrue(source.contains(".disabled(username.isEmpty)"), "Send Request must still be disabled on empty username")
-        XCTAssertTrue(source.contains(".accessibilityLabel(\"Enter username to add as friend\")"),
+        XCTAssertTrue(source.contains("primaryDimmed: username.isEmpty"), "Send Request must still be dimmed on empty username")
+        XCTAssertTrue(source.contains("accessibilityName: \"Enter username to add as friend\""),
                       "existing accessibility label must survive the container swap")
     }
 
@@ -246,7 +246,7 @@ final class SubmenuVisualRedesignRegressionTests: XCTestCase {
         let source = try readSource("FellowScript/Chat/ChatRootView.swift")
         XCTAssertTrue(source.contains("let onCreate: (String, [String]) -> Void"), "onCreate signature must be unchanged")
         XCTAssertTrue(source.contains("onCreate(groupName, Array(selectedIds))"), "Create must still call onCreate with groupName + selectedIds")
-        XCTAssertTrue(source.contains(".disabled(groupName.isEmpty)"), "Create must still be disabled on empty group name")
+        XCTAssertTrue(source.contains("primaryDimmed: groupName.isEmpty"), "Create must still be dimmed on empty group name")
         XCTAssertTrue(source.contains(#".accessibilityLabel("\(f.name). \(selectedIds.contains(f.id) ? "Selected" : "Not selected")")"#),
                       "per-row accessibility label must survive the List->manual-ForEach container swap")
         XCTAssertTrue(source.contains(".accessibilityAddTraits(selectedIds.contains(f.id) ? .isSelected : [])"),
@@ -270,8 +270,8 @@ final class SubmenuVisualRedesignRegressionTests: XCTestCase {
         // 20260902-submenu-followup-polish (plain Button -> gold PillButton),
         // but the call/dismiss wiring this assertion actually cares about is
         // unchanged.
-        XCTAssertTrue(body.contains("PillButton(title: \"Create\") { onCreate(); dismiss() }"), "Create button must still call onCreate then dismiss")
-        XCTAssertTrue(body.contains(".accessibilityLabel(\"Agent role description\")"), "existing accessibility label must survive the container swap")
+        XCTAssertTrue(body.contains("primaryTitle: \"Create\", onPrimary: { onCreate(); dismiss() }"), "Create button must still call onCreate then dismiss")
+        XCTAssertTrue(body.contains("accessibilityName: \"Agent role description\""), "existing accessibility label must survive the container swap")
     }
 
     func test_eventSetupSheet_onSaveCallback_andDisabledPredicate_unchanged() throws {
@@ -295,7 +295,7 @@ final class SubmenuVisualRedesignRegressionTests: XCTestCase {
         // 20260905-heartbeat-timezone-duplicate-bugs) prepended `isSaving ||`
         // to this predicate; the original guard is still present as a
         // component of the new predicate.
-        XCTAssertTrue(source.contains(".disabled(isSaving || prompt.trimmingCharacters(in: .whitespaces).isEmpty || selectedAgentId.isEmpty)"),
+        XCTAssertTrue(source.contains("primaryDimmed: (isSaving || prompt.trimmingCharacters(in: .whitespaces).isEmpty || selectedAgentId.isEmpty)"),
                       "Save/Update must still be disabled on empty prompt or missing agent (now combined with the later isSaving guard)")
     }
 
@@ -375,10 +375,10 @@ final class SubmenuVisualRedesignRegressionTests: XCTestCase {
         let tzEnd = accountSource.range(of: "\nstruct ", range: tzRange.upperBound..<accountSource.endIndex)?.lowerBound ?? accountSource.endIndex
         let tzBody = String(accountSource[tzRange.upperBound..<tzEnd])
         XCTAssertFalse(tzBody.contains(".warmBloomBackground()"), "TimeZonePickerSheet was not named in scope and must not have been restyled")
-        XCTAssertTrue(tzBody.contains("List(filtered, id: \\.self)"), "TimeZonePickerSheet must keep its native List, unchanged")
+        XCTAssertTrue(tzBody.contains("ForEach(Array(filtered.enumerated())"), "TimeZonePickerSheet must keep iterating the filtered zone list")
 
         let reportSource = try readSource("FellowScript/Chat/ReportUserSheet.swift")
         XCTAssertFalse(reportSource.contains(".warmBloomBackground()"), "ReportUserSheet was not named in scope and must not have been restyled")
-        XCTAssertTrue(reportSource.contains("Form {"), "ReportUserSheet must keep its native Form, unchanged")
+        XCTAssertTrue(reportSource.contains("FSFormScaffold("), "ReportUserSheet is restyled onto the FSForm scaffold (forms restyle 20261023)")
     }
 }

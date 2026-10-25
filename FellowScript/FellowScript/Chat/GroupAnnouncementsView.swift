@@ -75,7 +75,8 @@ struct GroupAnnouncementsView: View {
                     item: item,
                     onEdit: { form = .edit(item) },
                     onDelete: { vm.startDelete(item); selectedId = nil },
-                    onRSVP: { join in try await vm.rsvp(item, join: join) }
+                    onRSVP: { join in try await vm.rsvp(item, join: join) },
+                    pollActions: vm.pollActions(for: item)
                 )
             }
         }

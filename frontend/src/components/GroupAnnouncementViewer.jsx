@@ -19,7 +19,7 @@ export function formatDateTime(ts) {
 // Layout (iOS GroupAnnouncementDetailView): the theme fills the page; the
 // banner is a full-bleed decorative background that fades into it (mask
 // gradient + light scrim), then title, By creator + date, description, extras.
-export default function GroupAnnouncementViewer({ item, onBack, onEdit, onDelete, onOpenLightbox, onRsvp, headingRef }) {
+export default function GroupAnnouncementViewer({ item, onBack, onEdit, onDelete, onOpenLightbox, onRsvp, onPoll, headingRef }) {
   const [bannerFailed, setBannerFailed] = useState(false);
   useEffect(() => { setBannerFailed(false); }, [item.id, item.banner_url]);
   useEffect(() => {
@@ -63,7 +63,7 @@ export default function GroupAnnouncementViewer({ item, onBack, onEdit, onDelete
           style={{ color: titleColor, ...titleFontStyle(item.title_font) }}>{item.title}</h3>
         <p className="group-info-helper ann-detail-by">By {item.creator_username || 'a member'}, {formatDateTime(item.publish_at)}</p>
         <p className="group-info-announcements-body">{item.description}</p>
-        <AnnouncementExtrasDetail item={item} onRsvp={onRsvp} onOpenLightbox={onOpenLightbox} />
+        <AnnouncementExtrasDetail item={item} onRsvp={onRsvp} onOpenLightbox={onOpenLightbox} pollActions={onPoll} />
       </div>
     </article>
   );

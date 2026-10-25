@@ -18,68 +18,24 @@ struct CompleteProfileView: View {
     }
 
     var body: some View {
-        ZStack {
-            Theme.bgPage.ignoresSafeArea()
-
-            VStack(spacing: Theme.spacingLG) {
-                Spacer()
-
-                Text("Finish setting up your account")
-                    .font(.playfair(Theme.fontDisplayMD))
-                    .foregroundColor(Theme.parchment)
-                    .multilineTextAlignment(.center)
-
-                Text("Apple didn't share a name or email for this sign-in, so we couldn't set them up for you. Please choose a username and email to continue — this only needs to happen once.")
-                    .font(.inter(Theme.fontSM))
-                    .foregroundColor(Theme.textMuted)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, Theme.spacingLG)
-
-                VStack(spacing: Theme.spacingMD) {
-                    FSTextField(placeholder: "Username", icon: "person", text: $username, isSecure: false)
-                        .textContentType(.username)
-                        .autocapitalization(.none)
-                        .accessibilityLabel("Username field")
-
-                    FSTextField(placeholder: "Email", icon: "envelope", text: $email, isSecure: false)
-                        .keyboardType(.emailAddress)
-                        .textContentType(.emailAddress)
-                        .autocapitalization(.none)
-                        .accessibilityLabel("Email field")
-                }
-                .padding(.horizontal, Theme.spacingLG)
-                .padding(.top, Theme.spacingSM)
-
-                if let errorMsg {
-                    Text(errorMsg)
-                        .font(.inter(Theme.fontXS))
-                        .foregroundColor(Theme.error)
-                        .multilineTextAlignment(.center)
-                        .padding(.horizontal, Theme.spacingLG)
-                }
-
-                Spacer()
-
-                Button(action: submit) {
-                    HStack {
-                        if saving { ProgressView().tint(Theme.ink) }
-                        Text("Continue").font(.inter(Theme.fontSM)).bold()
-                    }
-                    .foregroundColor(Theme.ink)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, Theme.spacingMD)
-                    .background(formValid ? Theme.gold : Theme.gold.opacity(0.4))
-                    .clipShape(RoundedRectangle(cornerRadius: Theme.radius))
-                }
-                .disabled(!formValid || saving)
-                .padding(.horizontal, Theme.spacingLG)
-                .padding(.bottom, Theme.spacingXL)
-                .accessibilityLabel("Continue with this username and email")
+        FSAuthScaffold(
+            title: "Finish setting up your account",
+            subtitle: "Apple didn't share a name or email for this sign-in, so we couldn't set them up for you. Please choose a username and email to continue — this only needs to happen once.",
+            errorMessage: errorMsg,
+            primaryTitle: "Continue",
+            primaryDimmed: !formValid,
+            saving: saving,
+            onPrimary: { if formValid && !saving { submit() } }
+        ) {
+            VStack(spacing: Theme.spacingMD) {
+                FSField(label: "Username", required: true, text: $username, leadingSymbol: "person",
+                        contentType: .username, capitalization: .never, autocorrect: false)
+                FSField(label: "Email", required: true, text: $email, leadingSymbol: "envelope",
+                        contentType: .emailAddress, keyboard: .emailAddress,
+                        capitalization: .never, autocorrect: false)
             }
         }
-        // Shared keyboard-dismiss convention (task
-        // 20260831-interaction-polish-conventions) — covers the
-        // username/email fields above.
+        // Shared keyboard-dismiss convention (task 20260831-interaction-polish-conventions).
         .dismissesKeyboardOnScrollAndTap()
     }
 

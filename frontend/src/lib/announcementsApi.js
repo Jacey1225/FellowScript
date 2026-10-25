@@ -78,7 +78,7 @@ export function fetchLatestAnnouncement(userId, groupId) {
 }
 
 // body: { title, description, banner_key?, publish_at?, title_color?, title_font?,
-// bg_theme?, links?, gallery_keys?, is_event?, payment_handles?, capacity?, location? }.
+// bg_theme?, links?, gallery_keys?, is_event?, payment_handles?, capacity?, location?, poll? }.
 // Flag-gated keys answer 422 while their server flag is off; callers only send
 // them when /app/capabilities says the flag is on, and surface any 422 message.
 export function createAnnouncement(userId, groupId, body) {
@@ -100,6 +100,23 @@ export function rsvpJoin(userId, groupId, announcementId) {
 export function rsvpLeave(userId, groupId, announcementId) {
   return request(`${base(userId, groupId)}/${announcementId}/rsvp`, { method: 'DELETE' },
     "Couldn't update your RSVP. Please try again.");
+}
+
+// Polls. Each resolves to the updated announcement (live counts in `poll`). Votes are
+// anonymous; 409 = the poll is closed, 404 = no poll / feature off, 422 = bad option.
+export function pollVote(userId, groupId, announcementId, optionIds) {
+  return request(`${base(userId, groupId)}/${announcementId}/poll/vote`, json('POST', { option_ids: optionIds }),
+    "Couldn't record your vote. Please try again.");
+}
+
+export function pollRetract(userId, groupId, announcementId) {
+  return request(`${base(userId, groupId)}/${announcementId}/poll/vote`, { method: 'DELETE' },
+    "Couldn't clear your vote. Please try again.");
+}
+
+export function pollClose(userId, groupId, announcementId) {
+  return request(`${base(userId, groupId)}/${announcementId}/poll/close`, { method: 'POST' },
+    "Couldn't close the poll. Please try again.");
 }
 
 export function deleteAnnouncement(userId, groupId, announcementId) {

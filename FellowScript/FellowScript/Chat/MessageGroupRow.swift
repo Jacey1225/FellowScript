@@ -345,7 +345,7 @@ struct MessageGroupRow: View {
     private func bubble(for message: FSMessage) -> some View {
         let isShared = message.attachmentKindEnum?.isShared == true
         let isMedia = isShared || ["image", "video", "gif"].contains(message.attachmentKind ?? "")
-        VStack(alignment: group.isOutgoing ? .trailing : .leading, spacing: 0) {
+        VStack(alignment: .leading, spacing: 0) {
             if let reply = message.reply { quotedLabel(reply) }
         Group {
             if let kind = message.attachmentKind, !kind.isEmpty {
@@ -353,7 +353,7 @@ struct MessageGroupRow: View {
                 // `attachment_kind` can both be set — design gate's wire
                 // contract note) renders below the attachment content,
                 // inside the same bubble.
-                VStack(alignment: group.isOutgoing ? .trailing : .leading, spacing: 0) {
+                VStack(alignment: .leading, spacing: 0) {
                     AttachmentContentView(message: message, localPreview: localAttachmentPreviews[message.id])
                         .padding(isMedia ? 0 : 14)
                         .padding(.vertical, isMedia ? 0 : 10)
@@ -363,7 +363,7 @@ struct MessageGroupRow: View {
                         MentionText(text: message.text, mentions: message.mentions)
                             .font(.inter(Theme.fontBody))
                             .foregroundColor(Theme.parchment)
-                            .multilineTextAlignment(group.isOutgoing ? .trailing : .leading)
+                            .multilineTextAlignment(.leading)
                             .padding(.horizontal, 14)
                             .padding(.bottom, 10)
                             .padding(.top, isMedia ? 6 : 0)
@@ -373,7 +373,7 @@ struct MessageGroupRow: View {
                 MentionText(text: message.text, mentions: message.mentions)
                     .font(.inter(Theme.fontBody))
                     .foregroundColor(Theme.parchment)
-                    .multilineTextAlignment(group.isOutgoing ? .trailing : .leading)
+                    .multilineTextAlignment(.leading)
                     .padding(.horizontal, 14)
                     .padding(.vertical, 10)
             }

@@ -167,27 +167,27 @@ struct PostTourPromptScaffold<Extra: View>: View {
 
     private var headline: AttributedString {
         var lead = AttributedString(headlineLead)
-        lead.font = Font.playfair(34)
+        lead.font = Font.system(size: 34, weight: .heavy)
         lead.foregroundColor = Theme.parchment
         var key = AttributedString(headlineKey)
         key.font = Font.verseRef(34)
         key.foregroundColor = Theme.gold
         var tail = AttributedString(headlineTail)
-        tail.font = Font.playfair(34)
+        tail.font = Font.system(size: 34, weight: .heavy)
         tail.foregroundColor = Theme.parchment
         return lead + key + tail
     }
 
     var body: some View {
         ZStack(alignment: .top) {
-            Theme.bgPage.ignoresSafeArea()
+            Color.clear.warmBloomBackground()
 
             ScrollView {
                 VStack(spacing: 0) {
                     PostTourMotifView(kind: motif, size: motifSize)
                         .padding(.top, Theme.spacingLG)
                     Text(eyebrow.uppercased())
-                        .font(Font.inter(11, weight: .medium))
+                        .font(Font.system(size: 11, weight: .medium))
                         .tracking(4)
                         .foregroundColor(Theme.gold)
                         .padding(.top, 28)
@@ -200,7 +200,7 @@ struct PostTourPromptScaffold<Extra: View>: View {
                         .accessibilityAddTraits(.isHeader)
                         .accessibilityFocused($headlineFocused)
                     Text(message)
-                        .font(Font.interScaled(Theme.fontBody))
+                        .font(Font.system(size: Theme.fontBody))
                         .foregroundColor(Theme.parchment.opacity(0.88))
                         .lineSpacing(5)
                         .multilineTextAlignment(.center)
@@ -247,7 +247,7 @@ struct PostTourPromptScaffold<Extra: View>: View {
                             Text(primaryTitle).lineLimit(1)
                         }
                     }
-                    .font(Font.inter(Theme.fontBody, weight: .semibold))
+                    .font(Font.system(size: Theme.fontBody, weight: .semibold))
                     .padding(.horizontal, Theme.spacingMD)
                 }
                 .buttonStyle(PostTourPrimaryButtonStyle())
@@ -260,7 +260,7 @@ struct PostTourPromptScaffold<Extra: View>: View {
                 case .plainText:
                     Button(action: onSecondary) {
                         Text(secondaryTitle)
-                            .font(Font.inter(Theme.fontBody, weight: .medium))
+                            .font(Font.system(size: Theme.fontBody, weight: .medium))
                             .foregroundColor(Theme.parchment.opacity(0.78))
                             .frame(maxWidth: .infinity, minHeight: 44)
                     }
@@ -270,7 +270,7 @@ struct PostTourPromptScaffold<Extra: View>: View {
                 case .ghostPill:
                     Button(action: onSecondary) {
                         Text(secondaryTitle)
-                            .font(Font.inter(Theme.fontBody, weight: .semibold))
+                            .font(Font.system(size: Theme.fontBody, weight: .semibold))
                     }
                     .buttonStyle(PostTourGhostButtonStyle())
                     .disabled(primaryBusy)
@@ -370,7 +370,7 @@ struct SubscribePromptView: View {
         VStack(spacing: 0) {
             if let message {
                 Text(message)
-                    .font(Font.inter(Theme.fontSM))
+                    .font(Font.system(size: Theme.fontSM))
                     .foregroundColor(Theme.error)
                     .multilineTextAlignment(.center)
                     .fixedSize(horizontal: false, vertical: true)
@@ -379,7 +379,7 @@ struct SubscribePromptView: View {
             }
             // Non-breaking spaces keep the last line from holding one word.
             Text("\(price) per month for 1 member; larger groups cost more. Renews monthly until you cancel in Settings\u{00A0}> Apple\u{00A0}ID\u{00A0}>\u{00A0}Subscriptions.")
-                .font(Font.interScaled(Theme.fontXS, relativeTo: .caption))
+                .font(Font.system(size: Theme.fontXS))
                 .foregroundColor(Theme.textSecondary)
                 .multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)
@@ -389,7 +389,7 @@ struct SubscribePromptView: View {
                     Task { await restore() }
                 }
                 .buttonStyle(.plain)
-                .font(Font.inter(Theme.fontSM, weight: .medium))
+                .font(Font.system(size: Theme.fontSM, weight: .medium))
                 .foregroundColor(Theme.gold)
                 .disabled(restoring || store.purchasing)
                 Text("\u{00B7}").foregroundColor(Theme.borderGold)
@@ -399,7 +399,7 @@ struct SubscribePromptView: View {
             }
             .lineLimit(1)
             .minimumScaleFactor(0.8)
-            .font(Font.interScaled(Theme.fontXS, relativeTo: .caption))
+            .font(Font.system(size: Theme.fontXS))
             .foregroundColor(Theme.textSecondary)
             .frame(minHeight: 44)
         }

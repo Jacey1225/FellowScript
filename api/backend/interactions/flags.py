@@ -105,6 +105,10 @@ register("message_reactions")
 register("message_pins")
 # Verse and note shares in DMs/groups (task 20261012-share-verses-notes-in-chat). Ships OFF; never flipped by the pipeline.
 register("chat_shared_objects")
+# Media list for the group info chip row (task 20261023-group-info-row): gates
+# GET /groups/{u}/{g}/media and the Media chip. Exposed in capabilities as
+# features.group_media. Ships OFF; never flipped by the pipeline.
+register("group_media")
 register("explorer_publish")
 register("explorer_browse", no_canary=True)
 register("join_requests")
@@ -140,6 +144,7 @@ register("announcement_rsvp")
 # Optional free-text announcement location (task 20261010-announcement-location-chat-replies).
 # Exposed in capabilities so the iOS form can hide the field. Ships OFF.
 register("announcement_location")
+register("announcement_polls")
 # In-call screen share SENDING (task 20261009-session-ui-redesign). Client gate for the
 # Share Screen control; receiving content shares is always on. Ships OFF.
 register("screen_share_enabled")

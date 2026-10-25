@@ -2,7 +2,8 @@
 // "Send in chat": DMs and groups, a live preview of what will be sent. The server
 // replaces message text on shared kinds, so there is no message field. Desktop uses the identical modal (same bundle).
 import React, { useMemo, useState } from 'react';
-import { Modal, Button, Spin } from 'antd';
+import { Modal, Button, Spin, ConfigProvider } from 'antd';
+import { formTheme } from '../lib/formTokens.js';
 import { CheckOutlined } from '@ant-design/icons';
 
 export default function ShareToChatModal({ open, onClose, preview, friends, groups, loaded, onSend }) {
@@ -28,7 +29,8 @@ export default function ShareToChatModal({ open, onClose, preview, friends, grou
   };
 
   return (
-    <Modal
+    <ConfigProvider theme={formTheme}>
+<Modal
       open={open}
       onCancel={close}
       title="Send in chat"
@@ -70,5 +72,6 @@ export default function ShareToChatModal({ open, onClose, preview, friends, grou
         </ul>
       )}
     </Modal>
+</ConfigProvider>
   );
 }

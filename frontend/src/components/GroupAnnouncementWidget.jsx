@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { CloseOutlined } from '@ant-design/icons';
-import { fetchLatestAnnouncement, rsvpJoin, rsvpLeave, ANNOUNCEMENTS_ENABLED } from '../lib/announcementsApi.js';
+import { fetchLatestAnnouncement, rsvpJoin, rsvpLeave, pollVote, pollRetract, ANNOUNCEMENTS_ENABLED } from '../lib/announcementsApi.js';
 import GroupAnnouncementViewer from './GroupAnnouncementViewer.jsx';
 import AnnouncementCardFace, { formatShortDate } from './AnnouncementCardFace.jsx';
 
@@ -119,6 +119,10 @@ export default function GroupAnnouncementWidget({ userId, groupId, onAfterDismis
     setItem(merged);
     return merged;
   };
+  const pollActions = {
+    vote: async (ids) => { const merged = { ...item, ...(await pollVote(userId, groupId, item.id, ids)) }; latestCache.set(cacheKey, merged); setItem(merged); return merged; },
+    retract: async () => { const merged = { ...item, ...(await pollRetract(userId, groupId, item.id)) }; latestCache.set(cacheKey, merged); setItem(merged); return merged; },
+  };
   return (
     <section className={`announce-widget${leaving ? ' announce-widget-leaving' : ''}`} role="region" aria-label="Latest announcement"
       style={dragX ? { transform: `translateX(${dragX}px)`, opacity: Math.max(0.4, 1 + dragX / 300), touchAction: 'pan-y' } : { touchAction: 'pan-y' }}
@@ -137,7 +141,7 @@ export default function GroupAnnouncementWidget({ userId, groupId, onAfterDismis
           onClick={(e) => { if (e.target === e.currentTarget) closeViewer(); }}>
           <div className="announce-widget-modal-body">
             {/* Edit/Delete stay in the group info panel; the widget viewer is read-only. */}
-            <GroupAnnouncementViewer item={{ ...item, can_edit: false }} onBack={closeViewer} onRsvp={rsvp} />
+            <GroupAnnouncementViewer item={{ ...item, can_edit: false }} onBack={closeViewer} onRsvp={rsvp} onPoll={pollActions} />
           </div>
         </div>,
         document.body,

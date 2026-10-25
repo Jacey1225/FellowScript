@@ -141,20 +141,20 @@ struct NotificationSettingsView: View {
         ScrollView {
             VStack(spacing: 20) {
                 Text("Choose which push notifications you receive. The ones listed under Always on can't be turned off.")
-                    .font(.inter(Theme.fontXS))
+                    .font(.system(size: Theme.fontXS))
                     .foregroundColor(Theme.textMuted)
                     .frame(maxWidth: .infinity, alignment: .leading)
 
                 if let msg = model.errorMessage {
                     HStack {
                         Text(msg)
-                            .font(.inter(Theme.fontXS))
+                            .font(.system(size: Theme.fontXS))
                             .foregroundColor(Theme.error)
                             .accessibilityLabel(msg)
                         Spacer()
                         if model.loadFailed {
                             Button("Try again") { Task { await model.load() } }
-                                .font(.inter(Theme.fontXS, weight: .semibold))
+                                .font(.system(size: Theme.fontXS, weight: .semibold))
                                 .foregroundColor(Theme.gold)
                         }
                     }
@@ -166,7 +166,7 @@ struct NotificationSettingsView: View {
                     ForEach(NotificationPushType.visibleGroups(capabilities: capabilities), id: \.title) { group in
                         VStack(alignment: .leading, spacing: Theme.spacingSM) {
                             Text(group.title.uppercased())
-                                .font(.inter(Theme.fontXS, weight: .semibold))
+                                .font(.system(size: Theme.fontXS, weight: .semibold))
                                 .foregroundColor(Theme.textMuted)
                                 .accessibilityAddTraits(.isHeader)
                             ForEach(group.types) { type in
@@ -175,10 +175,10 @@ struct NotificationSettingsView: View {
                                     set: { v in Task { await model.set(type.key, v) } })) {
                                     VStack(alignment: .leading, spacing: 2) {
                                         Text(type.label)
-                                            .font(.inter(Theme.fontBody))
+                                            .font(.system(size: Theme.fontBody))
                                             .foregroundColor(Theme.parchment)
                                         Text(type.detail)
-                                            .font(.inter(Theme.fontXS))
+                                            .font(.system(size: Theme.fontXS))
                                             .foregroundColor(Theme.textMuted)
                                     }
                                 }

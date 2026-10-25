@@ -15,6 +15,7 @@ enum AnnouncementExtrasFlag {
     static let payments = "announcement_payments"
     static let rsvp     = "announcement_rsvp"
     static let location = "announcement_location"
+    static let polls    = "announcement_polls"
 }
 
 enum AnnouncementExtrasLimits {
@@ -25,6 +26,10 @@ enum AnnouncementExtrasLimits {
     static let maxHandleLength = 64
     static let maxLocationLength = 120
     static let capacityRange = 1...9999
+    static let pollQuestionMax = 200
+    static let pollOptionMax = 80
+    static let pollOptionCount = 2...6
+    static let pollHorizonDays = 365
     static let galleryLongEdge: CGFloat = 1600
     static let galleryJpegQuality: CGFloat = 0.85
     static let paymentDisclaimer = "Payments happen outside FellowScript. FellowScript never handles money. Only pay people you know."
@@ -116,6 +121,15 @@ struct AnnouncementExtrasDraft: Equatable {
     var rsvpOn = false
     var capacity = 20
     var location = ""
+    // Poll (task 20261024-announcement-polls).
+    var pollOn = false
+    var pollQuestion = ""
+    var pollOptions: [String] = ["", ""]
+    var pollMultiple = false
+    var pollHasCloseTime = false
+    var pollCloseTime = Date().addingTimeInterval(7 * 86_400)
+    /// People have voted: the server locks the options and multiple-choice setting.
+    var pollLocked = false
 
     init(from a: FSGroupAnnouncement?) {
         links = (a?.links ?? []).map { LinkRow(url: $0.url, label: $0.label ?? "") }
@@ -124,6 +138,39 @@ struct AnnouncementExtrasDraft: Equatable {
         for h in a?.payment_handles ?? [] { handles[h.provider] = h.handle }
         if let c = a?.capacity { rsvpOn = true; capacity = c }
         location = a?.location ?? ""
+        if let p = a?.poll {
+            pollOn = true; pollQuestion = p.question; pollOptions = p.options.map(\.label)
+            pollMultiple = p.multiple; pollLocked = p.total_voters > 0
+            if let c = p.closes_at, let d = FSAnnouncementDates.parse(c) { pollHasCloseTime = true; pollCloseTime = d }
+        }
+    }
+
+    // ── Poll helpers ─────────────────────────────────────────────────────────
+    private static func clean(_ s: String) -> String {
+        s.trimmingCharacters(in: .whitespacesAndNewlines).split(whereSeparator: \.isWhitespace).joined(separator: " ")
+    }
+
+    var cleanedPollOptions: [String] { pollOptions.map(Self.clean).filter { !$0.isEmpty } }
+
+    /// First reason the poll can't be saved as it stands, or nil (the server re-checks everything).
+    func pollError(now: Date = Date()) -> String? {
+        guard pollOn else { return nil }
+        if Self.clean(pollQuestion).isEmpty { return "Add a question for the poll." }
+        let opts = cleanedPollOptions
+        if opts.count < AnnouncementExtrasLimits.pollOptionCount.lowerBound { return "A poll needs at least \(AnnouncementExtrasLimits.pollOptionCount.lowerBound) options." }
+        if Set(opts.map { $0.lowercased() }).count != opts.count { return "Each option has to be different." }
+        if pollHasCloseTime {
+            if pollCloseTime <= now { return "Pick a close time in the future." }
+            if pollCloseTime > now.addingTimeInterval(Double(AnnouncementExtrasLimits.pollHorizonDays) * 86_400) {
+                return "The close time can be at most \(AnnouncementExtrasLimits.pollHorizonDays) days ahead."
+            }
+        }
+        return nil
+    }
+
+    var pollDraft: FSPollDraft {
+        FSPollDraft(question: Self.clean(pollQuestion), options: cleanedPollOptions, multiple: pollMultiple,
+                    closesAt: pollHasCloseTime ? pollCloseTime : nil)
     }
 
     /// Rows with a non-empty URL, normalized for sending.
@@ -173,6 +220,7 @@ struct AnnouncementExtrasDraft: Equatable {
         if payments, isEvent, AnnouncementPaymentProvider.allCases.contains(where: { handleError($0) != nil }) {
             return "Fix the highlighted payment handle."
         }
+        if let e = pollError() { return e }
         if locOn, location.unicodeScalars.contains(where: { $0.properties.generalCategory == .control }) {
             return "Location can't contain control characters."
         }
@@ -180,8 +228,9 @@ struct AnnouncementExtrasDraft: Equatable {
     }
 
     /// How many extras are filled in (shown as a badge on the collapsed row).
-    func count(links l: Bool, gallery g: Bool, payments p: Bool, rsvp r: Bool, location loc: Bool = false) -> Int {
+    func count(links l: Bool, gallery g: Bool, payments p: Bool, rsvp r: Bool, location loc: Bool = false, polls pl: Bool = false) -> Int {
         var n = 0
+        if pl, pollOn { n += 1 }
         if l { n += cleanedLinks.count }
         if g { n += gallery.count }
         if p, isEvent { n += 1 }
@@ -194,7 +243,26 @@ struct AnnouncementExtrasDraft: Equatable {
     /// (a flag-off key sent to the server is a 422).
     func apply(to draft: inout FSAnnouncementDraft, original o: FSGroupAnnouncement?,
                links linksOn: Bool, gallery galleryOn: Bool, payments paymentsOn: Bool, rsvp rsvpOn_: Bool,
-               location locationOn: Bool = false) {
+               location locationOn: Bool = false, polls pollsOn: Bool = false) {
+        if pollsOn {
+            if pollOn {
+                let cur = pollDraft
+                var origDraft: FSPollDraft?
+                if let p = o?.poll {
+                    origDraft = FSPollDraft(question: p.question, options: p.options.map(\.label), multiple: p.multiple,
+                                            closesAt: p.closes_at.flatMap(FSAnnouncementDates.parse))
+                }
+                // Compare close times to the second (the server stores whole seconds).
+                func same(_ a: FSPollDraft, _ b: FSPollDraft?) -> Bool {
+                    guard let b else { return false }
+                    return a.question == b.question && a.options == b.options && a.multiple == b.multiple
+                        && a.closesAt.map { Int($0.timeIntervalSince1970) } == b.closesAt.map { Int($0.timeIntervalSince1970) }
+                }
+                if !same(cur, origDraft) { draft.poll = .set(cur) }
+            } else if o?.poll != nil {
+                draft.poll = .clear
+            }
+        }
         if linksOn {
             let cur = cleanedLinks
             let orig = (o?.links ?? []).map { FSAnnouncementLink(url: $0.url, label: ($0.label ?? "").isEmpty ? nil : $0.label) }

@@ -1,0 +1,234 @@
+/* Forms kit (design-spec Revision 2): gray glass cards, parchment@6% fields,
+   system font, gold only for focus / selected / primary. Scoped to .fs-form
+   so the reader and app chrome keep their own tokens. */
+.fs-form {
+  --ff-gold: #D4922A; --ff-gold-dim: #B07820; --ff-gold-light: #F0AE40;
+  --ff-ink: #1A100A; --ff-text: #F5EAD0; --ff-text-2: rgba(245,234,208,0.55);
+  --ff-card: rgba(154,154,154,0.16); --ff-card-border: rgba(255,255,255,0.14);
+  --ff-field: rgba(245,234,208,0.06); --ff-field-border: rgba(245,234,208,0.12);
+  --ff-nav: rgba(18,13,8,0.97); --ff-danger-bg: rgba(40,8,8,0.75);
+  --ff-error: #E06060; --ff-success: #4CAF78; --ff-border-gold: rgba(212,146,42,0.32);
+  /* Form surfaces use the iOS amber family and the system font everywhere (spec rev 2 / 11.1). */
+  --gold: #D4922A; --gold-dim: #B07820; --gold-light: #F0AE40; --ink: #1A100A; --parchment: #F5EAD0;
+  font-family: -apple-system, 'SF Pro Text', system-ui, sans-serif;
+  color: var(--ff-text);
+}
+.fs-form *:not(.ff-wordmark):not(.fs-wordmark) { font-family: -apple-system, 'SF Pro Text', system-ui, sans-serif; }
+.fs-form .ff-wordmark, .fs-form .fs-wordmark { font-family: 'Schibsted Grotesk', sans-serif; }
+.fs-form *, .fs-form *::before, .fs-form *::after { box-sizing: border-box; }
+
+/* Containers */
+.ff-modal { width: min(480px, 100%); max-height: 90vh; display: flex; flex-direction: column;
+  background: #1E1812; border: 1px solid var(--ff-card-border); border-radius: 16px; overflow: hidden; }
+.ff-modal--large { width: min(720px, 100%); }
+.ff-modal--confirm { width: min(420px, 100%); }
+.ff-body { padding: 24px; overflow-y: auto; display: flex; flex-direction: column; gap: 16px; flex: 1; }
+.ff-page { max-width: 560px; margin: 0 auto; padding: 24px; display: flex; flex-direction: column; gap: 16px; }
+.ff-page--auth { max-width: 420px; }
+.ff-title { margin: 0; font-size: 22px; font-weight: 800; color: var(--ff-text); }
+.ff-header { display: flex; align-items: center; gap: 12px; padding: 16px 24px 0; }
+
+/* Card */
+.ff-card { background: var(--ff-card); border: 1px solid var(--ff-card-border); border-radius: 20px; padding: 16px;
+  display: flex; flex-direction: column; gap: 16px; }
+.ff-card__eyebrow { font-size: 11px; font-weight: 600; letter-spacing: 1px; text-transform: uppercase; color: rgba(212,146,42,0.85); }
+.ff-card__title { margin: 0; font-size: 17px; font-weight: 600; color: var(--ff-text); }
+.ff-divider { border: 0; border-top: 1px solid var(--ff-card-border); margin: 0; }
+
+/* Field */
+.ff-field { display: flex; flex-direction: column; gap: 6px; }
+.ff-label { font-size: 14px; font-weight: 600; color: var(--ff-text); }
+.ff-field:focus-within .ff-label { color: var(--ff-gold); }
+.ff-req { color: var(--ff-gold); margin-left: 2px; }
+.ff-opt { font-weight: 400; color: var(--ff-text-2); margin-left: 4px; }
+.ff-control { display: flex; align-items: center; gap: 10px; min-height: 48px; padding: 0 14px; border-radius: 12px;
+  background: var(--ff-field); border: 1px solid var(--ff-field-border); }
+.ff-control:focus-within { border: 1.5px solid var(--ff-gold); box-shadow: 0 0 0 3px rgba(212,146,42,0.12); }
+.ff-control--textarea { align-items: flex-start; padding: 12px 14px; min-height: 120px; }
+.ff-control--error { background: var(--ff-danger-bg); border: 1.5px solid var(--ff-error); }
+.ff-control--disabled { opacity: 0.6; border-color: var(--ff-card-border); }
+.ff-input { flex: 1; min-width: 0; min-height: 44px; background: transparent; border: 0; outline: 0; color: var(--ff-text);
+  font: inherit; font-size: 16px; }
+textarea.ff-input { resize: vertical; min-height: 96px; padding: 0; line-height: 1.4; }
+.ff-input::placeholder { color: var(--ff-text-2); }
+.ff-input:-webkit-autofill { -webkit-text-fill-color: var(--ff-text); box-shadow: 0 0 0 1000px #2a241d inset; }
+.ff-helper { font-size: 12px; line-height: 1.4; color: var(--ff-text-2); }
+.ff-error { display: flex; gap: 4px; font-size: 12px; line-height: 1.4; color: var(--ff-error); }
+.ff-foot { display: flex; justify-content: space-between; gap: 8px; }
+.ff-counter { font-size: 12px; color: var(--ff-text-2); margin-left: auto; }
+.ff-counter--limit { color: var(--ff-error); }
+.ff-icon-btn { width: 44px; height: 44px; display: inline-flex; align-items: center; justify-content: center;
+  background: transparent; border: 0; color: var(--ff-text-2); cursor: pointer; border-radius: 50%; }
+
+/* Toggle row */
+.ff-toggle { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 56px; cursor: pointer; }
+.ff-toggle__title { font-size: 14px; font-weight: 600; }
+.ff-switch { position: relative; width: 51px; height: 31px; border-radius: 16px; background: rgba(255,255,255,0.14); flex: none; transition: background .2s; }
+.ff-switch::after { content: ''; position: absolute; top: 2px; left: 2px; width: 27px; height: 27px; border-radius: 50%; background: var(--ff-text); transition: transform .2s; }
+.ff-switch[aria-checked="true"] { background: var(--ff-gold); }
+.ff-switch[aria-checked="true"]::after { transform: translateX(20px); }
+
+/* Chips */
+.ff-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.ff-chip { min-height: 44px; padding: 0 16px; border-radius: 22px; background: var(--ff-field); border: 1px solid var(--ff-field-border);
+  color: var(--ff-text-2); font: inherit; font-size: 14px; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; }
+.ff-chip[aria-pressed="true"], .ff-chip[aria-checked="true"] { background: linear-gradient(135deg, var(--ff-gold-light), var(--ff-gold), var(--ff-gold-dim)); color: var(--ff-ink); border-color: transparent; }
+.ff-chip--addon { background: transparent; color: var(--ff-text); }
+
+/* Segmented */
+.ff-seg { display: flex; padding: 4px; border-radius: 12px; background: var(--ff-field); min-height: 44px; }
+.ff-seg__item { flex: 1; min-height: 36px; border-radius: 10px; border: 1px solid transparent; background: transparent; color: var(--ff-text-2);
+  font: inherit; font-size: 14px; font-weight: 600; cursor: pointer; }
+.ff-seg__item[aria-checked="true"] { background: var(--ff-card); border-color: var(--ff-border-gold); color: var(--ff-gold); }
+
+/* Radio list */
+.ff-radio { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 48px; padding: 0; width: 100%;
+  background: transparent; border: 0; border-bottom: 1px solid var(--ff-card-border); color: var(--ff-text); font: inherit; font-size: 16px; text-align: left; cursor: pointer; }
+.ff-radio:last-child { border-bottom: 0; }
+.ff-radio__dot { width: 22px; height: 22px; border-radius: 50%; border: 2px solid var(--ff-field-border); display: inline-flex; align-items: center; justify-content: center; flex: none; }
+.ff-radio[aria-checked="true"] .ff-radio__dot { border-color: var(--ff-gold); }
+.ff-radio[aria-checked="true"] .ff-radio__dot::after { content: ''; width: 12px; height: 12px; border-radius: 50%; background: var(--ff-gold); }
+
+/* Number stepper */
+.ff-stepper-num { display: flex; align-items: center; gap: 12px; }
+.ff-stepper-num__value { flex: 1; min-height: 48px; display: flex; align-items: center; justify-content: center; border-radius: 12px;
+  background: var(--ff-field); border: 1px solid var(--ff-field-border); font-weight: 600; font-size: 16px; }
+.ff-round { width: 44px; height: 44px; border-radius: 50%; background: var(--ff-card); border: 1px solid var(--ff-card-border); color: var(--ff-gold); font-size: 18px; cursor: pointer; }
+.ff-round:disabled { opacity: .4; cursor: default; }
+
+/* Stepper rail */
+.ff-rail { display: flex; align-items: flex-start; list-style: none; margin: 0; padding: 0 24px; min-height: 56px; }
+.ff-rail__step { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 6px; position: relative; }
+.ff-rail__step:not(:last-child)::after { content: ''; position: absolute; top: 11px; left: calc(50% + 16px); right: calc(-50% + 16px); height: 2px; background: var(--ff-field-border); }
+.ff-rail__step[data-done="true"]:not(:last-child)::after { background: var(--ff-gold); }
+.ff-rail__node { width: 24px; height: 24px; border-radius: 50%; border: 2px solid var(--ff-field-border); display: inline-flex; align-items: center; justify-content: center; background: transparent; padding: 0; color: var(--ff-ink); font-size: 12px; font-weight: 700; }
+.ff-rail__step[data-done="true"] .ff-rail__node { background: var(--ff-gold); border-color: var(--ff-gold); }
+.ff-rail__step[aria-current="step"] .ff-rail__node { border-color: var(--ff-gold); }
+.ff-rail__step[aria-current="step"] .ff-rail__node::after { content: ''; width: 8px; height: 8px; border-radius: 50%; background: var(--ff-gold); }
+.ff-rail__label { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 1px; color: var(--ff-text-2); }
+.ff-rail__step[aria-current="step"] .ff-rail__label, .ff-rail__step[data-done="true"] .ff-rail__label { color: var(--ff-gold); }
+.ff-rail__hit { min-width: 44px; min-height: 44px; background: transparent; border: 0; color: inherit; display: flex; flex-direction: column; align-items: center; gap: 6px; cursor: pointer; padding: 0; font: inherit; }
+
+/* Sticky action bar */
+/* Content fades out above the flush bar (mask only, adds no color) */
+.ff-body:has(+ .ff-actions) { -webkit-mask-image: linear-gradient(#000 calc(100% - 30px), transparent); mask-image: linear-gradient(#000 calc(100% - 30px), transparent); }
+
+/* Sticky action bar (option B, always ONE row): flush with the form background, no fill/hairline/shadow.
+   Back/Cancel hugs its label as a ghost pill (field recipe) on the left; the 54px primary fills the rest.
+   In a confirm (has a danger button) the safe action is the gold pill and the danger action an outline,
+   same row; long labels wrap to two lines, the row never stacks. */
+.ff-actions { position: sticky; bottom: 0; display: flex; flex-direction: row; flex-wrap: nowrap; align-items: stretch; gap: 12px;
+  padding: 8px 16px 16px; background: transparent; border: 0; box-shadow: none; }
+.ff-actions > .ff-btn { min-height: 54px; border-radius: 27px; line-height: 1.2; padding: 0 16px; }
+.ff-actions > .ff-btn--primary, .ff-actions > .ff-btn--danger { flex: 1 1 0; min-width: 0; }
+.ff-actions > .ff-btn--secondary { order: 0; flex: 0 0 auto; min-width: 92px; background: var(--ff-field); border-color: var(--ff-field-border); color: var(--ff-text); font-weight: 600; padding: 0 20px; }
+.ff-actions > .ff-btn--primary, .ff-actions > .ff-btn--danger { order: 1; }
+.ff-actions:has(> .ff-btn--danger) > .ff-btn--secondary { color: var(--ff-ink); font-weight: 700; padding: 0 20px;
+  background: linear-gradient(135deg, var(--ff-gold-light), var(--ff-gold), var(--ff-gold-dim)); }
+.ff-btn { min-height: 44px; padding: 0 24px; border-radius: 24px; font: inherit; font-size: 16px; font-weight: 700; cursor: pointer; border: 1px solid transparent; }
+.ff-btn--primary { background: linear-gradient(135deg, var(--ff-gold-light), var(--ff-gold), var(--ff-gold-dim)); color: var(--ff-ink); }
+.ff-btn--primary[aria-disabled="true"] { background: rgba(176,120,32,0.4); color: rgba(26,16,10,0.5); }
+.ff-btn--secondary { background: transparent; color: var(--ff-gold); border-color: var(--ff-border-gold); }
+.ff-btn--danger { background: var(--ff-danger-bg); color: var(--ff-error); border-color: var(--ff-error); }
+.ff-btn--block { width: 100%; }
+.ff-btn:focus-visible, .ff-chip:focus-visible, .ff-seg__item:focus-visible, .ff-radio:focus-visible, .ff-icon-btn:focus-visible, .ff-rail__hit:focus-visible {
+  outline: 1.5px solid var(--ff-gold); outline-offset: 2px; box-shadow: 0 0 0 3px rgba(212,146,42,0.12); }
+
+/* Form-level cards */
+.ff-alert { border-radius: 16px; padding: 12px; background: var(--ff-danger-bg); border: 1px solid var(--ff-error); display: flex; flex-direction: column; gap: 8px; }
+.ff-alert__title { font-size: 14px; font-weight: 600; color: var(--ff-error); }
+.ff-alert__link { background: none; border: 0; padding: 0; min-height: 32px; text-align: left; color: var(--ff-text); text-decoration: underline; font: inherit; font-size: 14px; cursor: pointer; }
+.ff-info { border-radius: 16px; padding: 12px; background: var(--ff-card); border: 1px solid var(--ff-card-border); font-size: 14px; }
+
+@media (max-width: 640px) {
+  .ff-modal, .ff-modal--large, .ff-modal--confirm { width: 100%; max-height: 100vh; border-radius: 0; }
+}
+@media (prefers-reduced-motion: reduce) { .fs-form * { transition: none !important; animation: none !important; } }
+
+/* Auth page (type C) */
+.ff-authpage { min-height: 100vh; display: flex; align-items: center; justify-content: center; }
+.ff-authpage .ff-page { width: 100%; }
+.ff-wordmark { text-align: center; font-family: 'Schibsted Grotesk', sans-serif; font-weight: 600; font-size: 28px; color: #FFF8EE; letter-spacing: -0.01em; }
+.ff-authhead { text-align: center; display: flex; flex-direction: column; gap: 8px; }
+.ff-title--center { text-align: center; font-size: 28px; }
+.ff-center { text-align: center; }
+.ff-link { color: var(--ff-gold); text-decoration: none; font-size: 14px; font-weight: 600; background: none; border: 0; padding: 0; cursor: pointer; font-family: inherit; }
+.ff-link:hover { text-decoration: underline; }
+.ff-link-row { min-height: 44px; display: flex; align-items: center; justify-content: center; }
+.ff-or { display: flex; align-items: center; gap: 12px; color: var(--ff-text-2); font-size: 12px; }
+.ff-or::before, .ff-or::after { content: ''; flex: 1; height: 1px; background: var(--ff-card-border); }
+.ff-social { width: 100%; min-height: 48px; display: flex; align-items: center; justify-content: center; gap: 10px; background: #fff; color: #3c3c3c;
+  border: 0; border-radius: 12px; font: inherit; font-size: 14px; font-weight: 500; cursor: pointer; }
+.ff-social:disabled { opacity: .7; cursor: not-allowed; }
+.ff-check { display: flex; gap: 10px; align-items: flex-start; min-height: 44px; font-size: 12px; line-height: 1.4; color: var(--ff-text-2); cursor: pointer; }
+.ff-check input { width: 20px; height: 20px; margin-top: 2px; accent-color: var(--ff-gold); flex: none; }
+.ff-legal { text-align: center; font-size: 12px; color: var(--ff-text-2); }
+.ff-legal a { color: var(--ff-gold); text-decoration: none; }
+
+/* Code boxes */
+.ff-code { position: relative; }
+.ff-code__input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0.01; font-size: 16px; z-index: 1; }
+.ff-code__boxes { display: flex; gap: 8px; }
+.ff-code__box { flex: 1; height: 56px; display: inline-flex; align-items: center; justify-content: center; border-radius: 12px; background: var(--ff-field);
+  border: 1px solid var(--ff-field-border); font-size: 24px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.ff-code__box--active { border: 1.5px solid var(--ff-gold); box-shadow: 0 0 0 3px rgba(212,146,42,0.12); }
+.ff-code:focus-within .ff-code__box--active { border-color: var(--ff-gold); }
+.ff-formstack { display: flex; flex-direction: column; gap: 16px; }
+.ff-formstack .ff-actions { position: static; background: transparent; border: 0; padding: 0; }
+.ff-formstack .ff-actions .ff-btn--primary { width: 100%; }
+
+/* antd form surfaces inside <FormSkin>: labels above, 14/600, soft errors */
+.fs-form .ant-form-item-label > label { font-weight: 600; }
+.fs-form .ant-form-item-explain-error { font-size: 12px; }
+.fs-form .ant-card { backdrop-filter: none; }
+.fs-form .ant-modal .ant-modal-title { font-weight: 800; }
+
+/* Explore surfaces (.ex-*) inside <FormSkin>: same field / button recipe as the kit.
+   Overrides only color, shape and type; layout classes in explore.css are untouched. */
+.fs-form .ex-page, .fs-form [class^="ex-"], .fs-form [class*=" ex-"] { font-family: inherit; }
+.fs-form .ex-h1 { font-weight: 800; letter-spacing: -0.01em; }
+.fs-form .ex-field { font-size: 14px; font-weight: 600; color: var(--ff-text); gap: 6px; }
+.fs-form .ex-field input, .fs-form .ex-field select, .fs-form .ex-field textarea, .fs-form .ex-search input {
+  min-height: 48px; border-radius: 12px; font: 400 16px/1.4 inherit; font-family: inherit;
+  background: var(--ff-field) !important; border: 1px solid var(--ff-field-border) !important; backdrop-filter: none !important; color: var(--ff-text); }
+.fs-form .ex-field input:focus, .fs-form .ex-field select:focus, .fs-form .ex-field textarea:focus, .fs-form .ex-search input:focus {
+  border: 1.5px solid var(--ff-gold) !important; box-shadow: 0 0 0 3px rgba(212,146,42,0.12); outline: none; }
+.fs-form .ex-btn { border-radius: 24px; font-family: inherit; font-weight: 700; font-size: 16px; border-color: var(--ff-border-gold); color: var(--ff-gold); }
+.fs-form .ex-btn--primary { background: linear-gradient(135deg, var(--ff-gold-light), var(--ff-gold), var(--ff-gold-dim)); color: var(--ff-ink); border-color: transparent; }
+.fs-form .ex-btn--primary:disabled { background: rgba(176,120,32,0.4); color: rgba(26,16,10,0.5); opacity: 1; }
+.fs-form .ex-btn--quiet { color: var(--ff-gold); }
+.fs-form .ex-error { color: var(--ff-error); font-size: 12px; font-family: inherit; }
+.fs-form .ex-pill { background: var(--ff-field); border-color: var(--ff-field-border); font-family: inherit; }
+.fs-form .ex-sheet, .fs-form .ex-detail, .fs-form .ex-card { background: var(--ff-card); border-color: var(--ff-card-border); }
+.fs-form .ex-link { color: var(--ff-gold); }
+
+/* Note editor (type E) and notes filter: system font, iOS-amber save, no brand serif */
+.note-editor, .note-editor *, .notes-filter-panel, .notes-filter-panel * { font-family: -apple-system, 'SF Pro Text', system-ui, sans-serif; }
+.note-title-input { font-size: 22px; font-weight: 800; }
+.note-editor-save { background: linear-gradient(135deg, #F0AE40, #D4922A, #B07820); color: #1A100A; }
+.note-editor-cancel { border: 1px solid rgba(212,146,42,0.32); color: #D4922A; }
+
+/* Undo snackbar (tier-1 destructive) */
+.ff-snackbar { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); z-index: 1100; display: flex; align-items: center; gap: 16px;
+  min-height: 48px; padding: 0 16px; border-radius: 12px; background: rgba(18,13,8,0.97); border: 1px solid rgba(255,255,255,0.14); color: #F5EAD0; font-size: 14px; }
+.ff-title { margin: 0; }
+
+/* Group Info / announcement forms (group-info-*, ann-*): same field, label, chip and button recipe as the kit.
+   Selector list covers the panel itself plus the announcement form wrap. */
+.group-info-panel .group-info-input, .fs-form .group-info-input {
+  min-height: 48px; border-radius: 12px; background: rgba(245,234,208,0.06); border: 1px solid rgba(245,234,208,0.12);
+  color: #F5EAD0; font: 400 16px/1.4 -apple-system, 'SF Pro Text', system-ui, sans-serif; padding: 0 14px; }
+.group-info-panel .group-info-input:focus-visible, .fs-form .group-info-input:focus-visible {
+  outline: none; border: 1.5px solid #D4922A; box-shadow: 0 0 0 3px rgba(212,146,42,0.12); }
+.group-info-panel .group-info-label, .fs-form .group-info-label {
+  font-size: 14px; letter-spacing: 0; text-transform: none; font-weight: 600; color: #F5EAD0; margin: 0 0 6px; }
+.group-info-panel .group-info-helper, .fs-form .group-info-helper { font-size: 12px; color: rgba(245,234,208,0.55); }
+.group-info-panel .group-info-error, .fs-form .group-info-error { font-size: 12px; color: #E06060; }
+.group-info-panel .group-info-chip, .fs-form .group-info-chip { border-radius: 22px; background: rgba(245,234,208,0.06); border: 1px solid rgba(245,234,208,0.12);
+  color: rgba(245,234,208,0.55); font-size: 14px; font-weight: 600; }
+.group-info-panel .group-info-chip-on, .fs-form .group-info-chip-on { background: linear-gradient(135deg, #F0AE40, #D4922A, #B07820); color: #1A100A; border-color: transparent; }
+.fs-form .ann-outline-pill { border-color: rgba(212,146,42,0.32); color: #D4922A; font-weight: 700; }
+.fs-form .ann-glass-pill { font-family: inherit; }
+.fs-form .ann-step[hidden] { display: none; }
+.fs-form .ann-step { display: flex; flex-direction: column; gap: 16px; }
+.group-info-panel, .group-info-panel * { font-family: -apple-system, 'SF Pro Text', system-ui, sans-serif; }

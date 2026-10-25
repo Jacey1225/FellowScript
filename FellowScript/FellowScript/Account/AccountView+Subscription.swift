@@ -28,18 +28,18 @@ extension AccountView {
     var freePlanLimitsList: some View {
         VStack(alignment: .leading, spacing: 0) {
             Text("FREE PLAN INCLUDES")
-                .font(.inter(Theme.fontXS, weight: .semibold)).tracking(2)
+                .font(.system(size: Theme.fontXS, weight: .semibold)).tracking(2)
                 .foregroundColor(Theme.textGoldMuted)
                 .padding(.bottom, Theme.spacingXS)
                 .accessibilityAddTraits(.isHeader)
             if let usage = vm.usage {
                 ForEach(Array(usage.freePlanRows.enumerated()), id: \.offset) { _, row in
                     freeLimitRow(row)
-                    Divider().background(Theme.borderGoldFaint)
+                    Divider().background(Theme.borderGray)
                 }
             } else {
                 Text("Loading limits")
-                    .font(.inter(Theme.fontSM)).foregroundColor(Theme.textSecondary)
+                    .font(.system(size: Theme.fontSM)).foregroundColor(Theme.textSecondary)
             }
         }
         .accessibilityIdentifier("freePlanLimitsList")
@@ -48,15 +48,15 @@ extension AccountView {
     func freeLimitRow(_ row: FreePlanLimitRow) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: Theme.spacingSM) {
             VStack(alignment: .leading, spacing: 2) {
-                Text(row.label).font(.inter(Theme.fontSM)).foregroundColor(Theme.parchment)
+                Text(row.label).font(.system(size: Theme.fontSM)).foregroundColor(Theme.parchment)
                 if let caption = row.caption {
-                    Text(caption).font(.inter(Theme.fontXS)).foregroundColor(Theme.textSecondary)
+                    Text(caption).font(.system(size: Theme.fontXS)).foregroundColor(Theme.textSecondary)
                 }
             }
             Spacer(minLength: Theme.spacingSM)
             HStack(spacing: 4) {
                 if row.locked { Image(systemName: "lock.fill").font(.system(size: 11)).accessibilityHidden(true) }
-                Text(row.value).font(.inter(Theme.fontSM)).multilineTextAlignment(.trailing)
+                Text(row.value).font(.system(size: Theme.fontSM)).multilineTextAlignment(.trailing)
             }
             .foregroundColor(Theme.gold)
         }
@@ -86,7 +86,7 @@ extension AccountView {
                     // a join request (never membership). Hides itself when the backend
                     // flag is off (uniform 404 from list).
                     if plan.max_members > 1 {
-                        Divider().background(Theme.borderGoldFaint)
+                        Divider().background(Theme.borderGray)
                         InviteLinkSection(
                             service: appState.service, subscriptionId: plan.id,
                             userId: appState.currentUser?.user_id ?? ""
@@ -94,7 +94,7 @@ extension AccountView {
                         .id(plan.id)
                         Button { Task { await vm.refreshSubRequests() } } label: {
                             Text("Refresh join requests")
-                                .font(.inter(Theme.fontSM, weight: .semibold)).foregroundColor(Theme.gold)
+                                .font(.system(size: Theme.fontSM, weight: .semibold)).foregroundColor(Theme.gold)
                                 .frame(minHeight: 44)
                         }
                     }
@@ -105,14 +105,14 @@ extension AccountView {
                     }
                 }
                 ownerRewardRow
-                Divider().background(Theme.borderGoldFaint)
+                Divider().background(Theme.borderGray)
                 managePlanRow(plan)
             } else {
                 freePlanLimitsList
                 rowCaption("Start with a free 1-month trial — you won't be billed until it ends.")
                 memberCountPickerRow()
                 if !vm.joinablePlans.isEmpty {
-                    Divider().background(Theme.borderGoldFaint)
+                    Divider().background(Theme.borderGray)
                     rowCaption("Join a Friend's Group Plan")
                     ForEach(vm.joinablePlans) { joinableRow($0) }
                 }
@@ -120,12 +120,12 @@ extension AccountView {
 
             // Outstanding requests this user has sent.
             if !vm.mySubRequests.isEmpty {
-                Divider().background(Theme.borderGoldFaint)
+                Divider().background(Theme.borderGray)
                 rowCaption("Your Pending Requests")
                 ForEach(vm.mySubRequests) { myRequestRow($0) }
             }
 
-            Divider().background(Theme.borderGoldFaint)
+            Divider().background(Theme.borderGray)
 
             // Restore a subscription bought on another device / after reinstall.
             Button { Task { await vm.restorePurchases() } } label: {
@@ -135,7 +135,7 @@ extension AccountView {
 
             if let msg = vm.subMsg {
                 Text(msg)
-                    .font(.inter(Theme.fontSM)).foregroundColor(Theme.error)
+                    .font(.system(size: Theme.fontSM)).foregroundColor(Theme.error)
                     .padding(.horizontal, Theme.spacingSM).padding(.vertical, Theme.spacingXS + 2)
                     .background(Theme.error.opacity(0.10))
                     .clipShape(RoundedRectangle(cornerRadius: Theme.radiusSM))
@@ -149,7 +149,7 @@ extension AccountView {
 
     func rowCaption(_ text: String) -> some View {
         Text(text)
-            .font(.inter(Theme.fontSM))
+            .font(.system(size: Theme.fontSM))
             .foregroundColor(Theme.textMuted)
     }
 
@@ -163,10 +163,10 @@ extension AccountView {
             VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: 6) {
                     Text("Group Plan")
-                        .font(.inter(Theme.fontBody)).foregroundColor(Theme.parchment)
+                        .font(.system(size: Theme.fontBody)).foregroundColor(Theme.parchment)
                     let badge = plan.is_trial ? "Free trial" : (vm.autoRenewOff ? "Cancelling" : plan.status.capitalized)
                     Text(badge)
-                        .font(.inter(Theme.fontXXS)).tracking(1)
+                        .font(.system(size: Theme.fontXXS)).tracking(1)
                         .padding(.horizontal, 7).padding(.vertical, 2)
                         .background((vm.autoRenewOff ? Theme.error : Theme.gold).opacity(0.15))
                         .foregroundColor(vm.autoRenewOff ? Theme.error : Theme.gold)
@@ -174,18 +174,18 @@ extension AccountView {
                 }
                 Text("\(plan.priceLabel)/mo · \(vm.isSubHost ? "You are the host" : "Member")"
                      + (plan.plan_type == "group" ? " · up to \(plan.max_members)" : ""))
-                    .font(.inter(Theme.fontXS)).foregroundColor(Theme.textMuted)
+                    .font(.system(size: Theme.fontXS)).foregroundColor(Theme.textMuted)
                 // Trial / next-billing line (host only — they own billing).
                 if vm.isSubHost {
                     if vm.autoRenewOff {
                         Text("Auto-renew off · cancels \(Self.mediumDate(vm.planEndDate) ?? plan.nextBillingLabel) · access until then")
-                            .font(.inter(Theme.fontXS)).foregroundColor(Theme.error)
+                            .font(.system(size: Theme.fontXS)).foregroundColor(Theme.error)
                     } else if !plan.nextBillingLabel.isEmpty {
                         Text(plan.is_trial
                              ? "🎁 \(plan.trial_days_remaining) day\(plan.trial_days_remaining == 1 ? "" : "s") left · first billing \(plan.nextBillingLabel)"
                              : "Next billing \(plan.nextBillingLabel)"
                              + (plan.card_last4.isEmpty ? "" : " · \(plan.card_brand.capitalized) •••• \(plan.card_last4)"))
-                            .font(.inter(Theme.fontXS)).foregroundColor(Theme.textGoldMuted)
+                            .font(.system(size: Theme.fontXS)).foregroundColor(Theme.textGoldMuted)
                     }
                 }
             }
@@ -197,10 +197,10 @@ extension AccountView {
         HStack(spacing: Theme.spacingSM) {
             ZStack {
                 Circle().fill(Theme.gold.opacity(0.15)).frame(width: 30, height: 30)
-                Text(String(m.username.prefix(1)).uppercased()).font(.playfair(Theme.fontXS)).foregroundColor(Theme.gold)
+                Text(String(m.username.prefix(1)).uppercased()).font(.system(size: Theme.fontXS, weight: .heavy)).foregroundColor(Theme.gold)
             }
             Text(m.username + (m.user_id == vm.profileData?.user_id ? " (you)" : ""))
-                .font(.inter(Theme.fontSM)).foregroundColor(Theme.parchment)
+                .font(.system(size: Theme.fontSM)).foregroundColor(Theme.parchment)
             Spacer()
             if m.user_id != vm.profileData?.user_id {
                 Button { Task { await vm.removeMember(m.user_id) } } label: {
@@ -223,7 +223,7 @@ extension AccountView {
             } label: {
                 HStack {
                     Label("What's included", systemImage: "info.circle")
-                        .font(.inter(Theme.fontBody))
+                        .font(.system(size: Theme.fontBody))
                         .foregroundColor(Theme.parchment)
                     Spacer()
                     Image(systemName: isExpanded.wrappedValue ? "chevron.up" : "chevron.down")
@@ -276,8 +276,8 @@ extension AccountView {
                 .padding(.top, 2)
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 1) {
-                Text(title).font(.inter(Theme.fontSM)).foregroundColor(Theme.parchment)
-                Text(caption).font(.inter(Theme.fontXXS)).foregroundColor(Theme.textMuted)
+                Text(title).font(.system(size: Theme.fontSM)).foregroundColor(Theme.parchment)
+                Text(caption).font(.system(size: Theme.fontXXS)).foregroundColor(Theme.textMuted)
             }
             Spacer()
         }
@@ -288,11 +288,11 @@ extension AccountView {
         HStack(spacing: Theme.spacingSM) {
             ZStack {
                 Circle().fill(Theme.gold.opacity(0.15)).frame(width: 30, height: 30)
-                Text(String(r.username.prefix(1)).uppercased()).font(.playfair(Theme.fontXS)).foregroundColor(Theme.gold)
+                Text(String(r.username.prefix(1)).uppercased()).font(.system(size: Theme.fontXS, weight: .heavy)).foregroundColor(Theme.gold)
             }
             VStack(alignment: .leading, spacing: 1) {
-                Text(r.username).font(.inter(Theme.fontSM)).foregroundColor(Theme.parchment)
-                Text("Wants to join").font(.inter(Theme.fontXS)).foregroundColor(Theme.textMuted)
+                Text(r.username).font(.system(size: Theme.fontSM)).foregroundColor(Theme.parchment)
+                Text("Wants to join").font(.system(size: Theme.fontXS)).foregroundColor(Theme.textMuted)
             }
             Spacer()
             Button { Task { await vm.acceptRequest(r.user_id) } } label: {
@@ -313,7 +313,7 @@ extension AccountView {
             Button { Task { await store.showManageSubscriptions() } } label: {
                 HStack(spacing: 6) {
                     Image(systemName: "gearshape")
-                    Text("Manage Subscription").font(.inter(Theme.fontSM))
+                    Text("Manage Subscription").font(.system(size: Theme.fontSM))
                 }
                 .foregroundColor(Theme.gold)
                 .padding(.horizontal, 16).padding(.vertical, 8)
@@ -325,7 +325,7 @@ extension AccountView {
             } label: {
                 HStack(spacing: 6) {
                     Image(systemName: vm.isSubHost ? "trash" : "rectangle.portrait.and.arrow.right")
-                    Text(vm.isSubHost ? "Cancel Plan" : "Leave Plan").font(.inter(Theme.fontSM))
+                    Text(vm.isSubHost ? "Cancel Plan" : "Leave Plan").font(.system(size: Theme.fontSM))
                 }
                 .foregroundColor(Theme.error)
                 .padding(.horizontal, 16).padding(.vertical, 8)
@@ -354,14 +354,16 @@ extension AccountView {
                 }
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Group — \(price)/mo")
-                        .font(.inter(Theme.fontBody)).foregroundColor(Theme.parchment)
+                        .font(.system(size: Theme.fontBody)).foregroundColor(Theme.parchment)
                     Text("Free for 1 month · choose 1-8 members")
-                        .font(.inter(Theme.fontXS)).foregroundColor(Theme.textMuted)
+                        .font(.system(size: Theme.fontXS)).foregroundColor(Theme.textMuted)
                 }
                 Spacer()
             }
-            Stepper("Members: \(selectedMemberCount)", value: $selectedMemberCount, in: 1...8)
-                .font(.inter(Theme.fontSM)).foregroundColor(Theme.parchment)
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Members").font(.fsLabel).foregroundColor(Theme.textPrimary)
+                FSNumberStepper(value: $selectedMemberCount, range: 1...8, unit: selectedMemberCount == 1 ? "member" : "members")
+            }
             benefitsDisclosure(memberCount: selectedMemberCount, isExpanded: $showBenefits)
             Button {
                 Task { await vm.purchasePlan(memberCount: selectedMemberCount) }
@@ -381,7 +383,7 @@ extension AccountView {
                 Text("·").foregroundColor(Theme.textMuted)
                 Link("Terms of Use", destination: URL(string: "https://fellowscript.com/#/terms")!)
             }
-            .font(.inter(Theme.fontXXS))
+            .font(.system(size: Theme.fontXXS))
             .foregroundColor(Theme.textGoldMuted)
             .frame(maxWidth: .infinity, alignment: .center)
             .accessibilityElement(children: .contain)
@@ -391,16 +393,18 @@ extension AccountView {
     @ViewBuilder
     func seatCountEditRow(_ plan: FSSubscription) -> some View {
         if let editing = editMemberCount {
-            HStack(spacing: Theme.spacingSM) {
-                Stepper("Members: \(editing)",
-                        value: Binding(get: { editing }, set: { editMemberCount = $0 }), in: 1...8)
-                    .font(.inter(Theme.fontSM)).foregroundColor(Theme.parchment)
+            VStack(alignment: .leading, spacing: Theme.spacingSM) {
+                Text("Members").font(.fsLabel).foregroundColor(Theme.textPrimary)
+                FSNumberStepper(value: Binding(get: { editing }, set: { editMemberCount = $0 }), range: 1...8,
+                                unit: editing == 1 ? "member" : "members")
+                HStack(spacing: Theme.spacingSM) {
                 Button { Task { await vm.updateSeats(memberCount: editing); editMemberCount = nil } } label: {
                     gradientPill("Save", compact: true)
                 }
                 .disabled(vm.subBusy)
                 Button { editMemberCount = nil } label: {
                     ghostPill("Cancel", compact: true)
+                }
                 }
             }
         } else {
@@ -417,13 +421,13 @@ extension AccountView {
         return HStack(spacing: Theme.spacingSM) {
             ZStack {
                 Circle().fill(Theme.gold.opacity(0.15)).frame(width: 30, height: 30)
-                Text(String(j.hostName.prefix(1)).uppercased()).font(.playfair(Theme.fontXS)).foregroundColor(Theme.gold)
+                Text(String(j.hostName.prefix(1)).uppercased()).font(.system(size: Theme.fontXS, weight: .heavy)).foregroundColor(Theme.gold)
             }
             Text("\(j.hostName)'s Group · \(j.memberCount)/\(j.plan.max_members)")
-                .font(.inter(Theme.fontSM)).foregroundColor(Theme.parchment)
+                .font(.system(size: Theme.fontSM)).foregroundColor(Theme.parchment)
             Spacer()
             Button(pending ? "Requested" : "Request") { Task { await vm.requestJoin(j.plan.id) } }
-                .font(.inter(Theme.fontXS)).foregroundColor(pending ? Theme.textMuted : Theme.gold)
+                .font(.system(size: Theme.fontXS)).foregroundColor(pending ? Theme.textMuted : Theme.gold)
                 .buttonStyle(.borderless).disabled(pending || vm.subBusy)
         }
     }
@@ -431,10 +435,10 @@ extension AccountView {
     func myRequestRow(_ r: FSSubRequest) -> some View {
         HStack {
             Image(systemName: "clock").foregroundColor(Theme.textGoldMuted)
-            Text("Pending group plan request").font(.inter(Theme.fontSM)).foregroundColor(Theme.textSecondary)
+            Text("Pending group plan request").font(.system(size: Theme.fontSM)).foregroundColor(Theme.textSecondary)
             Spacer()
             Button("Cancel") { Task { await vm.cancelMyRequest(r.subscription_id) } }
-                .font(.inter(Theme.fontXS)).foregroundColor(Theme.textMuted).buttonStyle(.borderless)
+                .font(.system(size: Theme.fontXS)).foregroundColor(Theme.textMuted).buttonStyle(.borderless)
         }
     }
 

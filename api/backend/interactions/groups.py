@@ -45,6 +45,57 @@ MEMBER_JOINED_KIND = member_joined_line.SYSTEM_KIND
 GALLERY_KINDS = frozenset({"image", "video", "gif", "file"})
 
 
+# ``GET /groups/{u}/{g}/media`` (flag ``group_media``): the only kinds it lists.
+MEDIA_KINDS = ("image", "video", "gif")
+_MAX_MEDIA_DIMENSION = 100_000
+_MAX_MEDIA_DURATION = 24 * 3600
+
+
+def _meta_number(meta: dict, key: str, upper: float, integer: bool = False):
+    """Client-supplied meta number -> a sane non-negative value, else None."""
+    v = meta.get(key)
+    if isinstance(v, bool) or not isinstance(v, (int, float)):
+        return None
+    if v != v or v < 0 or v > upper:  # NaN, negative, absurd
+        return None
+    return int(v) if integer else float(v)
+
+
+def _https_or_none(value) -> str | None:
+    return value if isinstance(value, str) and value.startswith("https://") and len(value) <= 2048 else None
+
+
+def _media_item(row, usernames: dict[str, str]) -> dict:
+    """``{message_id, kind, thumb_url, url, width, height, duration, sender_id,
+    sender_name, created_at}``. image/video: ``url`` is a fresh presigned GET
+    (None if presigning failed); no server-side thumbnail exists, so
+    ``thumb_url`` is the same presigned URL for an image and null for a video
+    (clients show a placeholder). gif: the provider https URL from the stored
+    meta (``preview_url`` as thumb when present). width/height/duration come
+    from client-supplied meta, range-checked, else null."""
+    _id, from_user, ts, kind, key, meta, _seq = row
+    meta = meta if isinstance(meta, dict) else {}
+    if kind == "gif":
+        url = _https_or_none(meta.get("url"))
+        thumb = _https_or_none(meta.get("preview_url")) or url
+    else:
+        url = generate_download_url(key) if key else None
+        thumb = url if kind == "image" else None
+    from_uid = str(from_user) if from_user else ""
+    return {
+        "message_id": str(_id),
+        "kind": kind,
+        "thumb_url": thumb,
+        "url": url,
+        "width": _meta_number(meta, "width", _MAX_MEDIA_DIMENSION, integer=True),
+        "height": _meta_number(meta, "height", _MAX_MEDIA_DIMENSION, integer=True),
+        "duration": _meta_number(meta, "duration", _MAX_MEDIA_DURATION),
+        "sender_id": from_uid.lower() or None,
+        "sender_name": usernames.get(from_uid, ""),
+        "created_at": paging.format_timestamp(ts),
+    }
+
+
 def normalize_group_title(title: str) -> str:
     """Strip and validate a group title.
 
@@ -431,6 +482,59 @@ class GroupsManager(DBManager):
         attach_replies(self, messages, self.user_id)
         attach_mentions(self, messages, self.user_id)
         return {"messages": messages, "has_more": has_more, "next_cursor": next_cursor}
+
+    def fetch_media_page(
+        self, kinds: list[str], limit: int, cursor: "paging.Cursor | None" = None,
+    ) -> dict:
+        """One keyset page of the group's MAIN-chat media (image/video/gif),
+        newest first (task 20261023-group-info-row, flag ``group_media``).
+
+        Same visibility rule as ``fetch_message_page``: ``author_set`` (the
+        caller plus CURRENT live members minus both-direction blocks), so an
+        ex-member's, non-member's or blocked user's media never appears and a
+        page never shrinks. Soft-deleted rows and thread messages (separate
+        table) are excluded. ``kinds`` must already be validated against
+        ``MEDIA_KINDS``; ``limit`` clamped; ``cursor`` from
+        ``paging.decode_cursor`` (bound parameters only).
+
+        Returns ``{"items", "has_more", "next_cursor"}``; item shape is
+        documented on ``_media_item``. Stored keys never leave the server.
+        """
+        authors = author_set(self.cur, self.group_id, self.user_id)
+        sql_text = (
+            "SELECT _id, from_user, timestamp, attachment_kind, attachment_key, "
+            "attachment_meta, COALESCE(seq, 0) AS seq "
+            "FROM messages WHERE group_id = %s::uuid AND deleted_at IS NULL "
+            "AND attachment_kind = ANY(%s::text[]) AND from_user = ANY(%s::uuid[]) "
+        )
+        params: list = [self.group_id, list(kinds), authors]
+        if cursor is not None:
+            sql_text += f"AND (timestamp, COALESCE(seq, 0), _id) < ({paging.TS_SQL}, {paging.SEQ_SQL}, {cursor.id_sql}) "
+            params.extend(cursor.params())
+        sql_text += "ORDER BY timestamp DESC, COALESCE(seq, 0) DESC, _id DESC LIMIT %s"
+        params.append(limit + 1)
+        self.cur.execute(sql_text, params)
+        rows = self.cur.fetchall()
+        self.conn.rollback()  # read-only; release the snapshot
+
+        has_more = len(rows) > limit
+        rows = rows[:limit]
+        next_cursor = None
+        if has_more and rows:
+            last = rows[-1]
+            next_cursor = paging.encode_cursor(last[2], last[6], last[0])
+
+        usernames: dict[str, str] = {}
+        from_uids = {str(r[1]) for r in rows if r[1]}
+        if from_uids:
+            self.cur.execute(
+                "SELECT _id, username FROM users WHERE _id = ANY(%s::uuid[])",
+                (list(from_uids),),
+            )
+            usernames = {str(r[0]): r[1] for r in self.cur.fetchall()}
+            self.conn.rollback()
+        items = [_media_item(r, usernames) for r in rows]
+        return {"items": items, "has_more": has_more, "next_cursor": next_cursor}
 
     def fetch_group(self, paged: bool = False) -> dict:
         """Retrieve full group data including members and message history.

@@ -194,17 +194,17 @@ struct GroupJoinRequestsSection: View {
 
             if vm.unavailable {
                 Text("Publish this group to the Explorer to accept requests.")
-                    .font(.inter(Theme.fontXS)).foregroundColor(Theme.textSecondary)
+                    .font(.system(size: Theme.fontXS)).foregroundColor(Theme.textSecondary)
                     .fixedSize(horizontal: false, vertical: true)
             } else {
                 if let err = vm.listError {
                     HStack {
                         Text(vm.loaded && err == "Couldn't load join requests." ? "Couldn't refresh just now. Showing what we have." : err)
-                            .font(.inter(Theme.fontXS)).foregroundColor(Theme.parchment.opacity(0.85))
+                            .font(.system(size: Theme.fontXS)).foregroundColor(Theme.parchment.opacity(0.85))
                             .fixedSize(horizontal: false, vertical: true)
                         Spacer()
                         Button("Retry") { Task { await vm.load() } }
-                            .font(.inter(Theme.fontXS, weight: .semibold)).foregroundColor(Theme.gold)
+                            .font(.system(size: Theme.fontXS, weight: .semibold)).foregroundColor(Theme.gold)
                             .frame(minWidth: 44, minHeight: 44)
                             .accessibilityHint("Reloads join requests")
                     }
@@ -226,12 +226,12 @@ struct GroupJoinRequestsSection: View {
                     acceptingSwitch
                     if !vm.accepting {
                         Text("New requests are paused. Pending requests below stay open.")
-                            .font(.inter(Theme.fontXS)).foregroundColor(Theme.textSecondary)
+                            .font(.system(size: Theme.fontXS)).foregroundColor(Theme.textSecondary)
                             .fixedSize(horizontal: false, vertical: true)
                     }
                     if vm.requests.isEmpty {
                         Text("No requests yet.")
-                            .font(.inter(Theme.fontXS)).foregroundColor(Theme.textSecondary)
+                            .font(.system(size: Theme.fontXS)).foregroundColor(Theme.textSecondary)
                     } else {
                         ForEach(vm.requests) { req in row(req) }
                     }
@@ -264,12 +264,12 @@ struct GroupJoinRequestsSection: View {
     private var header: some View {
         HStack(spacing: Theme.spacingSM) {
             Text("Join requests")
-                .font(.inter(Theme.fontXXS, weight: .semibold)).tracking(3).textCase(.uppercase)
+                .font(.system(size: Theme.fontXXS, weight: .semibold)).tracking(3).textCase(.uppercase)
                 .foregroundColor(Theme.gold.opacity(0.7))
                 .accessibilityAddTraits(.isHeader)
             if vm.pendingCount > 0 {
                 Text("\(vm.pendingCount)")
-                    .font(.inter(Theme.fontXXS, weight: .semibold)).foregroundColor(Theme.ink)
+                    .font(.system(size: Theme.fontXXS, weight: .semibold)).foregroundColor(Theme.ink)
                     .padding(.horizontal, 7).padding(.vertical, 2)
                     .background(Theme.gold).clipShape(Capsule())
                     .accessibilityLabel("\(vm.pendingCount) pending \(vm.pendingCount == 1 ? "request" : "requests")")
@@ -281,14 +281,14 @@ struct GroupJoinRequestsSection: View {
     private var acceptingSwitch: some View {
         VStack(alignment: .leading, spacing: 2) {
             Toggle(isOn: Binding(get: { vm.accepting }, set: { v in Task { await vm.setAccepting(v) } })) {
-                Text("Accepting requests").font(.inter(Theme.fontSM)).foregroundColor(Theme.parchment)
+                Text("Accepting requests").font(.system(size: Theme.fontSM)).foregroundColor(Theme.parchment)
             }
             .tint(Theme.gold)
             .disabled(vm.switchBusy)
             .frame(minHeight: 44)
             .accessibilityIdentifier("join-requests-accepting-switch")
             if let err = vm.switchError {
-                Text(err).font(.inter(Theme.fontXS)).foregroundColor(Theme.error)
+                Text(err).font(.system(size: Theme.fontXS)).foregroundColor(Theme.error)
                     .accessibilityIdentifier("join-requests-switch-error")
             }
         }
@@ -302,31 +302,31 @@ struct GroupJoinRequestsSection: View {
                 avatar(req)
                 VStack(alignment: .leading, spacing: 2) {
                     // Untrusted text: plain Text, never markdown/links.
-                    Text(verbatim: req.displayName).font(.inter(Theme.fontSM, weight: .semibold))
+                    Text(verbatim: req.displayName).font(.system(size: Theme.fontSM, weight: .semibold))
                         .foregroundColor(Theme.parchment)
                     if let when = Self.dateLabel(req.createdAt) {
-                        Text("Requested \(when)").font(.inter(Theme.fontXS)).foregroundColor(Theme.textSecondary)
+                        Text("Requested \(when)").font(.system(size: Theme.fontXS)).foregroundColor(Theme.textSecondary)
                     }
                     if let note = req.note, !note.isEmpty {
-                        Text(verbatim: note).font(.inter(Theme.fontXS)).foregroundColor(Theme.parchment.opacity(0.85))
+                        Text(verbatim: note).font(.system(size: Theme.fontXS)).foregroundColor(Theme.parchment.opacity(0.85))
                             .fixedSize(horizontal: false, vertical: true)
                     }
                 }
                 Spacer(minLength: 0)
             }
             if let err = vm.rowErrors[req.id] {
-                Text(err).font(.inter(Theme.fontXS)).foregroundColor(Theme.error)
+                Text(err).font(.system(size: Theme.fontXS)).foregroundColor(Theme.error)
                     .fixedSize(horizontal: false, vertical: true)
                     .accessibilityIdentifier("join-request-row-error")
             }
             HStack(spacing: Theme.spacingSM) {
                 Button("Add") { approving = req }
-                    .font(.inter(Theme.fontXS, weight: .semibold)).foregroundColor(Theme.ink)
+                    .font(.system(size: Theme.fontXS, weight: .semibold)).foregroundColor(Theme.ink)
                     .padding(.horizontal, Theme.spacingSM).frame(minHeight: 44)
                     .background(Theme.gold).clipShape(RoundedRectangle(cornerRadius: Theme.radiusSM))
                     .accessibilityLabel("Approve \(req.displayName)")
                 Button("Deny") { Task { await vm.deny(req, block: false) } }
-                    .font(.inter(Theme.fontXS, weight: .semibold)).foregroundColor(Theme.parchment)
+                    .font(.system(size: Theme.fontXS, weight: .semibold)).foregroundColor(Theme.parchment)
                     .padding(.horizontal, Theme.spacingSM).frame(minHeight: 44)
                     .overlay(RoundedRectangle(cornerRadius: Theme.radiusSM).stroke(Theme.borderGold))
                     .accessibilityLabel("Deny \(req.displayName)")
@@ -359,10 +359,10 @@ struct GroupJoinRequestsSection: View {
 
     private func undoBar(_ item: GroupJoinRequestsViewModel.UndoItem) -> some View {
         HStack {
-            Text("Request denied.").font(.inter(Theme.fontXS)).foregroundColor(Theme.parchment)
+            Text("Request denied.").font(.system(size: Theme.fontXS)).foregroundColor(Theme.parchment)
             Spacer()
             Button("Undo") { Task { await vm.undoDeny() } }
-                .font(.inter(Theme.fontXS, weight: .semibold)).foregroundColor(Theme.gold)
+                .font(.system(size: Theme.fontXS, weight: .semibold)).foregroundColor(Theme.gold)
                 .frame(minWidth: 44, minHeight: 44)
                 .accessibilityIdentifier("join-requests-undo")
         }

@@ -194,7 +194,7 @@ private struct JoinInviteContent: View {
         case .resolving:
             VStack(spacing: Theme.spacingSM) {
                 ProgressView().tint(Theme.gold)
-                Text("Checking this invite...").font(.inter(Theme.fontXS)).foregroundColor(Theme.textSecondary)
+                Text("Checking this invite...").font(.system(size: Theme.fontXS)).foregroundColor(Theme.textSecondary)
             }
             .accessibilityElement(children: .combine)
         case .ready, .joining:
@@ -205,7 +205,7 @@ private struct JoinInviteContent: View {
             } else {
                 VStack(spacing: Theme.spacingSM) {
                     Text("You're in")
-                        .font(.playfair(Theme.fontDisplayMD)).foregroundColor(Theme.parchment)
+                        .font(.system(size: Theme.fontDisplayMD, weight: .heavy)).foregroundColor(Theme.parchment)
                         .accessibilityAddTraits(.isHeader)
                         .accessibilityFocused($headingFocused)
                 }
@@ -221,14 +221,14 @@ private struct JoinInviteContent: View {
         let already = vm.requestOutcome == .alreadyMember
         return VStack(spacing: Theme.spacingMD) {
             Text(already ? "You're already on this plan" : "Request sent")
-                .font(.playfair(Theme.fontDisplayMD)).foregroundColor(Theme.parchment)
+                .font(.system(size: Theme.fontDisplayMD, weight: .heavy)).foregroundColor(Theme.parchment)
                 .multilineTextAlignment(.center)
                 .accessibilityAddTraits(.isHeader)
                 .accessibilityFocused($headingFocused)
             Text(already
                  ? "You already have access through this plan."
                  : "\(owner.isEmpty ? "The plan owner" : owner) has to approve your request. You get access to the plan once they accept it.")
-                .font(.inter(Theme.fontSM)).foregroundColor(Theme.textSecondary)
+                .font(.system(size: Theme.fontSM)).foregroundColor(Theme.textSecondary)
                 .multilineTextAlignment(.center)
             wideButton("Done", busy: false) { appState.clearPendingInvite() }
         }
@@ -240,12 +240,12 @@ private struct JoinInviteContent: View {
         let owner = vm.preview?.inviter_username ?? ""
         return VStack(spacing: Theme.spacingMD) {
             Text("Request to join \(owner)'s plan")
-                .font(.playfair(Theme.fontDisplayMD)).foregroundColor(Theme.parchment)
+                .font(.system(size: Theme.fontDisplayMD, weight: .heavy)).foregroundColor(Theme.parchment)
                 .multilineTextAlignment(.center)
                 .accessibilityAddTraits(.isHeader)
                 .accessibilityFocused($headingFocused)
             Text("\(owner) invited you to their FellowScript plan. They approve each request before you get access.")
-                .font(.inter(Theme.fontSM)).foregroundColor(Theme.textSecondary)
+                .font(.system(size: Theme.fontSM)).foregroundColor(Theme.textSecondary)
                 .multilineTextAlignment(.center)
             if appState.isAuthenticated {
                 wideButton(vm.phase == .joining ? nil : "Request to join", busy: vm.phase == .joining) { Task { await join() } }
@@ -275,7 +275,7 @@ private struct JoinInviteContent: View {
             )
             .accessibilityHidden(true)
             Text(vm.preview?.group_name ?? "")
-                .font(.playfair(Theme.fontDisplayMD)).foregroundColor(Theme.parchment)
+                .font(.system(size: Theme.fontDisplayMD, weight: .heavy)).foregroundColor(Theme.parchment)
                 .multilineTextAlignment(.center)
                 .accessibilityAddTraits(.isHeader)
                 .accessibilityFocused($headingFocused)
@@ -284,7 +284,7 @@ private struct JoinInviteContent: View {
                 let n = vm.preview?.member_count ?? 0
                 Text("\(n) \(n == 1 ? "member" : "members")")
             }
-            .font(.inter(Theme.fontSM)).foregroundColor(Theme.textSecondary)
+            .font(.system(size: Theme.fontSM)).foregroundColor(Theme.textSecondary)
             .accessibilityElement(children: .combine)
 
             if appState.isAuthenticated {
@@ -302,12 +302,12 @@ private struct JoinInviteContent: View {
     private func errorBody(_ failure: InviteFailure) -> some View {
         VStack(spacing: Theme.spacingMD) {
             Text(failure.title(subscription: vm.preview?.isSubscription == true))
-                .font(.playfair(Theme.fontDisplayMD)).foregroundColor(Theme.parchment)
+                .font(.system(size: Theme.fontDisplayMD, weight: .heavy)).foregroundColor(Theme.parchment)
                 .multilineTextAlignment(.center)
                 .accessibilityAddTraits(.isHeader)
                 .accessibilityFocused($headingFocused)
             if let body = failure.body {
-                Text(body).font(.inter(Theme.fontSM)).foregroundColor(Theme.textSecondary)
+                Text(body).font(.system(size: Theme.fontSM)).foregroundColor(Theme.textSecondary)
                     .multilineTextAlignment(.center)
             }
             if failure.isRetryable {
@@ -371,7 +371,7 @@ private struct JoinInviteContent: View {
 
     private func textButton(_ title: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            Text(title).font(.inter(Theme.fontSM, weight: .semibold)).foregroundColor(Theme.gold)
+            Text(title).font(.system(size: Theme.fontSM, weight: .semibold)).foregroundColor(Theme.gold)
                 .frame(minWidth: 88, minHeight: 44)
         }
     }

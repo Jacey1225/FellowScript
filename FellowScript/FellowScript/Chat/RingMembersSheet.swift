@@ -91,7 +91,7 @@ struct RingMembersSheet: View {
                     if candidates.isEmpty {
                         if !isLoadingRoster {
                             Text("No other members to ring.")
-                                .font(.inter(Theme.fontSM))
+                                .font(.system(size: Theme.fontSM))
                                 .foregroundColor(Theme.textSecondary)
                                 .frame(maxWidth: .infinity)
                                 .padding(.top, Theme.spacingLG)
@@ -146,7 +146,7 @@ struct RingMembersSheet: View {
     private func memberSection(title: String, members: [RingCandidate], muted: Bool) -> some View {
         VStack(alignment: .leading, spacing: Theme.spacingSM) {
             Text(title)
-                .font(.inter(Theme.fontXXS)).tracking(4)
+                .font(.system(size: Theme.fontXXS)).tracking(4)
                 .foregroundColor(Theme.textGoldMuted)
             VStack(spacing: 0) {
                 ForEach(Array(members.enumerated()), id: \.element.id) { index, member in
@@ -162,7 +162,7 @@ struct RingMembersSheet: View {
                 }
             }
         }
-        .widgetCard()
+        .fsCard()
     }
 
     // ── Actions ──────────────────────────────────────────────────────────────
@@ -303,7 +303,7 @@ struct RingMembersSheet: View {
     // Both dismiss identically; only the label changes.
     private var ringSheetCancelLabel: some View {
         Text(hasAttemptedRing ? "Done" : "Cancel")
-            .font(.inter(Theme.fontSM))
+            .font(.system(size: Theme.fontSM))
             .foregroundColor(Theme.textSecondary)
             .fixedSize()
             .padding(.horizontal, 16)
@@ -342,11 +342,11 @@ struct RingMemberRow: View {
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(candidate.name)
-                    .font(.inter(Theme.fontBody))
+                    .font(.system(size: Theme.fontBody))
                     .foregroundColor(Theme.parchment.opacity(nameOpacity))
                 if let caption {
                     Text(caption)
-                        .font(.inter(Theme.fontXXS))
+                        .font(.system(size: Theme.fontXXS))
                         .foregroundColor(captionColor)
                 }
             }

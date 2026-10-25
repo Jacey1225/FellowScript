@@ -24,7 +24,7 @@ private struct RoomPillButton: View {
             HStack(spacing: 6) {
                 if let icon { Image(systemName: icon).font(.system(size: 13, weight: .bold)).accessibilityHidden(true) }
                 Text(title)
-                    .font(.interScaled(Theme.fontSM, weight: .bold, relativeTo: .subheadline))
+                    .font(.system(size: Theme.fontSM, weight: .bold))
                     .lineLimit(2).multilineTextAlignment(.center)
             }
             .foregroundColor(Theme.ink)
@@ -43,7 +43,7 @@ private struct RoomGhostChip: View {
     let title: String
     var body: some View {
         Text(title)
-            .font(.interScaled(Theme.fontSM, relativeTo: .subheadline))
+            .font(.system(size: Theme.fontSM))
             .foregroundColor(Theme.textSecondary)
             .fixedSize()
             .padding(.horizontal, 16)
@@ -71,7 +71,7 @@ struct BackToMainPill: View {
                     Image(systemName: "arrow.uturn.backward").font(.system(size: 12, weight: .bold)).accessibilityHidden(true)
                 }
                 Text(isReturning ? "Returning\u{2026}" : "Back to main")
-                    .font(.interScaled(Theme.fontXS, weight: .bold, relativeTo: .caption))
+                    .font(.system(size: Theme.fontXS, weight: .bold))
                     .lineLimit(2).fixedSize(horizontal: false, vertical: true)
             }
             .foregroundColor(Theme.bgPage)
@@ -96,14 +96,14 @@ struct RoomReturnFailedCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text(RoomCopy.returnFailed)
-                .font(.interScaled(Theme.fontSM, weight: .semibold, relativeTo: .subheadline))
+                .font(.system(size: Theme.fontSM, weight: .semibold))
                 .foregroundColor(Theme.textPrimary)
                 .fixedSize(horizontal: false, vertical: true)
             HStack(spacing: 10) {
                 RoomPillButton(title: "Try again", action: onRetry)
                 Button(action: onEnd) {
                     Text("End call")
-                        .font(.interScaled(Theme.fontSM, weight: .semibold, relativeTo: .subheadline))
+                        .font(.system(size: Theme.fontSM, weight: .semibold))
                         .foregroundColor(Theme.error)
                         .padding(.horizontal, 14).frame(minHeight: 44)
                         .overlay(Capsule().stroke(Theme.error.opacity(0.6), lineWidth: 1))
@@ -160,7 +160,7 @@ private struct InviteRow: View {
                     .overlay(Circle().stroke(Theme.gold.opacity(0.5), lineWidth: 1))
                     .accessibilityHidden(true)
                 Text(candidate.name)
-                    .font(.interScaled(Theme.fontBody, relativeTo: .body))
+                    .font(.system(size: Theme.fontBody))
                     .foregroundColor(Theme.parchment.opacity(disabled ? 0.45 : 0.85))
                     .frame(maxWidth: .infinity, alignment: .leading)
                 Image(systemName: selected ? "checkmark.circle.fill" : "circle")
@@ -214,7 +214,7 @@ struct RoomsSheet: View {
                     createSection
                     if let manageError {
                         Text(manageError)
-                            .font(.interScaled(Theme.fontXS, relativeTo: .caption))
+                            .font(.system(size: Theme.fontXS))
                             .foregroundColor(Theme.error)
                             .accessibilityLabel(manageError)
                     }
@@ -278,11 +278,11 @@ struct RoomsSheet: View {
     private var currentRoomCard: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text("You\u{2019}re in \(rooms.state.currentRoomName ?? rooms.currentRoom?.displayName ?? "a room")")
-                .font(.playfair(Theme.fontHeading)).foregroundColor(Theme.goldLight)
+                .font(.system(size: Theme.fontHeading, weight: .heavy)).foregroundColor(Theme.goldLight)
                 .accessibilityAddTraits(.isHeader)
             if let r = rooms.currentRoom {
                 Text("\(r.member_count) of \(r.max_members) here")
-                    .font(.interScaled(Theme.fontXS, relativeTo: .caption))
+                    .font(.system(size: Theme.fontXS))
                     .foregroundColor(Theme.textPrimary.opacity(0.85))
             }
             RoomPillButton(title: "Back to main", icon: "arrow.uturn.backward") {
@@ -291,7 +291,7 @@ struct RoomsSheet: View {
             .disabled(rooms.state.isBusy)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .widgetCard()
+        .fsCard()
     }
 
     private var createSection: some View {
@@ -300,7 +300,7 @@ struct RoomsSheet: View {
                 HStack(spacing: 8) {
                     Image(systemName: "plus").font(.system(size: 15, weight: .bold)).accessibilityHidden(true)
                     Text("Create a room")
-                        .font(.interScaled(Theme.fontBody, weight: .bold, relativeTo: .body))
+                        .font(.system(size: Theme.fontBody, weight: .bold))
                 }
                 .foregroundColor(Theme.ink)
                 .frame(maxWidth: .infinity, minHeight: 52)
@@ -315,7 +315,7 @@ struct RoomsSheet: View {
             .accessibilityHint("Starts a new discussion room")
             if let block = createBlock {
                 Text(RoomListLogic.createBlockCaption(block))
-                    .font(.interScaled(Theme.fontXS, relativeTo: .caption))
+                    .font(.system(size: Theme.fontXS))
                     .foregroundColor(Theme.textPrimary.opacity(0.85))
             }
         }
@@ -328,16 +328,16 @@ struct RoomsSheet: View {
         } else if loadFailed && list == nil {
             VStack(spacing: 8) {
                 Text(RoomCopy.message(forCode: "network", action: .load))
-                    .font(.interScaled(Theme.fontSM, relativeTo: .subheadline))
+                    .font(.system(size: Theme.fontSM))
                     .foregroundColor(Theme.textPrimary.opacity(0.85))
                 Button("Try again") { Task { await refresh() } }
-                    .font(.interScaled(Theme.fontSM, weight: .semibold, relativeTo: .subheadline))
+                    .font(.system(size: Theme.fontSM, weight: .semibold))
                     .foregroundColor(Theme.gold).frame(minHeight: 44)
             }
             .frame(maxWidth: .infinity)
         } else if visibleRooms.isEmpty {
             Text("No rooms yet. Start one to talk privately.")
-                .font(.interScaled(Theme.fontSM, relativeTo: .subheadline))
+                .font(.system(size: Theme.fontSM))
                 .foregroundColor(Theme.textPrimary.opacity(0.85))
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: .infinity).padding(.top, Theme.spacingSM)
@@ -355,7 +355,7 @@ struct RoomsSheet: View {
                     }
                 }
             }
-            .widgetCard()
+            .fsCard()
         }
     }
 
@@ -487,7 +487,7 @@ private struct RoomRow: View {
             }
             if let error {
                 Text(error)
-                    .font(.interScaled(Theme.fontXS, relativeTo: .caption))
+                    .font(.system(size: Theme.fontXS))
                     .foregroundColor(Theme.error)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -504,14 +504,14 @@ private struct RoomRow: View {
                 .frame(width: 28).accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 2) {
                 Text(room.displayName)
-                    .font(.interScaled(Theme.fontBody, weight: .semibold, relativeTo: .body))
+                    .font(.system(size: Theme.fontBody, weight: .semibold))
                     .foregroundColor(Theme.textPrimary).lineLimit(2)
                 Text(RoomListLogic.subtitle(for: room))
-                    .font(.interScaled(Theme.fontXS, relativeTo: .caption))
+                    .font(.system(size: Theme.fontXS))
                     .foregroundColor(Theme.textPrimary.opacity(0.85))
                 if !stacked, let names = RoomListLogic.memberNames(room) {
                     Text(names)
-                        .font(.interScaled(Theme.fontXS, relativeTo: .caption))
+                        .font(.system(size: Theme.fontXS))
                         .foregroundColor(Theme.textPrimary.opacity(0.85)).lineLimit(1)
                 }
             }
@@ -538,12 +538,12 @@ private struct RoomRow: View {
             switch trailing {
             case .here:
                 Label("You\u{2019}re here", systemImage: "checkmark.circle.fill")
-                    .font(.interScaled(Theme.fontXS, weight: .semibold, relativeTo: .caption))
+                    .font(.system(size: Theme.fontXS, weight: .semibold))
                     .foregroundColor(Theme.goldLight)
                     .frame(minHeight: 44)
             case .full:
                 Label("Full", systemImage: "person.2.slash")
-                    .font(.interScaled(Theme.fontXS, weight: .semibold, relativeTo: .caption))
+                    .font(.system(size: Theme.fontXS, weight: .semibold))
                     .foregroundColor(Theme.textPrimary.opacity(0.85))
                     .frame(minHeight: 44)
             case .hidden:
@@ -551,7 +551,7 @@ private struct RoomRow: View {
             case .invitedJoin, .join:
                 if trailing == .invitedJoin {
                     Text("Invited")
-                        .font(.interScaled(Theme.fontXS, weight: .bold, relativeTo: .caption))
+                        .font(.system(size: Theme.fontXS, weight: .bold))
                         .foregroundColor(Theme.bgPage)
                         .padding(.horizontal, 8).padding(.vertical, 3)
                         .background(Capsule().fill(Theme.gold))
@@ -606,20 +606,20 @@ private struct NewRoomPage: View {
                 if form.inviteOnly { inviteSection }
                 Toggle(isOn: $form.joinAfterCreate) {
                     Text("Join after creating")
-                        .font(.interScaled(Theme.fontBody, relativeTo: .body)).foregroundColor(Theme.textPrimary)
+                        .font(.system(size: Theme.fontBody)).foregroundColor(Theme.textPrimary)
                 }
                 .tint(Theme.gold)
                 .frame(minHeight: 44)
                 if let errorText {
                     Text(errorText)
-                        .font(.interScaled(Theme.fontXS, relativeTo: .caption))
+                        .font(.system(size: Theme.fontXS))
                         .foregroundColor(Theme.error)
                         .accessibilityLabel(errorText)
                 }
                 Button { submit() } label: {
                     Group {
                         if submitting { ProgressView().tint(Theme.ink) }
-                        else { Text("Create room").font(.interScaled(Theme.fontBody, weight: .bold, relativeTo: .body)) }
+                        else { Text("Create room").font(.system(size: Theme.fontBody, weight: .bold)) }
                     }
                     .foregroundColor(Theme.ink)
                     .frame(maxWidth: .infinity, minHeight: 52)
@@ -649,11 +649,11 @@ private struct NewRoomPage: View {
         VStack(alignment: .leading, spacing: 6) {
             TextField("Room name (optional)", text: $form.name)
                 .textInputAutocapitalization(.words)
-                .font(.interScaled(Theme.fontBody, relativeTo: .body))
+                .font(.system(size: Theme.fontBody))
                 .foregroundColor(Theme.textPrimary)
                 .padding(.horizontal, 14).frame(minHeight: 48)
-                .background(RoundedRectangle(cornerRadius: Theme.radius, style: .continuous).fill(Theme.goldDim.opacity(0.18)))
-                .overlay(RoundedRectangle(cornerRadius: Theme.radius, style: .continuous).stroke(Theme.borderGoldDim, lineWidth: 1))
+                .background(RoundedRectangle(cornerRadius: Theme.radius, style: .continuous).fill(Theme.fieldFill))
+                .overlay(RoundedRectangle(cornerRadius: Theme.radius, style: .continuous).stroke(Theme.fieldBorder, lineWidth: 1))
                 .onChange(of: form.name) { _, new in
                     if new.count > RoomForm.maxNameLength { form.name = String(new.prefix(RoomForm.maxNameLength)) }
                 }
@@ -661,12 +661,12 @@ private struct NewRoomPage: View {
                 .accessibilityHint("Optional. Leave blank to use the default name")
             HStack {
                 Text("Leave blank for \u{201C}Room N\u{201D}")
-                    .font(.interScaled(Theme.fontXS, relativeTo: .caption))
+                    .font(.system(size: Theme.fontXS))
                     .foregroundColor(Theme.textPrimary.opacity(0.85))
                 Spacer()
                 if form.showsCounter {
                     Text("\(form.name.count)/\(RoomForm.maxNameLength)")
-                        .font(.interScaled(Theme.fontXS, relativeTo: .caption))
+                        .font(.system(size: Theme.fontXS))
                         .foregroundColor(Theme.textPrimary.opacity(0.85))
                 }
             }
@@ -675,16 +675,12 @@ private struct NewRoomPage: View {
 
     private var whoSection: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Picker("Who can join", selection: $form.inviteOnly) {
-                Text("Open").tag(false)
-                Text("Invite only").tag(true)
-            }
-            .pickerStyle(.segmented)
-            .frame(minHeight: 44)
-            .accessibilityLabel("Who can join")
-            .accessibilityValue(form.inviteOnly ? "Invite only" : "Open")
+            FSSegmented(options: [(id: false, title: "Open"), (id: true, title: "Invite only")],
+                        selection: $form.inviteOnly)
+                .accessibilityLabel("Who can join")
+                .accessibilityValue(form.inviteOnly ? "Invite only" : "Open")
             Text(form.inviteOnly ? "Only people you choose can join" : "Anyone in this session can join")
-                .font(.interScaled(Theme.fontXS, relativeTo: .caption))
+                .font(.system(size: Theme.fontXS))
                 .foregroundColor(Theme.textPrimary.opacity(0.85))
         }
     }
@@ -692,13 +688,13 @@ private struct NewRoomPage: View {
     private var inviteSection: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("\(form.invitees.count) selected")
-                .font(.interScaled(Theme.fontXS, weight: .semibold, relativeTo: .caption))
+                .font(.system(size: Theme.fontXS, weight: .semibold))
                 .foregroundColor(Theme.textPrimary.opacity(0.85))
             if loadingRoster {
                 ProgressView().tint(Theme.gold).frame(maxWidth: .infinity)
             } else if candidates.isEmpty {
                 Text("No other members to invite.")
-                    .font(.interScaled(Theme.fontSM, relativeTo: .subheadline))
+                    .font(.system(size: Theme.fontSM))
                     .foregroundColor(Theme.textPrimary.opacity(0.85))
             } else {
                 VStack(spacing: 0) {
@@ -708,15 +704,15 @@ private struct NewRoomPage: View {
                         if index < candidates.count - 1 { Divider().opacity(0.15) }
                     }
                 }
-                .widgetCard()
+                .fsCard()
                 if form.atInviteCap {
                     Text("Invitation limit reached")
-                        .font(.interScaled(Theme.fontXS, relativeTo: .caption)).foregroundColor(Theme.textPrimary.opacity(0.85))
+                        .font(.system(size: Theme.fontXS)).foregroundColor(Theme.textPrimary.opacity(0.85))
                 }
             }
             if form.invitees.isEmpty {
                 Text("You can invite people after creating the room.")
-                    .font(.interScaled(Theme.fontXS, relativeTo: .caption)).foregroundColor(Theme.textPrimary.opacity(0.85))
+                    .font(.system(size: Theme.fontXS)).foregroundColor(Theme.textPrimary.opacity(0.85))
             }
         }
         .transition(reduceMotion ? .opacity : .opacity.combined(with: .move(edge: .top)))
@@ -757,24 +753,24 @@ private struct RenameRoomSheet: View {
             VStack(alignment: .leading, spacing: 8) {
                 TextField("Room name", text: $text)
                     .textInputAutocapitalization(.words)
-                    .font(.interScaled(Theme.fontBody, relativeTo: .body)).foregroundColor(Theme.textPrimary)
+                    .font(.system(size: Theme.fontBody)).foregroundColor(Theme.textPrimary)
                     .padding(.horizontal, 14).frame(minHeight: 48)
-                    .background(RoundedRectangle(cornerRadius: Theme.radius, style: .continuous).fill(Theme.goldDim.opacity(0.18)))
+                    .background(RoundedRectangle(cornerRadius: Theme.radius, style: .continuous).fill(Theme.fieldFill))
                     .onChange(of: text) { _, new in
                         if new.count > RoomForm.maxNameLength { text = String(new.prefix(RoomForm.maxNameLength)) }
                     }
                     .accessibilityLabel("Room name")
                 HStack {
                     Text("Leave blank to use \u{201C}Room N\u{201D}")
-                        .font(.interScaled(Theme.fontXS, relativeTo: .caption)).foregroundColor(Theme.textPrimary.opacity(0.85))
+                        .font(.system(size: Theme.fontXS)).foregroundColor(Theme.textPrimary.opacity(0.85))
                     Spacer()
                     if text.count >= RoomForm.counterThreshold {
                         Text("\(text.count)/\(RoomForm.maxNameLength)")
-                            .font(.interScaled(Theme.fontXS, relativeTo: .caption)).foregroundColor(Theme.textPrimary.opacity(0.85))
+                            .font(.system(size: Theme.fontXS)).foregroundColor(Theme.textPrimary.opacity(0.85))
                     }
                 }
                 if let errorText {
-                    Text(errorText).font(.interScaled(Theme.fontXS, relativeTo: .caption)).foregroundColor(Theme.error)
+                    Text(errorText).font(.system(size: Theme.fontXS)).foregroundColor(Theme.error)
                 }
                 Spacer()
             }
@@ -790,7 +786,7 @@ private struct RenameRoomSheet: View {
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button { save() } label: {
                         if saving { ProgressView().tint(Theme.gold) }
-                        else { Text("Save").font(.interScaled(Theme.fontSM, weight: .bold, relativeTo: .subheadline)).foregroundColor(Theme.gold) }
+                        else { Text("Save").font(.system(size: Theme.fontSM, weight: .bold)).foregroundColor(Theme.gold) }
                     }
                     .frame(minWidth: 44, minHeight: 44)
                     .disabled(saving)
@@ -841,7 +837,7 @@ private struct InvitePeopleSheet: View {
                         ProgressView().tint(Theme.gold).frame(maxWidth: .infinity)
                     } else if candidates.isEmpty {
                         Text("No other members to invite.")
-                            .font(.interScaled(Theme.fontSM, relativeTo: .subheadline))
+                            .font(.system(size: Theme.fontSM))
                             .foregroundColor(Theme.textPrimary.opacity(0.85))
                     } else {
                         VStack(spacing: 0) {
@@ -852,10 +848,10 @@ private struct InvitePeopleSheet: View {
                                 if index < candidates.count - 1 { Divider().opacity(0.15) }
                             }
                         }
-                        .widgetCard()
+                        .fsCard()
                     }
                     if let errorText {
-                        Text(errorText).font(.interScaled(Theme.fontXS, relativeTo: .caption)).foregroundColor(Theme.error)
+                        Text(errorText).font(.system(size: Theme.fontXS)).foregroundColor(Theme.error)
                     }
                 }
                 .padding(Theme.spacingLG)
@@ -873,7 +869,7 @@ private struct InvitePeopleSheet: View {
                         if sending { ProgressView().tint(Theme.gold) }
                         else {
                             Text(picked.isEmpty ? "Invite" : "Invite (\(picked.count))")
-                                .font(.interScaled(Theme.fontSM, weight: .bold, relativeTo: .subheadline))
+                                .font(.system(size: Theme.fontSM, weight: .bold))
                                 .foregroundColor(Theme.gold)
                         }
                     }

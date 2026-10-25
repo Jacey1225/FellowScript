@@ -13,7 +13,7 @@ extension AccountView {
     @ViewBuilder
     var ownerRewardRow: some View {
         if let reward = vm.rewardSummary, reward.provider == "apple", reward.earned > 0 || vm.rewardMsg != nil {
-            Divider().background(Theme.borderGoldFaint)
+            Divider().background(Theme.borderGray)
             VStack(alignment: .leading, spacing: Theme.spacingXS) {
                 HStack(spacing: Theme.spacingSM) {
                     Image(systemName: "gift.fill").foregroundColor(Theme.gold)
@@ -21,11 +21,11 @@ extension AccountView {
                          ? "You earned \(reward.percent_off)% off your next month"
                            + (reward.earned > 1 ? " (\(reward.earned) rewards)" : "")
                          : "Invite reward")
-                        .font(.inter(Theme.fontBody)).foregroundColor(Theme.parchment)
+                        .font(.system(size: Theme.fontBody)).foregroundColor(Theme.parchment)
                 }
                 if reward.earned > 0 {
                     Text("Thanks for sharing FellowScript. Claim it to apply the discount to your next renewal.")
-                        .font(.inter(Theme.fontXS)).foregroundColor(Theme.textMuted)
+                        .font(.system(size: Theme.fontXS)).foregroundColor(Theme.textMuted)
                     Button { Task { await vm.claimReward() } } label: {
                         ghostPill(vm.rewardBusy ? "Claiming…" : "Claim reward", labelColor: Theme.gold)
                     }
@@ -33,7 +33,7 @@ extension AccountView {
                     .accessibilityIdentifier("claimRewardButton")
                 }
                 if let msg = vm.rewardMsg {
-                    Text(msg).font(.inter(Theme.fontSM)).foregroundColor(Theme.textGoldMuted)
+                    Text(msg).font(.system(size: Theme.fontSM)).foregroundColor(Theme.textGoldMuted)
                         .accessibilityIdentifier("rewardMessage")
                 }
             }

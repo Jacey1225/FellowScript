@@ -43,16 +43,16 @@ const MONO_BLOCK_STYLE = {
 };
 
 const METADATA_LABEL_STYLE = {
-  fontFamily: "'Lora', serif", fontSize: '0.62rem', letterSpacing: '0.1em',
+  fontFamily: 'inherit', fontSize: '0.62rem', letterSpacing: '0.1em',
   textTransform: 'uppercase', color: 'rgba(244,228,193,0.35)', display: 'block',
 };
 
 const METADATA_VALUE_STYLE = {
-  fontFamily: "'Lora', serif", fontSize: '0.78rem', color: 'rgba(244,228,193,0.7)',
+  fontFamily: 'inherit', fontSize: '0.78rem', color: 'rgba(244,228,193,0.7)',
 };
 
 const SECTION_LABEL_STYLE = {
-  fontFamily: "'Lora', serif", fontSize: '0.56rem', letterSpacing: '0.3em',
+  fontFamily: 'inherit', fontSize: '0.56rem', letterSpacing: '0.3em',
   textTransform: 'uppercase', color: 'rgba(200,134,26,0.5)',
 };
 
@@ -244,7 +244,7 @@ export default function DetectionDetailOverlay({ id, open, onClose }) {
         >
           <CloseOutlined />
         </button>
-        <Text style={{ fontFamily: "'Playfair Display', serif", fontSize: '1rem', color: 'var(--parchment)' }}>
+        <Text style={{ fontFamily: 'inherit', fontSize: '1rem', color: 'var(--parchment)' }}>
           Detection
         </Text>
       </div>
@@ -339,7 +339,7 @@ export default function DetectionDetailOverlay({ id, open, onClose }) {
                   style={{ marginTop: '1rem' }}
                   items={[{
                     key: 'context',
-                    label: <Text style={{ fontFamily: "'Lora', serif", fontSize: '0.72rem', color: 'rgba(200,134,26,0.6)' }}>Show raw context</Text>,
+                    label: <Text style={{ fontFamily: 'inherit', fontSize: '0.72rem', color: 'rgba(200,134,26,0.6)' }}>Show raw context</Text>,
                     children: (
                       <div style={MONO_BLOCK_STYLE}>
                         {JSON.stringify(detection.context, null, 2)}
@@ -387,28 +387,28 @@ export default function DetectionDetailOverlay({ id, open, onClose }) {
                 ) : report ? (
                   <>
                     <div style={{ marginBottom: '1.25rem' }}>
-                      <Text style={{ fontFamily: "'Lora', serif", fontSize: '0.62rem', letterSpacing: '0.14em', textTransform: 'uppercase', color: 'rgba(200,134,26,0.55)', display: 'block', marginBottom: '0.4rem' }}>
+                      <Text style={{ fontFamily: 'inherit', fontSize: '0.62rem', letterSpacing: '0.14em', textTransform: 'uppercase', color: 'rgba(200,134,26,0.55)', display: 'block', marginBottom: '0.4rem' }}>
                         Root Cause
                       </Text>
-                      <Paragraph style={{ fontFamily: "'Lora', serif", fontSize: '0.85rem', color: 'rgba(244,228,193,0.8)', lineHeight: 1.75, margin: 0, whiteSpace: 'pre-wrap' }}>
+                      <Paragraph style={{ fontFamily: 'inherit', fontSize: '0.85rem', color: 'rgba(244,228,193,0.8)', lineHeight: 1.75, margin: 0, whiteSpace: 'pre-wrap' }}>
                         {report.root_cause}
                       </Paragraph>
                     </div>
                     <div>
-                      <Text style={{ fontFamily: "'Lora', serif", fontSize: '0.62rem', letterSpacing: '0.14em', textTransform: 'uppercase', color: 'rgba(200,134,26,0.55)', display: 'block', marginBottom: '0.4rem' }}>
+                      <Text style={{ fontFamily: 'inherit', fontSize: '0.62rem', letterSpacing: '0.14em', textTransform: 'uppercase', color: 'rgba(200,134,26,0.55)', display: 'block', marginBottom: '0.4rem' }}>
                         Recommended Remediation
                       </Text>
-                      <Paragraph style={{ fontFamily: "'Lora', serif", fontSize: '0.85rem', color: 'rgba(244,228,193,0.8)', lineHeight: 1.75, margin: 0, whiteSpace: 'pre-wrap' }}>
+                      <Paragraph style={{ fontFamily: 'inherit', fontSize: '0.85rem', color: 'rgba(244,228,193,0.8)', lineHeight: 1.75, margin: 0, whiteSpace: 'pre-wrap' }}>
                         {report.remediation_narrative}
                       </Paragraph>
                     </div>
-                    <Text style={{ fontFamily: "'Lora', serif", fontSize: '0.68rem', color: 'rgba(244,228,193,0.35)', display: 'block', marginTop: '1.25rem' }}>
+                    <Text style={{ fontFamily: 'inherit', fontSize: '0.68rem', color: 'rgba(244,228,193,0.35)', display: 'block', marginTop: '1.25rem' }}>
                       Generated {dayjs(report.generated_at).fromNow()} via {report.model}
                     </Text>
                   </>
                 ) : (
                   reportMissing && (
-                    <Text style={{ fontFamily: "'Lora', serif", fontSize: '0.8rem', color: 'rgba(244,228,193,0.35)' }}>
+                    <Text style={{ fontFamily: 'inherit', fontSize: '0.8rem', color: 'rgba(244,228,193,0.35)' }}>
                       No report generated yet.
                     </Text>
                   )

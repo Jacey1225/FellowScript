@@ -1,14 +1,14 @@
 import React, { useState } from 'react';
 import { useNavigate, useLocation, Link } from 'react-router-dom';
-import { Card, Form, Input, Button, Typography, Alert, Modal } from 'antd';
 import { useAuth } from '../context/AuthContext.jsx';
 import { API } from '../config.js';
 import Seo from '../components/Seo.jsx';
 import { postAuthPath } from '../lib/pendingInvite.js';
-
-const { Title, Text } = Typography;
+import { useWarmCanvas } from '../hooks/useWarmCanvas.js';
+import { AuthPage, CodeField, StickyActionBar, TermsReaccept } from '../components/forms/index.js';
 
 export default function VerifyMfa() {
+  useWarmCanvas(); // same warm gradient canvas as sign-in
   const { signIn } = useAuth();
   const navigate    = useNavigate();
   const location    = useLocation();
@@ -33,18 +33,19 @@ export default function VerifyMfa() {
 
   if (!userId) {
     return (
-      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '2rem' }}>
+      <>
         <Seo title="Verify Sign-In — FellowScript" path="/verify-2fa" noindex />
-        <Card style={{ width: '100%', maxWidth: 420, background: 'rgba(10,6,2,0.88)', border: '1px solid rgba(200,134,26,0.2)' }}>
-          <Text style={{ fontFamily: "'Lora', serif", color: 'rgba(244,228,193,0.6)' }}>
-            No sign-in in progress. <Link to="/signin" style={{ color: 'var(--gold)' }}>Return to sign in</Link>.
-          </Text>
-        </Card>
-      </div>
+        <AuthPage>
+          <p className="ff-helper" style={{ fontSize: 14 }}>
+            No sign-in in progress. <Link to="/signin" className="ff-link">Return to sign in</Link>.
+          </p>
+        </AuthPage>
+      </>
     );
   }
 
-  const handleVerify = async () => {
+  const handleVerify = async (e) => {
+    e?.preventDefault?.();
     setError('');
     setLoading(true);
     try {
@@ -65,64 +66,25 @@ export default function VerifyMfa() {
   };
 
   return (
-    <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '2rem' }}>
+    <>
       <Seo
         title="Verify Sign-In — FellowScript"
         description="Confirm your identity to finish signing in to FellowScript."
         path="/verify-2fa"
         noindex
       />
-      <Card style={{ width: '100%', maxWidth: 420, background: 'rgba(10,6,2,0.88)', border: '1px solid rgba(200,134,26,0.2)', backdropFilter: 'blur(12px)' }}>
-        <div style={{ textAlign: 'center', marginBottom: '1.5rem' }}>
-          <Title level={3} style={{ margin: 0, fontFamily: "'Playfair Display', serif" }}>
-            <span style={{ color: 'var(--parchment)' }}>Verify</span>{' '}
-            <em style={{ color: 'var(--gold)' }}>it's you</em>
-          </Title>
-          <Text style={{ fontFamily: "'Lora', serif", fontSize: '0.82rem', color: 'rgba(244,228,193,0.5)' }}>
-            We emailed a 6-digit code to finish signing in.
-          </Text>
-        </div>
-
-        <Form layout="vertical" onFinish={handleVerify} style={{ marginTop: 8 }}>
-          {error && <Alert message={error} type="error" showIcon style={{ marginBottom: 16 }} />}
-          <Form.Item>
-            <Input
-              placeholder="123456"
-              value={code}
-              onChange={e => setCode(e.target.value)}
-              maxLength={6}
-              autoFocus
-              style={{ fontSize: '1.2rem', letterSpacing: '0.35em', textAlign: 'center' }}
-            />
-          </Form.Item>
-          <Button type="primary" htmlType="submit" loading={loading} block>Verify</Button>
-        </Form>
-
-        <div style={{ textAlign: 'center', marginTop: '1.25rem' }}>
-          <Link to="/signin" style={{ fontFamily: "'Lora', serif", fontSize: '0.78rem', color: 'rgba(244,228,193,0.4)' }}>
-            Back to sign in
-          </Link>
-        </div>
-      </Card>
-
-      <Modal
-        open={!!reaccept}
-        closable={false}
-        maskClosable={false}
-        title={<Text style={{ fontFamily: "'Playfair Display', serif", color: 'var(--parchment)' }}>Our Terms of Service have been updated</Text>}
-        footer={[
-          <Button key="agree" type="primary" loading={reacceptLoading} onClick={handleAcceptUpdatedTerms}>
-            I Agree
-          </Button>,
-        ]}
+      <AuthPage
+        title="Verify it's you"
+        subtitle="We emailed a 6-digit code to finish signing in."
+        footer={<div className="ff-link-row"><Link to="/signin" className="ff-link">Back to sign in</Link></div>}
       >
-        <Text style={{ fontFamily: "'Lora', serif", fontSize: '0.85rem', color: 'rgba(244,228,193,0.7)' }}>
-          We've clarified our zero-tolerance policy for objectionable content and abusive behavior, including new
-          in-app reporting and blocking tools. Please review our{' '}
-          <Link to="/terms" target="_blank" style={{ color: 'var(--gold)' }}>updated Terms of Service</Link>{' '}
-          before continuing.
-        </Text>
-      </Modal>
-    </div>
+        <form onSubmit={handleVerify} noValidate className="ff-formstack">
+          {error && <div className="ff-alert" role="alert"><div className="ff-alert__title">{error}</div></div>}
+          <CodeField label="Verification code" value={code} onChange={setCode} autoFocus />
+          <StickyActionBar variant="page" primaryType="submit" primaryLabel="Verify" primaryDisabled={!code} saving={loading} onPrimary={() => {}} />
+        </form>
+      </AuthPage>
+      <TermsReaccept open={!!reaccept} loading={reacceptLoading} onAgree={handleAcceptUpdatedTerms} />
+    </>
   );
 }

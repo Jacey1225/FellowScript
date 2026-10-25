@@ -175,9 +175,10 @@ final class AttachmentLightboxSourcePinnedTests: XCTestCase {
     /// Just the `AttachmentLightboxView` struct body, isolated so assertions
     /// about it can't accidentally pass by matching unrelated code elsewhere
     /// in this large file.
+    /// Internal (no longer `private`) since 20261023-group-info-row: the Media grid reuses it.
     private func lightboxViewSource() throws -> String {
         let source = try attachmentsSource()
-        guard let start = source.range(of: "private struct AttachmentLightboxView: View {") else {
+        guard let start = source.range(of: "struct AttachmentLightboxView: View {") else {
             XCTFail("AttachmentLightboxView not found in MessageAttachments.swift")
             return ""
         }

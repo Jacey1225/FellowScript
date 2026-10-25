@@ -132,14 +132,14 @@ struct AnnouncementTitleColorPicker: View {
             .accessibilityElement(children: .contain)
             .accessibilityLabel("Title color")
             Text("Title color: \(AnnouncementTitleColor.name(for: hex))")
-                .font(.inter(Theme.fontXS)).foregroundColor(Theme.parchment.opacity(0.7))
+                .font(.system(size: Theme.fontXS)).foregroundColor(Theme.parchment.opacity(0.7))
             if !AnnouncementTitleColor.isDefault(hex) {
                 Button("Reset to default") { hex = nil; onChange() }
-                    .font(.inter(Theme.fontSM)).foregroundColor(Theme.gold).frame(minHeight: 44)
+                    .font(.system(size: Theme.fontSM)).foregroundColor(Theme.gold).frame(minHeight: 44)
             }
             if AnnouncementTitleColor.needsLegibilityWarning(hex) {
                 Label("This color may be hard to read over some photos.", systemImage: "exclamationmark.triangle")
-                    .font(.inter(Theme.fontXS)).foregroundColor(Theme.goldLight)
+                    .font(.system(size: Theme.fontXS)).foregroundColor(Theme.goldLight)
                     .accessibilityElement(children: .combine)
             }
         }

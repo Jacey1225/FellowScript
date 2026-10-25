@@ -144,7 +144,7 @@ struct AnnouncementBgThemeSheet: View {
     private func section(_ title: String, _ items: [AnnouncementBgTheme]) -> some View {
         VStack(alignment: .leading, spacing: Theme.spacingSM) {
             Text(title)
-                .font(.inter(Theme.fontXXS, weight: .semibold)).tracking(3).textCase(.uppercase)
+                .font(.system(size: Theme.fontXXS, weight: .semibold)).tracking(3).textCase(.uppercase)
                 .foregroundColor(Theme.gold.opacity(0.7))
                 .accessibilityAddTraits(.isHeader)
             LazyVGrid(columns: columns, alignment: .leading, spacing: 12) {

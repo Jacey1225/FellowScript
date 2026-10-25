@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import AnnouncementPoll from './AnnouncementPoll.jsx';
 import {
   EXTRAS_LIMITS, paymentProvider, parseLink, linkDisplayHost, isLookalikeHost, locationMapsUrl,
 } from '../lib/announcementStyle.js';
@@ -12,7 +13,7 @@ import {
 // (http/https, dotted host, no credentials) with rel=noopener noreferrer, and
 // always shows its host. Payment handles are plain text, never a link.
 
-export default function AnnouncementExtrasDetail({ item, onRsvp, onOpenLightbox }) {
+export default function AnnouncementExtrasDetail({ item, onRsvp, onOpenLightbox, pollActions }) {
   const [override, setOverride] = useState(null); // { count, joined }
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
@@ -26,7 +27,7 @@ export default function AnnouncementExtrasDetail({ item, onRsvp, onOpenLightbox 
   const place = (item.location || '').trim();
   const capacity = Number.isInteger(item.capacity) ? item.capacity : null;
 
-  if (!gallery.length && !links.length && !handles.length && !place && capacity == null) return null;
+  if (!gallery.length && !links.length && !handles.length && !place && capacity == null && !item.poll) return null;
 
   const count = override?.count ?? item.rsvp_count ?? 0;
   const joined = override?.joined ?? item.rsvp_joined ?? false;
@@ -134,6 +135,8 @@ export default function AnnouncementExtrasDetail({ item, onRsvp, onOpenLightbox 
           </div>
         </section>
       )}
+
+      {item.poll && <AnnouncementPoll key={item.id} item={item} actions={pollActions} />}
 
       {capacity != null && (
         <section className="ann-extra-block" aria-label="RSVP">

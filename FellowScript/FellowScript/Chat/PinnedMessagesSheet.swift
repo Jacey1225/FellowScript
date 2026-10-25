@@ -47,11 +47,30 @@ struct PinnedMessagesSheet: View {
     let service: DataServiceProtocol
     let userId: String
     let onSelect: (FSPinnedMessage) -> Void
+    /// Task 20261023-group-info-row: hosted in the group info submenu, which
+    /// supplies its own header and close; renders the list content only.
+    var inPanel: Bool = false
 
     @Environment(\.dismiss) private var dismiss
     @State private var inlineError: String? = nil
 
     var body: some View {
+        if inPanel { panelBody } else { sheetBody }
+    }
+
+    private var panelBody: some View {
+        VStack(spacing: 0) {
+            if vm.pinsState == .failed && !vm.pins.isEmpty {
+                GroupInfoRefreshNote {
+                    Task { await vm.loadPins(service: service, contact: contact, userId: userId, reset: true) }
+                }
+            }
+            content
+        }
+        .task { await vm.loadPins(service: service, contact: contact, userId: userId, reset: true) }
+    }
+
+    private var sheetBody: some View {
         NavigationStack {
             ZStack {
                 Theme.bgPage.opacity(0.25).ignoresSafeArea()
@@ -80,6 +99,8 @@ struct PinnedMessagesSheet: View {
     @ViewBuilder
     private var content: some View {
         switch vm.pinsState {
+        case .idle where vm.pins.isEmpty && inPanel, .loading where vm.pins.isEmpty && inPanel:
+            GroupInfoLoadingView(category: .pinned)
         case .idle where vm.pins.isEmpty, .loading where vm.pins.isEmpty:
             VStack(spacing: 10) {
                 ForEach(0..<3, id: \.self) { _ in
@@ -94,7 +115,7 @@ struct PinnedMessagesSheet: View {
             .accessibilityLabel("Loading pinned messages")
         case .failed where vm.pins.isEmpty:
             VStack(spacing: 12) {
-                Text(FSPinnedListCopy.loadError)
+                Text(inPanel ? GroupInfoCopy.loadError(.pinned) : FSPinnedListCopy.loadError)
                     .font(.inter(Theme.fontBody))
                     .foregroundColor(Theme.textSecondary)
                     .multilineTextAlignment(.center)

@@ -11,8 +11,8 @@ import {
 import { SessionCard } from './SessionWidget.jsx';
 import SessionsMenu from './SessionsMenu.jsx';
 import GroupInfoPanel from './GroupInfoPanel.jsx';
-import GroupAnnouncementWidget from './GroupAnnouncementWidget.jsx';
-import { ANNOUNCEMENTS_ENABLED } from '../lib/announcementsApi.js';
+import GroupInfoSubmenu, { GroupInfoRow, visibleChips } from './GroupInfoRow.jsx';
+import { useMessagingPanel } from '../context/ReaderPanelContexts.jsx';
 import ActionableBubble from './MessageActionMenu.jsx';
 import { SharedVerseWidget, SharedNoteCard, SharedNoteModal, sharedAriaLabel } from './SharedObjects.jsx';
 import { isSharedKind, KIND_VERSE, KIND_NOTE } from '../lib/sharedObjects.js';
@@ -648,6 +648,9 @@ export default function ChatThread({
   // Task 20261012-message-pins: { enabled, list, onLoad, onLoadMore, onToggle,
   // onUnpin, ensureLoaded }. Absent or enabled=false means no pin UI at all.
   pins,
+  // Task 20261023-group-info-row: (threadSummary) => void; falls back to the
+  // messaging panel context's onOpenThread.
+  onOpenThread: onOpenThreadProp,
 }) {
   const inThread = !!thread;
   const caps = useCapabilities();
@@ -668,8 +671,23 @@ export default function ChatThread({
     && (contact?.type === 'group' || contact?.type === 'friend');
   const [showPins, setShowPins] = useState(false);
   const pinsBtnRef = useRef(null);
+  // Task 20261023-group-info-row. Groups get the chip row + bottom submenu
+  // (Announcements, Threads, Pinned, Media); the floating pin button and the
+  // announcement banner are gone there. DMs keep the pin button.
+  const messagingPanel = useMessagingPanel();
+  const onOpenThread = onOpenThreadProp || messagingPanel?.onOpenThread;
+  const [openPanel, setOpenPanel] = useState(null);
+  const chipRefs = useRef({});
+  const infoChips = (!inThread && contact?.type === 'group')
+    ? visibleChips({ features, pinsOn, hasUser: !!user?.user_id })
+    : [];
   const [pendingJump, setPendingJump] = useState(null);
   useEffect(() => { if (!pinsOn) setShowPins(false); }, [pinsOn]);
+  const infoChipsKey = infoChips.join(',');
+  useEffect(() => {
+    if (openPanel && !infoChipsKey.split(',').includes(openPanel)) setOpenPanel(null);
+  }, [openPanel, infoChipsKey]);
+  useEffect(() => { setOpenPanel(null); }, [contact?.id, inThread]);
   const [replyTarget, setReplyTarget] = useState(null);
   const [picker, setPicker] = useState(null); // { id, anchor, align, returnEl }
   const [jumpId, setJumpId] = useState(null);
@@ -1124,19 +1142,39 @@ export default function ChatThread({
     pinsBtnRef.current?.focus?.({ preventScroll: true });
   }, []);
 
-  const jumpToPin = useCallback(async (pin) => {
-    const label = `Jumped to pinned message from ${pin.message.from || 'someone'}`;
-    setShowPins(false);
-    if (jumpToMessage(pin.messageId, label)) return;
+  // Jump to a message by id, paging older history in first when it is not
+  // loaded yet (shared by pins and the Media submenu).
+  const jumpToId = useCallback(async (id, label) => {
+    if (jumpToMessage(id, label)) return;
     setAnnouncement('Finding message…');
-    const found = pins?.ensureLoaded ? await pins.ensureLoaded(pin.messageId) : false;
+    const found = pins?.ensureLoaded ? await pins.ensureLoaded(id) : false;
     if (!found) {
       setAnnouncement(PIN_NOT_FOUND_COPY);
       antMessage.info({ content: PIN_NOT_FOUND_COPY, key: 'fs-pin-jump', duration: 4 });
       return;
     }
-    setPendingJump({ id: pin.messageId, label });
+    setPendingJump({ id, label });
   }, [jumpToMessage, pins]);
+
+  const jumpToPin = useCallback(async (pin) => {
+    const label = `Jumped to pinned message from ${pin.message.from || 'someone'}`;
+    setShowPins(false);
+    setOpenPanel(null);
+    await jumpToId(pin.messageId, label);
+  }, [jumpToId]);
+
+  const toggleInfoPanel = useCallback((id) => {
+    if (openPanel === id) { setOpenPanel(null); return; }
+    if (id === 'pinned' && pins?.onLoad) pins.onLoad();
+    const a = document.activeElement;
+    if (a && a !== document.body && a.closest?.('.chat-input-bar')) a.blur?.();
+    setOpenPanel(id);
+  }, [pins, openPanel]);
+
+  const closeInfoPanel = useCallback((restoreFocus = true) => {
+    if (openPanel && restoreFocus) chipRefs.current[openPanel]?.focus?.({ preventScroll: true });
+    setOpenPanel(null);
+  }, [openPanel]);
 
   const openPicker = useCallback((m, bubbleEl) => {
     if (!reactionsOn || !m.id) return;
@@ -1248,6 +1286,35 @@ export default function ChatThread({
     </div>
   );
 
+  // Sessions lives in the group info row for groups (title gets the header to
+  // itself) and stays in the header for DMs, which have no row.
+  const sessionsMenu = (
+    <SessionsMenu
+          sessions={sessions}
+          activeSessionId={activeSessionId}
+          joinError={joinError}
+          onClearJoinError={onClearJoinError}
+          onJoin={onJoinSession}
+          onLeave={onLeaveSession}
+          onEdit={onEditSession}
+          onDelete={onDeleteSession}
+          onOpenSessionCreator={onOpenSessionCreator}
+          user={user}
+          talkingUserId={talkingUserId}
+          onNavigateVerse={onNavigateVerse}
+          videoEnabled={videoEnabled}
+          videoTiles={videoTiles}
+          onToggleVideo={onToggleVideo}
+          bindVideoTile={bindVideoTile}
+          muted={muted}
+          onToggleMute={onToggleMute}
+          friends={friends}
+          ringCandidates={ringCandidates}
+          iconOnly={!inThread && isGroupChat}
+          onOpenChange={(o) => { if (o) setOpenPanel(null); }}
+        />
+  );
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden', position: 'relative' }}>
       {/* Header */}
@@ -1288,32 +1355,12 @@ export default function ChatThread({
             {contact?.name}
           </Text>
         )}
-        {!inThread && <SessionsMenu
-          sessions={sessions}
-          activeSessionId={activeSessionId}
-          joinError={joinError}
-          onClearJoinError={onClearJoinError}
-          onJoin={onJoinSession}
-          onLeave={onLeaveSession}
-          onEdit={onEditSession}
-          onDelete={onDeleteSession}
-          onOpenSessionCreator={onOpenSessionCreator}
-          user={user}
-          talkingUserId={talkingUserId}
-          onNavigateVerse={onNavigateVerse}
-          videoEnabled={videoEnabled}
-          videoTiles={videoTiles}
-          onToggleVideo={onToggleVideo}
-          bindVideoTile={bindVideoTile}
-          muted={muted}
-          onToggleMute={onToggleMute}
-          friends={friends}
-          ringCandidates={ringCandidates}
-        />}
+        {!inThread && !isGroupChat && sessionsMenu}
+        {!inThread && isGroupChat && <span className="group-header-balance" aria-hidden="true" />}
       </div>
 
-      {pinsOn && (
-        <div className="pins-row">
+      {pinsOn && !isGroupChat && (
+        <div className="pins-btn-row">
           <PinnedMessagesButton
             buttonRef={pinsBtnRef}
             count={(pins.list && pins.list.count) || 0}
@@ -1326,7 +1373,7 @@ export default function ChatThread({
         </div>
       )}
 
-      {pinsOn && showPins && (
+      {pinsOn && !isGroupChat && showPins && (
         <PinnedMessagesPanel
           anchorRef={pinsBtnRef}
           list={pins.list}
@@ -1348,14 +1395,10 @@ export default function ChatThread({
         </div>
       )}
 
-      {/* Task 20260929-announcement-push-widget: groups only, directly under the header. */}
-      {!inThread && ANNOUNCEMENTS_ENABLED && contact?.type === 'group' && user?.user_id && (
-        <GroupAnnouncementWidget
-          userId={user.user_id}
-          groupId={contact.id}
-          onAfterDismiss={() => messageInputRef.current?.focus?.()}
-        />
-      )}
+      {/* Task 20261023-group-info-row: groups only, directly under the header, in
+          the slot the announcement banner and floating pin button used to hold. */}
+      <GroupInfoRow chips={infoChips} trailing={!inThread && isGroupChat ? sessionsMenu : null} openId={openPanel} onToggle={toggleInfoPanel}
+        pinCount={(pins && pins.list && pins.list.count) || 0} chipRefs={chipRefs} />
 
       {/* Joined session stays pinned (always mounted) so call tiles/controls survive the Sessions menu closing. */}
       {!inThread && (() => {
@@ -1572,6 +1615,27 @@ export default function ChatThread({
         </Button>
       )}
       {undoToasts.length > 0 && <UndoToasts toasts={undoToasts} onUndo={handleUndo} onExpire={dismissToast} />}
+      {openPanel && infoChips.includes(openPanel) && (
+        <GroupInfoSubmenu
+          openId={openPanel}
+          onClose={closeInfoPanel}
+          userId={user?.user_id}
+          groupId={contact.id}
+          groupName={contact.name}
+          pins={pins}
+          pinsOn={pinsOn}
+          viewerId={user?.user_id}
+          onOpenThread={onOpenThread}
+          onJumpPin={jumpToPin}
+          onJumpMessage={(id) => jumpToId(id, 'Jumped to message')}
+          lightboxOpen={!!panelLightbox}
+          onOpenLightbox={(kind, url, e) => setPanelLightbox({
+            kind, url,
+            originX: e ? (e.clientX / window.innerWidth) * 100 : 50,
+            originY: e ? (e.clientY / window.innerHeight) * 100 : 50,
+          })}
+        />
+      )}
       </div>
 
       {pickerOpen && (
@@ -1674,6 +1738,7 @@ export default function ChatThread({
             'aria-activedescendant': pickerOpen && activeMember ? mentionOptionId(activeMember.user_id) : undefined,
           } : {})}
           placeholder="Message…"
+          onFocus={() => setOpenPanel(null)}
           className="chat-composer-input"
           style={{ flex: 1, borderRadius: 20, fontSize: '0.82rem' }}
         />

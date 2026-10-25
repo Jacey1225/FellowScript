@@ -16,6 +16,7 @@ final class GroupAnnouncementsViewModel: ObservableObject {
     let groupId: String
     let userId:  String
     private let service: GroupAnnouncementsService?
+    private let pollService: AnnouncementPollsService?
 
     @Published var items: [FSGroupAnnouncement] = []
     @Published var gate: FSAnnouncementGate?
@@ -33,6 +34,7 @@ final class GroupAnnouncementsViewModel: ObservableObject {
 
     init(service: DataServiceProtocol, groupId: String, userId: String) {
         self.service = service as? GroupAnnouncementsService
+        self.pollService = service as? AnnouncementPollsService
         self.groupId = groupId
         self.userId  = userId
     }
@@ -132,6 +134,15 @@ final class GroupAnnouncementsViewModel: ObservableObject {
         } catch {
             if isNotMember(error) { removedFromGroup = true }
             throw error
+        }
+    }
+
+    /// Poll voting for one announcement; on success the cached copy is replaced.
+    func pollActions(for item: FSGroupAnnouncement) -> AnnouncementPollActions? {
+        AnnouncementPollActions.make(service: pollService, userId: userId, groupId: groupId, item: item) { [weak self] updated in
+            guard let self else { return }
+            if let idx = self.items.firstIndex(where: { $0.id == updated.id }) { self.items[idx] = updated }
+            await self.persist()
         }
     }
 

@@ -32,8 +32,10 @@ struct GroupAnnouncementFormView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.fsCapabilities) private var capabilities
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @FocusState private var focusedField: Field?
-    private enum Field { case title, message }
+    @State private var step = 0
+    @State private var furthest = 0
+    @State private var showErrors = false
+    private let stepNames = ["Content", "Style", "Publish"]
 
     @State private var title: String
     @State private var text: String
@@ -58,7 +60,6 @@ struct GroupAnnouncementFormView: View {
     @State private var error: String?
     @State private var gateHit = false
     @State private var dirty = false
-    @State private var confirmDiscard = false
 
     init(vm: GroupAnnouncementsViewModel, editing: FSGroupAnnouncement?, onDone: @escaping (FSGroupAnnouncement) -> Void) {
         self.vm = vm
@@ -93,74 +94,35 @@ struct GroupAnnouncementFormView: View {
     private var paymentsOn: Bool { capabilities.isEnabled(AnnouncementExtrasFlag.payments) }
     private var rsvpOn: Bool { capabilities.isEnabled(AnnouncementExtrasFlag.rsvp) }
     private var locationOn: Bool { capabilities.isEnabled(AnnouncementExtrasFlag.location) }
-    private var extrasOn: Bool { linksOn || galleryOn || paymentsOn || rsvpOn || locationOn }
+    private var pollsOn: Bool { capabilities.isEnabled(AnnouncementExtrasFlag.polls) }
+    private var extrasOn: Bool { linksOn || galleryOn || paymentsOn || rsvpOn || locationOn || pollsOn }
     private var extrasError: String? { extrasOn ? extras.blockingError(links: linksOn, payments: paymentsOn, location: locationOn) : nil }
     private var submitLabel: String { isEditing ? "Save" : (schedule ? "Schedule" : "Post") }
 
+    private var maxReachable: Int { isEditing ? stepNames.count - 1 : furthest }
+    private var contentValid: Bool { !trimmedTitle.isEmpty && !trimmedText.isEmpty }
+
     var body: some View {
-        NavigationStack {
-            ZStack {
-                    ScrollView {
-                    VStack(alignment: .leading, spacing: 20) {
-                        bannerField
-                        if themesOn { themeStrip }
-                        titleField
-                        titleColorField
-                        messageField
-                        if canReschedule { publishField }
-                        // Only authors/editors ever see this sheet; a repeat can be set
-                        // or cleared even after publish (publish time stays locked).
-                        AnnouncementRepeatSection(draft: $repeatDraft, base: repeatBase, saving: saving) { dirty = true; error = nil }
-                        if let repeatError {
-                            Text(repeatError).font(.inter(Theme.fontXS)).foregroundColor(Theme.error)
-                        }
-                        if extrasOn {
-                            AnnouncementExtrasSection(
-                                extras: $extras, linksOn: linksOn, galleryOn: galleryOn, paymentsOn: paymentsOn, rsvpOn: rsvpOn, locationOn: locationOn,
-                                saving: saving, busy: $extrasBusy,
-                                upload: { data in try await vm.uploadBanner(data: data, contentType: "image/jpeg") },
-                                onChange: { dirty = true })
-                        }
-                        if !isEditing, !gateHit, let g = vm.gate, g.unlimited != true {
-                            Text("Free plan: \(g.limit ?? 1) announcement per week. Used \(g.used ?? 0) of \(g.limit ?? 1).")
-                                .font(.inter(Theme.fontXS)).foregroundColor(Theme.parchment.opacity(0.6))
-                        }
-                        if gateHit { AnnouncementLimitCard(gate: vm.gate, onDismiss: nil).padding(.horizontal, -Theme.spacingMD) }
-                        if let error {
-                            Text(error).font(.inter(Theme.fontXS)).foregroundColor(Theme.error)
-                                .accessibilityLabel(error)
-                        }
-                    }
-                    .padding(Theme.spacingMD)
+        FSFormScaffold(
+            title: isEditing ? "Edit announcement" : "New announcement",
+            dirty: dirty,
+            rail: AnyView(FSStepperRail(steps: stepNames, current: step, maxReachable: maxReachable) { goTo($0) }),
+            onClose: { dismiss() },
+            banner: {
+                if let error {
+                    FSRetryCard(message: error, onRetry: { Task { await submit() } }, onDismiss: { self.error = nil })
                 }
-                .scrollDismissesKeyboard(.interactively)
-            }
-            .warmBloomBackground()
-            .navigationTitle(isEditing ? "Edit announcement" : "New announcement")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbarBackground(.hidden, for: .navigationBar)
-            .toolbarColorScheme(.dark, for: .navigationBar)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { if dirty { confirmDiscard = true } else { dismiss() } }
-                        .foregroundColor(Theme.gold)
+            },
+            content: {
+                switch step {
+                case 0: contentStep
+                case 1: styleStep
+                default: publishStep
                 }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button { Task { await submit() } } label: {
-                        if saving { ProgressView().tint(Theme.gold) } else { Text(bannerBusy || extrasBusy ? "Uploading…" : submitLabel).fontWeight(.bold) }
-                    }
-                    .foregroundColor(Theme.gold)
-                    .disabled(!canSubmit)
-                }
-            }
-            .confirmationDialog("Discard this announcement?", isPresented: $confirmDiscard, titleVisibility: .visible) {
-                Button("Discard", role: .destructive) { dismiss() }
-                Button("Keep editing", role: .cancel) {}
-            }
-        }
-        .preferredColorScheme(.dark)
+            },
+            bar: { actionBar }
+        )
         .presentationDetents([.large])
-        .interactiveDismissDisabled(dirty)
         .onChange(of: pickerItem) { _, item in handlePicked(item) }
         .sheet(isPresented: $showStock, onDismiss: {
             // Open the crop step only after the sheet is gone (two covers can't overlap).
@@ -184,10 +146,126 @@ struct GroupAnnouncementFormView: View {
         }
     }
 
+    // ── Steps (stepper: CONTENT, STYLE, PUBLISH) ─────────────────────────────
+    private func goTo(_ i: Int) {
+        guard i <= maxReachable else { return }
+        step = i
+    }
+
+    private func advance() {
+        if step == 0 && !contentValid { showErrors = true; return }
+        showErrors = false
+        let next = min(step + 1, stepNames.count - 1)
+        furthest = max(furthest, next)
+        step = next
+    }
+
+    @ViewBuilder private var contentStep: some View {
+        FSFormCard(title: "Message") {
+            FSField(label: "Title", required: true, text: $title,
+                    helper: "Shown at the top of the announcement.",
+                    state: showErrors && trimmedTitle.isEmpty ? .error("Add a title.") : (saving ? .disabled(nil) : .normal),
+                    maxLength: AnnouncementLimits.titleMax, accessibilityName: "Title")
+                .onChange(of: title) { _, _ in dirty = true }
+            FSField(label: "Message", required: true, text: $text,
+                    state: showErrors && trimmedText.isEmpty ? .error("Write a message for the group.") : (saving ? .disabled(nil) : .normal),
+                    maxLength: AnnouncementLimits.descriptionMax, accessibilityName: "Message",
+                    multiline: true, minLines: 5)
+                .onChange(of: text) { _, _ in dirty = true }
+        }
+        bannerField
+    }
+
+    @ViewBuilder private var styleStep: some View {
+        FSFormCard(title: "Look") {
+            if themesOn { themeStrip }
+            titleColorField
+            if fontsOn {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Title font").font(.fsLabel).foregroundColor(Theme.textPrimary)
+                    AnnouncementTitleFontRow(key: $titleFont, sample: trimmedTitle) { dirty = true }
+                        .disabled(saving)
+                }
+            }
+        }
+        if extrasOn {
+            AnnouncementExtrasSection(
+                extras: $extras, linksOn: linksOn, galleryOn: galleryOn, paymentsOn: paymentsOn, rsvpOn: rsvpOn, locationOn: locationOn, pollsOn: pollsOn,
+                saving: saving, busy: $extrasBusy,
+                upload: { data in try await vm.uploadBanner(data: data, contentType: "image/jpeg") },
+                onChange: { dirty = true })
+                .fsCard()
+        }
+    }
+
+    @ViewBuilder private var publishStep: some View {
+        if canReschedule {
+            FSFormCard(title: "When") { publishField }
+        } else {
+            FSInfoCard(text: "Published announcements cannot change their publish time.")
+        }
+        // Only authors/editors ever see this sheet; a repeat can be set
+        // or cleared even after publish (publish time stays locked).
+        FSFormCard(title: "Repeat") {
+            AnnouncementRepeatSection(draft: $repeatDraft, base: repeatBase, saving: saving) { dirty = true; error = nil }
+            if let repeatError {
+                Text(repeatError).font(.fsHelper).foregroundColor(Theme.error)
+            }
+        }
+        FSFormCard(title: "Review") {
+            reviewRow("Title", trimmedTitle.isEmpty ? "None" : trimmedTitle, jumpTo: 0)
+            reviewRow("Message", trimmedText.isEmpty ? "None" : trimmedText, jumpTo: 0, lines: 2)
+            reviewRow("Banner", hasBanner ? "Added" : "None", jumpTo: 0)
+        }
+        if !isEditing, !gateHit, let g = vm.gate, g.unlimited != true {
+            FSInfoCard(text: "Free plan: \(g.limit ?? 1) announcement per week. Used \(g.used ?? 0) of \(g.limit ?? 1).")
+        }
+        if gateHit { AnnouncementLimitCard(gate: vm.gate, onDismiss: nil) }
+    }
+
+    private func reviewRow(_ name: String, _ value: String, jumpTo: Int, lines: Int = 1) -> some View {
+        HStack(alignment: .top, spacing: 12) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(name).font(.fsLabel).foregroundColor(Theme.textPrimary)
+                Text(value).font(.system(size: 14)).foregroundColor(Theme.textSecondary).lineLimit(lines)
+            }
+            Spacer(minLength: 8)
+            Button("Edit") { goTo(jumpTo) }
+                .font(.system(size: 14, weight: .semibold)).foregroundColor(Theme.gold).frame(minHeight: 44)
+        }
+        .accessibilityElement(children: .combine)
+    }
+
+    @ViewBuilder private var actionBar: some View {
+        let last = step == stepNames.count - 1
+        if isEditing && !last {
+            FSPinnedActionBar(secondaryTitle: "Next", onSecondary: { advance() },
+                              primaryTitle: submitLabel, primaryDimmed: !canSubmit, saving: saving,
+                              onPrimary: { Task { await tapSubmit() } })
+        } else if last {
+            FSPinnedActionBar(secondaryTitle: "Back", onSecondary: { step -= 1 },
+                              primaryTitle: bannerBusy || extrasBusy ? "Uploading…" : submitLabel,
+                              primaryDimmed: !canSubmit, saving: saving,
+                              onPrimary: { Task { await tapSubmit() } })
+        } else if step == 0 {
+            FSPinnedActionBar(primaryTitle: "Next", primaryTrailingIcon: "arrow.right",
+                              primaryDimmed: !contentValid, onPrimary: { advance() })
+        } else {
+            FSPinnedActionBar(secondaryTitle: "Back", onSecondary: { step -= 1 },
+                              primaryTitle: "Next", primaryTrailingIcon: "arrow.right", onPrimary: { advance() })
+        }
+    }
+
+    /// A dimmed primary still reacts (spec D8): jump to the first invalid step and show the errors.
+    private func tapSubmit() async {
+        if !contentValid { showErrors = true; step = 0; return }
+        await submit()
+    }
+
     // ── Fields ───────────────────────────────────────────────────────────────
     private func label(_ text: String) -> some View {
         Text(text)
-            .font(.inter(Theme.fontXXS, weight: .semibold)).tracking(3).textCase(.uppercase)
+            .font(.system(size: Theme.fontXXS, weight: .semibold)).tracking(3).textCase(.uppercase)
             .foregroundColor(Theme.gold.opacity(0.7))
             .accessibilityAddTraits(.isHeader)
     }
@@ -203,8 +281,7 @@ struct GroupAnnouncementFormView: View {
     }
 
     private var bannerField: some View {
-        VStack(alignment: .leading, spacing: Theme.spacingXS) {
-            label("Banner photo (optional)")
+        FSFormCard(title: "Banner photo (optional)") {
             AnnouncementBannerTile(
                 item: previewItem, previewImage: bannerImage, hasBanner: hasBanner, busy: bannerBusy,
                 showStock: !AnnouncementStockCatalog.shared.isEmpty,
@@ -212,20 +289,14 @@ struct GroupAnnouncementFormView: View {
                 onStock: { showStock = true },
                 onRemove: { banner = .removed; bannerImage = nil; dirty = true }
             )
-            if fontsOn {
-                AnnouncementTitleFontRow(key: $titleFont, sample: trimmedTitle) { dirty = true }
-                    .disabled(saving)
-            }
             if hasBanner {
                 Button { Task { await adjustCrop() } } label: {
-                    Text("Adjust crop").font(.inter(Theme.fontSM)).foregroundColor(Theme.gold).frame(minHeight: 44)
+                    Text("Adjust crop").font(.system(size: 14, weight: .semibold)).foregroundColor(Theme.gold).frame(minHeight: 44)
                 }
                 .disabled(bannerBusy)
             }
-            if bannerError != nil || hasBanner {
-                Text(bannerError ?? AnnouncementLimits.bannerHelper)
-                    .font(.inter(Theme.fontXS)).foregroundColor(bannerError == nil ? Theme.parchment.opacity(0.6) : Theme.error)
-            }
+            Text(bannerError ?? AnnouncementLimits.bannerHelper)
+                .font(.fsHelper).foregroundColor(bannerError == nil ? Theme.textSecondary : Theme.error)
         }
     }
 
@@ -240,7 +311,7 @@ struct GroupAnnouncementFormView: View {
                     .foregroundColor(AnnouncementTitleColor.surfaceColor(titleColor, fallback: theme.readableText, surfaceHex: theme.surfaceHex))
                     .lineLimit(1)
                 Text(trimmedText.isEmpty ? "Your message appears here." : trimmedText)
-                    .font(.inter(Theme.fontXS)).foregroundColor(theme.readableText.opacity(0.85)).lineLimit(1)
+                    .font(.system(size: Theme.fontXS)).foregroundColor(theme.readableText.opacity(0.85)).lineLimit(1)
             }
             .frame(maxWidth: .infinity, alignment: .topLeading)
             .padding(.horizontal, Theme.spacingMD).padding(.top, Theme.spacingSM).padding(.bottom, 52)
@@ -264,29 +335,6 @@ struct GroupAnnouncementFormView: View {
         .animation(reduceMotion ? nil : .easeInOut(duration: 0.25), value: bgTheme)
     }
 
-    private var titleField: some View {
-        VStack(alignment: .leading, spacing: Theme.spacingXS) {
-            label("Title")
-            TextField("Title", text: $title, prompt: Text("Title").foregroundColor(Theme.parchment.opacity(0.65)))
-                .font(.inter(Theme.fontSM)).foregroundColor(Theme.parchment)
-                .padding(.horizontal, Theme.spacingSM).frame(minHeight: 44)
-                .focused($focusedField, equals: .title)
-                .announcementTranslucentField(focused: focusedField == .title)
-                .disabled(saving)
-                .onChange(of: title) { _, v in
-                    dirty = true
-                    if v.count > AnnouncementLimits.titleMax { title = String(v.prefix(AnnouncementLimits.titleMax)) }
-                }
-                .accessibilityLabel("Title")
-            if title.count >= AnnouncementLimits.titleMax - 20 {
-                Text("\(title.count)/\(AnnouncementLimits.titleMax)").font(.inter(Theme.fontXXS)).foregroundColor(Theme.textSecondary)
-                    .frame(maxWidth: .infinity, alignment: .trailing)
-            }
-            if trimmedTitle.isEmpty {
-                Text("Give it a title.").font(.inter(Theme.fontXS)).foregroundColor(Theme.textSecondary)
-            }
-        }
-    }
 
     private var titleColorField: some View {
         VStack(alignment: .leading, spacing: Theme.spacingXS) {
@@ -308,70 +356,24 @@ struct GroupAnnouncementFormView: View {
 
     private var themeValue: String? { themesOn ? bgTheme : editing?.bg_theme }
 
-    private var messageField: some View {
-        VStack(alignment: .leading, spacing: Theme.spacingXS) {
-            label("Message")
-            TextEditor(text: $text)
-                .font(.inter(Theme.fontSM)).foregroundColor(Theme.parchment)
-                .scrollContentBackground(.hidden)
-                .padding(Theme.spacingXS)
-                .frame(minHeight: 120)
-                .focused($focusedField, equals: .message)
-                .announcementTranslucentField(focused: focusedField == .message)
-                .disabled(saving)
-                .onChange(of: text) { _, v in
-                    dirty = true
-                    if v.count > AnnouncementLimits.descriptionMax { text = String(v.prefix(AnnouncementLimits.descriptionMax)) }
-                }
-                .accessibilityLabel("Message")
-            if text.count >= AnnouncementLimits.descriptionMax - 200 {
-                Text("\(text.count)/\(AnnouncementLimits.descriptionMax)").font(.inter(Theme.fontXXS)).foregroundColor(Theme.textSecondary)
-                    .frame(maxWidth: .infinity, alignment: .trailing)
-            }
-            if trimmedText.isEmpty {
-                Text("Write a message for the group.").font(.inter(Theme.fontXS)).foregroundColor(Theme.textSecondary)
-            }
-        }
-    }
 
     private var publishField: some View {
-        VStack(alignment: .leading, spacing: Theme.spacingXS) {
-            label("Publish")
-            HStack(spacing: Theme.spacingSM) {
-                publishChip("Now", selected: !schedule, value: false)
-                publishChip("Schedule", selected: schedule, value: true)
-            }
-            .accessibilityElement(children: .contain)
-            .accessibilityLabel("Publish")
-            .disabled(saving)
+        VStack(alignment: .leading, spacing: Theme.spacingSM) {
+            FSSegmented(options: [(id: false, title: "Now"), (id: true, title: "Schedule")],
+                        selection: Binding(get: { schedule }, set: { schedule = $0; dirty = true }))
+                .accessibilityLabel("Publish")
+                .disabled(saving)
             if schedule {
                 DatePicker("Publish date and time", selection: Binding(get: { when }, set: { when = $0; dirty = true }),
                            in: Date()...Date().addingTimeInterval(TimeInterval(AnnouncementLimits.horizonDays * 86_400)))
                     .datePickerStyle(.compact)
-                    .font(.inter(Theme.fontSM))
+                    .font(.system(size: Theme.fontSM))
                     .tint(Theme.gold)
                     .disabled(saving)
-                Text("Shown in your time zone, \(TimeZone.current.identifier).")
-                    .font(.inter(Theme.fontXS)).foregroundColor(Theme.parchment.opacity(0.6))
+                Text("Posts automatically at this time. Shown in your time zone, \(TimeZone.current.identifier).")
+                    .font(.fsHelper).foregroundColor(Theme.textSecondary)
             }
         }
-    }
-
-    private func publishChip(_ title: String, selected: Bool, value: Bool) -> some View {
-        Button { schedule = value; dirty = true } label: {
-            Text(title)
-                .font(.inter(Theme.fontXS, weight: .semibold))
-                .foregroundColor(selected ? Theme.gold : Theme.parchment.opacity(0.8))
-                .padding(.horizontal, 14)
-                .frame(minHeight: 44)
-                .background(selected ? Theme.gold.opacity(0.15) : Color.clear)
-                .overlay(Capsule().stroke(selected ? Theme.borderGold : Theme.borderGoldDim, lineWidth: 1))
-                .clipShape(Capsule())
-                .contentShape(Capsule())
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(title)
-        .accessibilityAddTraits(selected ? .isSelected : [])
     }
 
     // ── Actions ──────────────────────────────────────────────────────────────
@@ -463,7 +465,7 @@ struct GroupAnnouncementFormView: View {
                                       chosen: AnnouncementBgTheme.resolve(bgTheme).storedKey)
         }
         if extrasOn {
-            extras.apply(to: &draft, original: editing, links: linksOn, gallery: galleryOn, payments: paymentsOn, rsvp: rsvpOn, location: locationOn)
+            extras.apply(to: &draft, original: editing, links: linksOn, gallery: galleryOn, payments: paymentsOn, rsvp: rsvpOn, location: locationOn, polls: pollsOn)
         }
         draft.repeatChange = repeatDraft.change(from: AnnouncementRepeatDraft(from: editing))
         if schedule { draft.publishAt = when }

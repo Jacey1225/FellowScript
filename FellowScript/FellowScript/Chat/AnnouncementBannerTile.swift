@@ -91,7 +91,7 @@ struct AnnouncementBannerTile: View {
 
     private func pillLabel(_ text: String, systemImage: String) -> some View {
         Label(text, systemImage: systemImage)
-            .font(.inter(Theme.fontSM, weight: .semibold))
+            .font(.system(size: Theme.fontSM, weight: .semibold))
             .foregroundColor(Theme.parchment)
             .lineLimit(1)
             .padding(.horizontal, 14)
