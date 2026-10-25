@@ -109,61 +109,34 @@ final class StagedAttachment: ObservableObject, Identifiable {
     }
 }
 
-// ── Attach picker row (task 20260904-attach-picker-layout-polish, follow-up
-// to design gate §1) ─────────────────────────────────────────────────────────
-// Renders inline (not as a `.sheet`) directly above the composer's text
-// field, in the same "transient element between thread and composer" slot
-// the staged-attachment chip already uses -- a `.sheet`/`.presentationDetents`
-// bottom modal can't be re-anchored mid-screen, so this replaces it with a
-// plain conditional row in ChatThreadView's composer VStack. Each option is
-// now its own gold `PillButton` (icon + title) laid out in a single
-// horizontal row instead of a stacked column of plain list rows.
+// ── Attach picker row (task 20260904-attach-picker-layout-polish) ────────────
+// Renders inline (not as a `.sheet`) directly above the composer's text field in the
+// composer's accessory slot (ComposerAccessorySlot). Task 20261024-chat-chips-bottom: the
+// three options now use the group info chips' capsule look (ChipButtonStyle) instead of
+// the gold PillButton, in the same horizontal ScrollView the chip row uses so the two
+// line up when they swap. The iPad dark group card is gone (same chip look everywhere).
 struct AttachPickerRow: View {
-    /// iPad workspace: pills sit in a dark rounded capsule group (screenshot 8).
-    var grouped: Bool = false
+    /// Phone width: slightly smaller buttons, same as the chip row.
+    var compact: Bool = false
     var onPickPhotoVideo: () -> Void
     var onPickFile:       () -> Void
     var onPickGif:        () -> Void
 
     var body: some View {
-        if grouped {
-            HStack(spacing: Theme.spacingSM) {
-                pill(title: "Photo & Video", systemIcon: "photo.on.rectangle", action: onPickPhotoVideo)
-                pill(title: "File", systemIcon: "doc", action: onPickFile)
-                pill(title: "GIF", systemIcon: "face.smiling", action: onPickGif)
-            }
-            .padding(Theme.spacingSM)
-            .background(RoundedRectangle(cornerRadius: WorkspaceLayout.attachGroupRadius, style: .continuous)
-                .fill(Theme.cardBg.opacity(0.95)))
-            .overlay(RoundedRectangle(cornerRadius: WorkspaceLayout.attachGroupRadius, style: .continuous)
-                .stroke(Theme.borderGoldFaint, lineWidth: 1))
-            .shadow(color: .black.opacity(0.35), radius: 12, x: 0, y: 6)
-            .padding(.horizontal, Theme.spacingMD)
-            .padding(.bottom, Theme.spacingSM)
-            .frame(maxWidth: .infinity, alignment: .leading)
-        } else {
         ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: Theme.spacingSM) {
-                pill(title: "Photo & Video", systemIcon: "photo.on.rectangle", action: onPickPhotoVideo)
-                pill(title: "File", systemIcon: "doc", action: onPickFile)
-                pill(title: "GIF", systemIcon: "face.smiling", action: onPickGif)
+            HStack(spacing: 8) {
+                option(title: "Photo & Video", systemIcon: "photo.on.rectangle", action: onPickPhotoVideo)
+                option(title: "File", systemIcon: "doc", action: onPickFile)
+                option(title: "GIF", systemIcon: "face.smiling", action: onPickGif)
             }
             .padding(.horizontal, Theme.spacingMD)
         }
-        .padding(.top, Theme.spacingXS)
-        .padding(.bottom, Theme.spacingSM)
-        }
+        .scrollClipDisabled()
     }
 
-    // 44pt minimum tap target (Q14) over PillButton's own visually-shorter
-    // (~38pt) rendered height -- same enlarged-hit-area technique already
-    // used by the composer's attachButton, applied here since PillButton
-    // itself (shared with the chat header's "Schedule" pill and
-    // SessionCreatorSheet) isn't modified.
-    private func pill(title: String, systemIcon: String, action: @escaping () -> Void) -> some View {
-        PillButton(title: title, systemIcon: systemIcon, action: action)
-            .frame(minHeight: 44)
-            .contentShape(Rectangle())
+    private func option(title: String, systemIcon: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) { ChipIconLabel(title: title, systemIcon: systemIcon, compact: compact) }
+            .buttonStyle(ChipButtonStyle(compact: compact, hasIcon: true))
             .accessibilityLabel(title)
     }
 }

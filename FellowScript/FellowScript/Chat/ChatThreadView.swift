@@ -1203,25 +1203,6 @@ struct ChatThreadView: View {
     @State private var mentionMembers: [FSMentionCandidate]? = nil
     @State private var highlightedMessageId: String? = nil
 
-    // Top-edge alpha fade under the group chip row (20261024-chat-chips-edge-blur). The
-    // message scroll area is alpha-masked so bubbles reach zero alpha exactly at the clip
-    // line (no visible cut) and ramp to opaque over 36pt. The lower part of the mask is
-    // an opaque rectangle that ignores the safe area so nothing else is clipped. Masks
-    // never affect hit testing.
-    private var chipRowEdgeAlphaMask: some View {
-        VStack(spacing: 0) {
-            LinearGradient(stops: [
-                .init(color: .black.opacity(0.0), location: 0),
-                .init(color: .black.opacity(0.12), location: 0.3),
-                .init(color: .black.opacity(0.5), location: 0.6),
-                .init(color: .black, location: 1),
-            ], startPoint: .top, endPoint: .bottom)
-            .frame(height: 36)
-            Rectangle().fill(Color.black)
-        }
-        .ignoresSafeArea()
-    }
-
     // ── Sessions submenu (task 20260920-chat-sessions-submenu) ────────────────
     // Replaces the old always-visible inline SessionBanner + header
     // "Schedule" pill pairing with one entry point: the renamed "Sessions"
@@ -1529,13 +1510,6 @@ struct ChatThreadView: View {
                     }
                 }
 
-                // Task 20261023-group-info-row: groups only, directly under the header
-                // (replaces the announcement banner and the floating pin button).
-                if GroupInfoCategory.rowShows(isGroup: contact.type == .group, isThreadOpen: vm.isThreadOpen) {
-                    GroupInfoChipRow(categories: groupInfoCategories, selected: $infoCategory, pinCount: vm.pinCount,
-                                     compact: !embedded, badges: infoBadges)
-                }
-
                 // ── Reconnecting banner (dropped-socket lifecycle state) ───
                 // Same vm.isConnected-driven logic as before — restyled into
                 // a pill using the Ember Glass elevation language (§1) rather
@@ -1637,9 +1611,13 @@ struct ChatThreadView: View {
                         // Reader took over (or came back): older-page gate may have opened.
                         if pin.allowsOlderPageLoad, olderHeaderVisible { requestOlderPage() }
                     }
+                    // 20261024-chat-chips-bottom: the bottom edge fade wraps the scroll view only
+                    // (not the jump-to-latest button below, nor the panel host / toasts).
+                    .bottomEdgeFade(GroupInfoCategory.rowShows(isGroup: contact.type == .group, isThreadOpen: vm.isThreadOpen))
                     .overlay(alignment: .bottomTrailing) {
                         if isAwayFromBottom && readyForInitialScroll && !messageGroups.isEmpty {
                             jumpToLatestButton(proxy: proxy)
+                                .padding(.bottom, Theme.spacingSM)
                         }
                     }
                     .onChange(of: vm.messages.count) { _ in
@@ -1744,16 +1722,6 @@ struct ChatThreadView: View {
                         settleBottomPin(proxy: proxy)
                     }
                 }
-                // Task 20261024-chat-chips-edge-blur: bubbles fade to zero alpha at the
-                // clip line under the chip row (alpha mask on the scroll area, chip row
-                // only) instead of ending in a hard cut.
-                .mask {
-                    if GroupInfoCategory.rowShows(isGroup: contact.type == .group, isThreadOpen: vm.isThreadOpen) {
-                        chipRowEdgeAlphaMask
-                    } else {
-                        Rectangle().fill(Color.black).ignoresSafeArea()
-                    }
-                }
                 .overlay { groupInfoPanelHost }
             }
             // Shared keyboard-dismiss convention (task
@@ -1788,6 +1756,7 @@ struct ChatThreadView: View {
             // way. See AgentChatView.swift for the identical fix applied to
             // the same latent pattern there.
             .overlay(alignment: .bottom) { toastStack }
+            .collapsesAttachOnTap(showAttachSheet) { setAttachMode(false) }
             .dismissesKeyboardOnScrollAndTap()
             .safeAreaInset(edge: .bottom, spacing: 0) {
                 composer
@@ -2656,7 +2625,7 @@ struct ChatThreadView: View {
                     .padding(.horizontal, Theme.spacingMD)
                 Spacer()
             }
-            .padding(.top, contact.type == .group ? 132 : 76) // clears the header (+ chip row in groups) so the card reads as anchored under the "Sessions" pill
+            .padding(.top, 76) // clears the header so the card reads as anchored under the DM "Sessions" pill (groups open Sessions from the bottom chip row panel)
             .frame(maxWidth: .infinity, alignment: .trailing)
         }
         .transition(
@@ -2833,22 +2802,23 @@ struct ChatThreadView: View {
                     .padding(.horizontal, Theme.spacingMD)
                     .padding(.top, Theme.spacingXS)
             }
-            // Task 20260904-attach-picker-layout-polish: renders directly
-            // above the text field in a single horizontal row instead of a
-            // from-the-bottom `.sheet` — see AttachPickerRow's doc comment.
-            if showAttachSheet {
-                AttachPickerRow(
-                    grouped: embedded,
-                    onPickPhotoVideo: { showAttachSheet = false; showPhotoVideoPicker = true },
-                    onPickFile:       { showAttachSheet = false; showDocumentPicker = true },
-                    onPickGif:        { showAttachSheet = false; showGifSheet = true }
-                )
-            }
             if let picker = mentionPicker {
                 MentionPickerView(rows: picker.rows, onPick: { pickMention($0, trigger: picker.trigger) })
             }
             if let target = replyTarget, repliesEnabled {
                 replyBar(target)
+            }
+            // Task 20261024-chat-chips-bottom: chips (groups) or the attach buttons, directly
+            // above the text row; inside the safeAreaInset so it rides the keyboard.
+            ComposerAccessorySlot(
+                showsChips: GroupInfoCategory.rowShows(isGroup: contact.type == .group, isThreadOpen: vm.isThreadOpen),
+                attachMode: showAttachSheet, compact: !embedded,
+                onPickPhotoVideo: { setAttachMode(false); DispatchQueue.main.async { showPhotoVideoPicker = true } },
+                onPickFile:       { setAttachMode(false); DispatchQueue.main.async { showDocumentPicker = true } },
+                onPickGif:        { setAttachMode(false); DispatchQueue.main.async { showGifSheet = true } }
+            ) {
+                GroupInfoChipRow(categories: groupInfoCategories, selected: $infoCategory, pinCount: vm.pinCount,
+                                 compact: !embedded, badges: infoBadges)
             }
             HStack(spacing: 10) {
                 attachButton
@@ -2891,13 +2861,17 @@ struct ChatThreadView: View {
                 Rectangle().fill(Theme.bgPage.opacity(0.28))
             }
             .mask(
-                LinearGradient(stops: [
-                    .init(color: .clear, location: 0),
-                    .init(color: .black.opacity(0.85), location: 0.38),
-                    .init(color: .black, location: 0.6),
-                ], startPoint: .top, endPoint: .bottom)
+                VStack(spacing: 0) {
+                    LinearGradient(stops: [
+                        .init(color: .clear, location: 0),
+                        .init(color: .black.opacity(0.35), location: 0.45),
+                        .init(color: .black, location: 1),
+                    ], startPoint: .top, endPoint: .bottom)
+                    .frame(height: 40)
+                    Rectangle().fill(Color.black)
+                }
             )
-            .padding(.top, -28)
+            .padding(.top, -40)
             .ignoresSafeArea(edges: .bottom)
             .allowsHitTesting(false)
         }
@@ -2928,6 +2902,9 @@ struct ChatThreadView: View {
         .onChange(of: vm.activeThread?.id) { _, newId in if newId != nil { replyTarget = nil } }
         .modifier(MentionComposerSupport(text: $text, draft: $mentionDraft, lastText: $mentionLastText,
                                          loadKey: mentionLoadKey, load: loadMentionMembers))
+        .modifier(ComposerAttachCoordination(attachMode: $showAttachSheet, composerFocused: $composerFocused,
+                                             category: infoCategory, isThreadOpen: vm.isThreadOpen,
+                                             collapse: { setAttachMode(false) }))
     }
 
     // ── @mentions (task 20261017-chat-mentions) ──────────────────────────────
@@ -3010,12 +2987,13 @@ struct ChatThreadView: View {
     // to-retrofit-here undersized precedent; the new attach control doesn't
     // inherit it.
     private var attachButton: some View {
-        Button(action: { showAttachSheet.toggle() }) {
-            Image(systemName: "plus")
+        Button(action: { setAttachMode(!showAttachSheet) }) {
+            Image(systemName: reduceMotion && showAttachSheet ? "xmark" : "plus")
                 .font(.system(size: 36 * 0.4, weight: .semibold))
                 .foregroundColor(Theme.gold)
+                .rotationEffect(.degrees(showAttachSheet && !reduceMotion ? 45 : 0))
                 .frame(width: 36, height: 36)
-                .background(Color.white.opacity(0.05))
+                .background(showAttachSheet ? Theme.gold.opacity(0.16) : Color.white.opacity(0.05))
                 .overlay(Circle().stroke(Theme.borderGoldDim, lineWidth: 1))
                 .clipShape(Circle())
                 .topEdgeHighlight(Circle())
@@ -3024,6 +3002,19 @@ struct ChatThreadView: View {
         .frame(width: 44, height: 44)
         .contentShape(Circle())
         .accessibilityLabel("Attach a photo, video, file, or GIF")
+        .accessibilityValue(showAttachSheet ? "Open" : "")
+    }
+
+    /// Task 20261024-chat-chips-bottom: the one place attach mode changes. Opening closes any
+    /// chip panel and the Sessions card in the same transaction (soft spring, cross-fade under
+    /// Reduce Motion).
+    private func setAttachMode(_ on: Bool) {
+        guard on != showAttachSheet else { return }
+        withMotionAwareAnimation(ComposerAccessoryMotion.swap, reduceMotion: reduceMotion) {
+            if on { infoCategory = nil; showSessionsMenu = false }
+            showAttachSheet = on
+        }
+        UIAccessibility.post(notification: .layoutChanged, argument: nil)
     }
 
     // Matches "send is otherwise disabled only when there is neither text nor
@@ -3143,6 +3134,7 @@ struct ChatThreadView: View {
         stagedAttachment = nil
         stagedUploadState = nil
         attachmentErrorMsg = nil
+        setAttachMode(false)
     }
 
     private func addMembers(_ selected: [FSContact]) {
