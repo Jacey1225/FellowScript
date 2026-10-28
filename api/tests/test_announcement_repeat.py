@@ -484,7 +484,14 @@ def test_validation(w):
     check("stored interval/tz/until + armed next in the future",
           s["interval"] == "weekly" and s["tz"] == "America/New_York" and s["until"] is not None
           and s["next"] is not None and s["next"] > now(), str(s))
-    check("weekly next occurrence within 7 days of now", s["next"] - now() <= timedelta(days=7, minutes=1))
+    # Weekly recurrence is wall-clock in repeat_tz (rules.occurrence), so across a
+    # DST change the real elapsed time is 7 days +/- 1h. Compare the New York
+    # wall-clock gap (must be exactly one week from the anchor), not elapsed UTC.
+    ny_tz = ZoneInfo("America/New_York")
+    wall_gap = (s["next"].astimezone(ny_tz).replace(tzinfo=None)
+                - now().astimezone(ny_tz).replace(tzinfo=None))
+    check("weekly next occurrence within 7 days of now (wall-clock in repeat_tz)",
+          wall_gap <= timedelta(days=7, minutes=1), str(wall_gap))
     check("repeat_started_at stamped", s["started"] is not None)
     for label, body in cases.items():
         if label in ("until without interval", "tz without interval"):
