@@ -551,6 +551,20 @@ final class AppState: ObservableObject {
     /// than doing nothing on tap.
     func joinRingedCall(devotionId: String, groupId: String) {
         guard let uid = currentUser?.user_id, !devotionId.isEmpty, !groupId.isEmpty else { return }
+        // Task 20261028-dm-direct-call: friend DMs have no session list any
+        // more (DM calls are ad hoc rows the list endpoint never returns), and
+        // the join path needs only the session id. Join with a minimal session
+        // and land on the DM thread; a stale ring for an old scheduled DM
+        // session fails the join (410) and shows the normal join error, never
+        // a crash.
+        if groupId.contains("|") {
+            var session = FSSession()
+            session.id = devotionId
+            session.group_id = groupId
+            CallController.shared.start(session: session, service: service, userId: uid)
+            openSession(groupId: groupId)
+            return
+        }
         Task { @MainActor in
             let sessions = (try? await service.fetchSessionsForContact(contactId: groupId)) ?? []
             if let session = sessions.first(where: { $0.id == devotionId }) {

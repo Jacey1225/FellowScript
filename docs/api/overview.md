@@ -391,6 +391,35 @@ Session"/"Session Starting" pushes above and route its tap-through
 straight into the live join flow instead of just the session detail
 screen.
 
+#### Ring lifecycle (task `20261028-dm-direct-call`)
+
+Every accepted ring (DM calls and group sessions alike, same route) also
+writes a `ring_states` row per `(session, target)` with `status`
+(`ringing`, `answered`, `declined`, `canceled`, `timed_out`) and
+`expires_at = now + RING_TIMEOUT_SECONDS` (45s in repo config; the server
+owns expiry, the client timer is only a fallback). The `/ring` response
+shape is unchanged. Rings only target the user's most recently registered
+VoIP device (one token per user).
+
+- `POST /devotions/ring/respond` — body `{ devotion_id, user_id,
+  target_id, outcome }`, `outcome` one of `answered`/`declined` (only the
+  ringed target) or `canceled` (only the ring's caller). Atomic
+  compare-and-set on `ringing`; a ring that already ended returns its
+  current status with `changed: false`. Caller hang-up sends a VoIP push
+  `{ "action": "ring_cancel", devotion_id, caller_id, reason }` so the
+  target's CallKit UI ends. 404 when the ring is disabled or no ring
+  exists, 403 for a non-party.
+- `GET /devotions/ring/status?devotion_id=&user_id=` — the caller's rings
+  on that session: `{ "rings": { target_id: { status, seconds_left } } }`,
+  so the caller UI can show ringing / declined / no answer.
+- A scheduler job (`ring_expiry`, every 10s) times out unanswered rings
+  and sends the same `ring_cancel` push (`reason: "timed_out"`).
+  `POST /devotions/join-call` by the ringed user also marks the ring
+  `answered`.
+- With `RING_VOIP_ENABLED=false` the ring is a plain alert push: state is
+  still tracked (the caller sees declined/no answer) but no cancel push is
+  sent since there is no CallKit UI.
+
 ---
 
 ## Agent (AI Check-ins)

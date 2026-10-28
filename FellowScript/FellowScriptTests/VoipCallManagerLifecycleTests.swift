@@ -181,7 +181,10 @@ final class VoipCallManagerLifecycleTests: XCTestCase {
             XCTFail("malformed-payload guard clause not found"); return
         }
         let afterGuard = String(body[guardRange.upperBound...])
-        let guardBlockEnd = afterGuard.range(of: "\n        }\n\n        activeCalls[uuid]")?.lowerBound ?? afterGuard.endIndex
+        // Task 20261028-dm-direct-call inserted the early-cancel check between the
+        // malformed-payload guard and the activeCalls bookkeeping, so the guard block
+        // now ends at that comment instead of at activeCalls.
+        let guardBlockEnd = afterGuard.range(of: "\n        }\n\n        // The cancel beat the ring here")?.lowerBound ?? afterGuard.endIndex
         let guardBlockBody = String(afterGuard[..<guardBlockEnd])
 
         XCTAssertTrue(guardBlockBody.contains("reportNewIncomingCall"),

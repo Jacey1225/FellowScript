@@ -25,6 +25,7 @@ import Foundation
 import PushKit
 import CallKit
 import AVFoundation
+import UIKit
 
 final class VoipCallManager: NSObject {
     static let shared = VoipCallManager()
@@ -38,6 +39,19 @@ final class VoipCallManager: NSObject {
     // UUID, never the original push payload.
     private var activeCalls: [UUID: RingPushTarget] = [:]
     private var ringTimeoutTimers: [UUID: Timer] = [:]
+
+    // Task 20261028-dm-direct-call (ring lifecycle). Calls this class itself
+    // is ending (server ring_cancel, local timeout): their CXEndCallAction
+    // must NOT be reported to the server as a user decline.
+    private var systemEndedCalls: Set<UUID> = []
+    // ring_cancel that arrived before its ring push (devotion_id -> when).
+    // A late ring for the same devotion is reported (PushKit rule) and then
+    // ended at once.
+    private var earlyCancels: [String: Date] = [:]
+    private static let earlyCancelWindow: TimeInterval = 60
+    /// Server ring timeout is the authority and always rides in the push; this
+    /// only applies to a push without it (matches RING_TIMEOUT_SECONDS=45).
+    private static let defaultRingTimeout: Double = 45
 
     /// The most recently issued PushKit VoIP token, if any. Cached here
     /// (not solely relayed via the `.voipTokenReceived` NotificationCenter
@@ -124,7 +138,7 @@ extension VoipCallManager: PKPushRegistryDelegate {
         let groupId    = data["group_id"]    as? String
         let rawName    = data["caller_username"] as? String
         let callerName = (rawName?.isEmpty == false) ? rawName! : "Someone"
-        let ringTimeout = (data["ring_timeout_seconds"] as? NSNumber)?.doubleValue ?? 30
+        let ringTimeout = (data["ring_timeout_seconds"] as? NSNumber)?.doubleValue ?? Self.defaultRingTimeout
 
         let uuid = UUID()
         let update = CXCallUpdate()
@@ -136,11 +150,29 @@ extension VoipCallManager: PKPushRegistryDelegate {
         update.supportsUngrouping = false
         update.supportsDTMF      = false
 
+        // Server cancelled the ring (caller hung up, or the ring timed out).
+        // PushKit still demands a reportNewIncomingCall for THIS push, so a
+        // placeholder is reported and ended at once; the real ringing call
+        // for that devotion (if any) is ended without a decline report.
+        if (data["action"] as? String) == "ring_cancel" {
+            if let devotionId, !devotionId.isEmpty { endRingingCalls(devotionId: devotionId) }
+            reportPlaceholderAndEnd(uuid: uuid, update: update, completion: completion)
+            return
+        }
+
         guard let devotionId, let groupId, !devotionId.isEmpty, !groupId.isEmpty else {
             provider.reportNewIncomingCall(with: uuid, update: update) { [weak self] _ in
                 self?.provider.reportCall(with: uuid, endedAt: nil, reason: .failed)
                 completion()
             }
+            return
+        }
+
+        // The cancel beat the ring here: report (required) and end at once.
+        pruneEarlyCancels()
+        if earlyCancels[devotionId] != nil {
+            earlyCancels[devotionId] = nil
+            reportPlaceholderAndEnd(uuid: uuid, update: update, completion: completion)
             return
         }
 
@@ -210,7 +242,12 @@ extension VoipCallManager: CXProviderDelegate {
         // from ever leaving orphaned CXProvider state.
         ringTimeoutTimers[action.callUUID]?.invalidate()
         ringTimeoutTimers[action.callUUID] = nil
+        let target = activeCalls[action.callUUID]
         activeCalls[action.callUUID] = nil
+        let endedBySystem = systemEndedCalls.remove(action.callUUID) != nil
+        // A genuine decline by the user (not our own timeout/cancel end) is
+        // told to the server so the caller sees "declined" right away.
+        if let target, !endedBySystem { reportDecline(target) }
         action.fulfill()
     }
 
@@ -229,15 +266,71 @@ extension VoipCallManager: CXProviderDelegate {
     private func scheduleRingTimeout(uuid: UUID, seconds: Double) {
         let timer = Timer.scheduledTimer(withTimeInterval: seconds, repeats: false) { [weak self] _ in
             guard let self else { return }
-            self.activeCalls[uuid] = nil
             self.ringTimeoutTimers[uuid] = nil
+            // The server expires the ring itself; this only dismisses the
+            // local UI, so it is not reported as a decline.
+            self.systemEndedCalls.insert(uuid)
             let endAction = CXEndCallAction(call: uuid)
             self.callController.request(CXTransaction(action: endAction)) { error in
                 if let error {
                     print("CallKit timeout end-call failed: \(error.localizedDescription)")
+                    self.systemEndedCalls.remove(uuid)
+                    self.activeCalls[uuid] = nil
                 }
             }
         }
         ringTimeoutTimers[uuid] = timer
+    }
+
+    // MARK: ring lifecycle helpers (task 20261028-dm-direct-call)
+
+    /// Reports `uuid` as a call and ends it immediately (PushKit rule for a
+    /// push that carries no real ring).
+    private func reportPlaceholderAndEnd(uuid: UUID, update: CXCallUpdate, completion: @escaping () -> Void) {
+        provider.reportNewIncomingCall(with: uuid, update: update) { [weak self] _ in
+            self?.provider.reportCall(with: uuid, endedAt: nil, reason: .remoteEnded)
+            completion()
+        }
+    }
+
+    /// Ends every still-ringing CallKit call for `devotionId` with no
+    /// decline report. If none exists yet, remembers the cancel briefly in
+    /// case its ring push arrives after it.
+    private func endRingingCalls(devotionId: String) {
+        let matches = activeCalls.filter { $0.value.devotionId == devotionId }.map(\.key)
+        if matches.isEmpty {
+            pruneEarlyCancels()
+            earlyCancels[devotionId] = Date()
+            return
+        }
+        for uuid in matches {
+            ringTimeoutTimers[uuid]?.invalidate()
+            ringTimeoutTimers[uuid] = nil
+            activeCalls[uuid] = nil
+            provider.reportCall(with: uuid, endedAt: Date(), reason: .remoteEnded)
+        }
+    }
+
+    private func pruneEarlyCancels() {
+        let cutoff = Date().addingTimeInterval(-Self.earlyCancelWindow)
+        earlyCancels = earlyCancels.filter { $0.value > cutoff }
+    }
+
+    /// POST /devotions/ring/respond declined, as the signed-in user (the
+    /// ringed target is always the user themself). Fire and forget; the
+    /// server's ring timeout covers a failure. Works without AppState (a
+    /// decline from the lock screen of a killed app).
+    private func reportDecline(_ target: RingPushTarget) {
+        let uid = UserDefaults.standard.string(forKey: "fs_user_id") ?? ""
+        guard !uid.isEmpty else { return }
+        var bg = UIBackgroundTaskIdentifier.invalid
+        bg = UIApplication.shared.beginBackgroundTask(withName: "ring-decline") {
+            UIApplication.shared.endBackgroundTask(bg)
+        }
+        Task {
+            try? await NetworkService.shared.respondToRing(
+                devotionId: target.devotionId, userId: uid, targetId: uid, outcome: .declined)
+            if bg != .invalid { await MainActor.run { UIApplication.shared.endBackgroundTask(bg) } }
+        }
     }
 }

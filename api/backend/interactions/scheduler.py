@@ -630,7 +630,7 @@ async def _fire_due_session_reminders() -> None:
         db.cur.execute(
             "SELECT _id, time_start FROM devotions "
             "WHERE time_start IS NOT NULL AND time_start <= NOW() "
-            "AND reminder_sent_at IS NULL"
+            "AND reminder_sent_at IS NULL AND call_kind IS NULL AND position('|' in COALESCE(group_id, '')) = 0"
         )
         return [(str(r[0]), r[1]) for r in db.cur.fetchall()]
 
@@ -837,7 +837,7 @@ def _delete_session_if_still_candidate(db, session_id: str, chime_meeting_id: st
     room_meetings = [r[0] for r in db.cur.fetchall()]
     db.cur.execute(
         "DELETE FROM devotions WHERE _id = %s "
-        "AND recurring = FALSE "
+        "AND recurring = FALSE AND call_kind IS NULL AND position('|' in COALESCE(group_id, '')) = 0 "
         "AND time_end IS NOT NULL "
         "AND time_end <= NOW() - (%s * INTERVAL '1 second') "
         "AND COALESCE(chime_meeting_id, '') = %s "
@@ -929,7 +929,7 @@ async def _auto_delete_expired_sessions() -> None:
     def _scan_candidates():
         db.cur.execute(
             "SELECT _id, chime_meeting_id FROM devotions "
-            "WHERE recurring = FALSE "
+            "WHERE recurring = FALSE AND call_kind IS NULL AND position('|' in COALESCE(group_id, '')) = 0 "
             "AND time_end IS NOT NULL "
             "AND time_end <= NOW() - (%s * INTERVAL '1 second')",
             (SESSION_AUTO_DELETE_GRACE_SECONDS,),
@@ -1216,7 +1216,7 @@ async def _advance_recurring_sessions() -> None:
     def _scan_candidates():
         db.cur.execute(
             "SELECT _id, chime_meeting_id FROM devotions "
-            "WHERE recurring = TRUE "
+            "WHERE recurring = TRUE AND call_kind IS NULL AND position('|' in COALESCE(group_id, '')) = 0 "
             "AND time_end IS NOT NULL "
             "AND time_end <= NOW() - (%s * INTERVAL '1 second')",
             (SESSION_RECURRING_ADVANCE_GRACE_SECONDS,),
@@ -1391,6 +1391,11 @@ def start_scheduler() -> None:
     # _advance_recurring_sessions' own docstring.
     scheduler.add_job(_advance_recurring_sessions, "interval", seconds=SESSION_RECURRING_ADVANCE_POLL_INTERVAL_SECONDS,
                       id="session_recurring_advance", replace_existing=True)
+    # Ring lifecycle (task 20261028-dm-direct-call): server-side expiry of
+    # unanswered rings (RING_TIMEOUT_SECONDS) plus the VoIP ring_cancel push.
+    from backend.interactions.ring_lifecycle import RING_EXPIRY_POLL_INTERVAL_SECONDS, run_ring_expiry_job
+    scheduler.add_job(run_ring_expiry_job, "interval", seconds=RING_EXPIRY_POLL_INTERVAL_SECONDS,
+                      id="ring_expiry", replace_existing=True, max_instances=1)
     # Midday/guilt reminders: a 15-minute poll is coarse enough to be cheap
     # but fine enough that the local-noon / >24h windows are never missed by
     # more than 15 minutes — each job's own dedup marker (not job frequency)

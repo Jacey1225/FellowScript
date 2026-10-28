@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+import uuid
 from db import DBManager
 from backend.errors import SaveFailedError
 from schemas.devotion import DevotionPlan
@@ -244,6 +245,22 @@ def ring_timeout_seconds() -> int:
     RING_TIMEOUT_SECONDS` at another call site would bind the pre-
     validate_ring_config() value of 0 forever)."""
     return RING_TIMEOUT_SECONDS
+
+
+def is_legacy_dm_session(row: dict) -> bool:
+    """True for a pre-existing scheduled DM session row (``group_id`` is a
+    ``uidA|uidB`` room key and it is not the marked ad hoc call row).
+
+    Task 20261028-dm-direct-call, Jacey's Q6 answer (a): these rows are no
+    longer available (hidden from lists, no reminders/advance/auto-delete, no
+    join), but are never deleted or updated.
+    """
+    return not row.get("call_kind") and "|" in str(row.get("group_id") or "")
+
+
+def _is_listable_session(row: dict) -> bool:
+    """Ordinary (group) session: neither the DM call row nor a legacy DM row."""
+    return not row.get("call_kind") and not is_legacy_dm_session(row)
 
 
 class DevotionManager(DBManager):
@@ -718,6 +735,112 @@ class DevotionManager(DBManager):
             )
             self.conn.rollback()
 
+    # ── Ring lifecycle (task 20261028-dm-direct-call) ────────────────────────
+    # One ``ring_states`` row per (session, target) holds the live state of the
+    # latest ring. Answer / decline / caller hang-up / expiry all converge on
+    # ``resolve_ring`` / ``expire_due_rings``, each an atomic compare-and-set
+    # on ``status = 'ringing'`` so exactly one outcome wins a race.
+
+    def record_ring(self, devotion_id: str, caller_id: str, target_id: str, voip_token: str | None) -> None:
+        """Upsert the ringing state for (session, target) after a ring push was
+        accepted. ``expires_at`` is the DB clock plus ``RING_TIMEOUT_SECONDS``
+        (the server is the expiry authority). A re-ring replaces the prior
+        row. Raises on DB failure (callers log; the push has already gone)."""
+        try:
+            self.cur.execute(
+                "INSERT INTO ring_states (devotion_id, caller_id, target_id, voip_token, status, created_at, expires_at, resolved_at) "
+                "VALUES (%s, %s, %s, %s, 'ringing', NOW(), NOW() + (%s * INTERVAL '1 second'), NULL) "
+                "ON CONFLICT (devotion_id, target_id) DO UPDATE SET "
+                "caller_id = EXCLUDED.caller_id, voip_token = EXCLUDED.voip_token, status = 'ringing', "
+                "created_at = NOW(), expires_at = EXCLUDED.expires_at, resolved_at = NULL",
+                (devotion_id, caller_id, target_id, voip_token, RING_TIMEOUT_SECONDS),
+            )
+            self.conn.commit()
+        except Exception:
+            self.conn.rollback()
+            raise
+
+    def get_ring(self, devotion_id: str, target_id: str) -> dict | None:
+        """The ring row for (session, target) or None. Fail closed: a DB error
+        raises rather than reporting 'no ring'."""
+        try:
+            self.cur.execute(
+                "SELECT caller_id, target_id, voip_token, status FROM ring_states "
+                "WHERE devotion_id = %s AND target_id = %s",
+                (devotion_id, target_id),
+            )
+            row = self.cur.fetchone()
+            self.conn.commit()
+        except Exception:
+            self.conn.rollback()
+            raise
+        if not row:
+            return None
+        return {
+            "caller_id": str(row[0]), "target_id": str(row[1]),
+            "voip_token": row[2], "status": row[3],
+        }
+
+    def resolve_ring(self, devotion_id: str, target_id: str, new_status: str) -> dict | None:
+        """Atomically move a ``ringing`` row to ``new_status`` (answered /
+        declined / canceled / timed_out). Returns the row (with its stored
+        ``voip_token`` and ``caller_id``) if THIS call won the transition,
+        else None (no row, or already resolved)."""
+        try:
+            self.cur.execute(
+                "UPDATE ring_states SET status = %s, resolved_at = NOW() "
+                "WHERE devotion_id = %s AND target_id = %s AND status = 'ringing' "
+                "RETURNING caller_id, target_id, voip_token",
+                (new_status, devotion_id, target_id),
+            )
+            row = self.cur.fetchone()
+            self.conn.commit()
+        except Exception:
+            self.conn.rollback()
+            raise
+        if not row:
+            return None
+        return {"caller_id": str(row[0]), "target_id": str(row[1]), "voip_token": row[2]}
+
+    def expire_due_rings(self) -> list[dict]:
+        """Atomically time out every ``ringing`` row past ``expires_at`` and
+        return them (each with ``devotion_id``, ``caller_id``, ``target_id``,
+        ``voip_token``) so the caller can send the cancel pushes."""
+        try:
+            self.cur.execute(
+                "UPDATE ring_states SET status = 'timed_out', resolved_at = NOW() "
+                "WHERE status = 'ringing' AND expires_at <= NOW() "
+                "RETURNING devotion_id, caller_id, target_id, voip_token"
+            )
+            rows = self.cur.fetchall()
+            self.conn.commit()
+        except Exception:
+            self.conn.rollback()
+            raise
+        return [
+            {"devotion_id": str(r[0]), "caller_id": str(r[1]), "target_id": str(r[2]), "voip_token": r[3]}
+            for r in rows
+        ]
+
+    def rings_by_caller(self, devotion_id: str, caller_id: str) -> dict[str, dict]:
+        """{target_id: {"status", "seconds_left"}} for the caller's rings on a
+        session (seconds_left is 0 once no longer ringing)."""
+        try:
+            self.cur.execute(
+                "SELECT target_id, status, GREATEST(0, EXTRACT(EPOCH FROM (expires_at - NOW()))) "
+                "FROM ring_states WHERE devotion_id = %s AND caller_id = %s",
+                (devotion_id, caller_id),
+            )
+            rows = self.cur.fetchall()
+            self.conn.commit()
+        except Exception:
+            self.conn.rollback()
+            raise
+        return {
+            str(r[0]): {"status": r[1], "seconds_left": int(r[2]) if r[1] == "ringing" else 0}
+            for r in rows
+        }
+
     def save_devotion(self, devotion: DevotionPlan) -> str:
         # Security fix (task 20260916-call-ring-members, 3rd security
         # re-review): `chime_meeting_id`/`chime_meeting` must never be
@@ -754,6 +877,48 @@ class DevotionManager(DBManager):
         self.conn.commit()
         return devotion.id
 
+    def get_or_create_dm_call_session(self, caller_id: str, peer_id: str) -> str:
+        """Get-or-create the one ad hoc call row backing the DM room between
+        ``caller_id`` and ``peer_id`` (task 20261028-dm-direct-call).
+
+        The row carries ``call_kind = 'dm_call'`` and is distinct from any
+        pre-existing scheduled DM session row for the same room key, which
+        this method never reads, updates or deletes. ``time_start`` is set to
+        the DB's ``NOW()`` so the existing join-window gate opens it
+        immediately; ``time_end`` stays NULL and ``reminder_sent_at`` is
+        pre-claimed. ``chime_meeting_id`` is always created empty (only
+        ``save_chime_meeting`` may set it). ``ON CONFLICT DO NOTHING`` rides
+        the partial unique index on ``group_id`` so concurrent starts converge
+        on one row. Callers MUST verify the pair via ``real_group_roster``
+        first; this method trusts its arguments.
+
+        Raises:
+            SaveFailedError: the row could not be created or found.
+        """
+        room_key = "|".join(sorted([caller_id, peer_id]))
+        try:
+            self.cur.execute(
+                "INSERT INTO devotions (_id, title, time_start, time_end, recurring, "
+                "group_id, creator_id, participants, verses, prompts, chime_meeting_id, "
+                "chime_meeting, summarize, call_kind, reminder_sent_at) "
+                "VALUES (%s, '', NOW(), NULL, FALSE, %s, %s, %s, %s, %s, '', '{}', FALSE, 'dm_call', NOW()) "
+                "ON CONFLICT DO NOTHING",
+                (str(uuid.uuid4()), room_key, caller_id, [], [], []),
+            )
+            self.conn.commit()
+            self.cur.execute(
+                "SELECT _id FROM devotions WHERE group_id = %s AND call_kind = 'dm_call'",
+                (room_key,),
+            )
+            row = self.cur.fetchone()
+        except Exception:
+            logger.exception("DM call row get-or-create failed for room %r", room_key)
+            self.conn.rollback()
+            raise SaveFailedError()
+        if not row:
+            raise SaveFailedError()
+        return str(row[0])
+
     def read_devotion(self, devotion_id: str) -> DevotionPlan | None:
         result = self.lookup("devotions", {"_id": devotion_id})
         if not result:
@@ -771,7 +936,8 @@ class DevotionManager(DBManager):
 
     def fetch_by_contact(self, contact_id: str, viewer_id: str | None = None) -> list[dict]:
         result = self.lookup("devotions", {"group_id": contact_id})
-        sessions = [{"id": did, **data} for did, data in result.items()]
+        # Task 20261028-dm-direct-call: the ad hoc DM call row is not a session.
+        sessions = [{"id": did, **data} for did, data in result.items() if _is_listable_session(data)]
         if viewer_id:
             # Guideline 1.2: hide devotions created by someone in a blocked
             # relationship with the viewer, either direction.

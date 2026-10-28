@@ -33,6 +33,14 @@
 // WebSocket round trip, so this suite reads the real shipped source directly,
 // scoped to the specific region under test, rather than driving a live render.
 
+// UPDATED for task 20261028-dm-direct-call (Jacey option a: existing DM
+// sessions are removed). Friend DMs no longer have a Sessions pill, floating
+// menu card, or overlay: the header pill is now Call. The assertions that
+// pinned the DM-only surface (pill title/label/action, overlay insertion,
+// scrim, card material, reduced-motion transition) now assert it is GONE;
+// the group Sessions panel assertions (schedule action, empty state,
+// upcoming/past listing and sorting, row -> SessionDetailSheet) are kept as is.
+
 import XCTest
 @testable import FellowScript
 
@@ -102,28 +110,53 @@ final class ChatSessionsSubmenuRegressionTests: XCTestCase {
         return String(source[start.lowerBound..<end.lowerBound])
     }
 
-    // MARK: - 1. Header pill rename
+    // MARK: - 1. Friend-DM header: Call replaces Sessions (task 20261028-dm-direct-call)
 
-    func test_source_headerPill_readsSessionsNotSchedule() throws {
+    func test_source_headerPill_isCallNotSessions() throws {
+        let source = try chatThreadViewSource()
+        XCTAssertFalse(source.contains(#"PillButton(title: "Sessions""#),
+                       "the friend-DM Sessions pill must be gone entirely")
+        XCTAssertFalse(source.contains(#"View and schedule study sessions"#),
+                       "the old Sessions pill accessibility label must be gone")
         let header = try headerOnlySource()
-        XCTAssertTrue(header.contains(#"PillButton(title: "Sessions", systemIcon: "calendar")"#),
-                      "the header's session pill must now read 'Sessions' and keep its calendar icon")
-        XCTAssertFalse(header.contains(#"PillButton(title: "Schedule", systemIcon: "calendar")"#),
-                       "the old 'Schedule' pill title must no longer be present in the header")
+        XCTAssertTrue(header.contains("callPill"), "the DM header must render the Call pill in the old Sessions slot")
+        XCTAssertFalse(header.contains("sessionsPill"))
+        XCTAssertFalse(header.contains("openSessionsMenu"))
     }
 
-    func test_source_headerPill_accessibilityLabelReflectsNewRole() throws {
-        let header = try headerOnlySource()
-        XCTAssertTrue(header.contains(#".accessibilityLabel("View and schedule study sessions")"#),
-                      "the pill's accessibility label must reflect that it now both views and schedules sessions, not just 'Schedule new study session'")
-        XCTAssertFalse(header.contains("Schedule new study session"),
-                       "the old, schedule-only accessibility label must no longer be present")
+    func test_source_callPill_hasCallTitleAccessibilityAndStartAction() throws {
+        let source = try chatThreadViewSource()
+        guard let start = source.range(of: "private var callPill: some View {"),
+              let end = source.range(of: "private func startDmCall()", range: start.upperBound..<source.endIndex) else {
+            XCTFail("callPill not found"); return
+        }
+        let pill = String(source[start.lowerBound..<end.lowerBound])
+        XCTAssertTrue(pill.contains(#"PillButton(title: "Call", systemIcon: "phone.fill""#))
+        XCTAssertTrue(pill.contains(#".accessibilityLabel("Call \(contact.name)")"#))
+        XCTAssertTrue(pill.contains("startDmCall()"))
+        XCTAssertTrue(pill.contains("minHeight: 44"), "44pt minimum touch target")
+        XCTAssertTrue(pill.contains(#"Text("Calling...")"#), "in-flight state")
+        XCTAssertTrue(pill.contains(#"PillButton(title: "In call""#) && pill.contains(".disabled(true)"),
+                      "while already in a call the pill is disabled")
     }
 
-    func test_source_headerPill_actionOpensSessionsMenu() throws {
-        let header = try headerOnlySource()
-        XCTAssertTrue(header.contains("openSessionsMenu()"),
-                      "tapping the header's Sessions pill must open the sessions submenu, not the create-session sheet directly")
+    func test_source_dmSessionsMenuStateAndHelpersRemoved() throws {
+        let source = try chatThreadViewSource()
+        for gone in ["showSessionsMenu", "sessionsMenuOverlay", "sessionsMenuCard", "openSessionsMenu"] {
+            XCTAssertFalse(source.contains(gone), "\(gone) was DM-only and must be removed")
+        }
+        let host = try String(contentsOf: URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("FellowScript/Chat/GroupInfoPanelHost.swift"), encoding: .utf8)
+        XCTAssertFalse(host.contains("showSessions"), "GroupInfoCoordination must no longer bind the DM sessions menu")
+    }
+
+    func test_source_groupSessionsPanelStillWired() throws {
+        let source = try chatThreadViewSource()
+        XCTAssertTrue(source.contains("sessionsContent: { AnyView(sessionsPanelContent) })"),
+                      "the group info panel must still host the Sessions list")
+        XCTAssertTrue(source.contains("private func closeSessionsMenu()"),
+                      "group Sessions panel still closes via closeSessionsMenu")
     }
 
     // MARK: - 2. Inline SessionBanner removal
@@ -152,41 +185,22 @@ final class ChatSessionsSubmenuRegressionTests: XCTestCase {
                       "SessionBanner's struct definition must still exist for its own dedicated regression suites")
     }
 
-    func test_source_threadBody_sessionsOverlayRendersConditionallyAboveComposer() throws {
+    func test_source_threadBody_noDmSessionsOverlay() throws {
         let overlay = try threadBodyOverlaySource()
-        XCTAssertTrue(overlay.contains("if showSessionsMenu {"),
-                      "the sessions submenu overlay must render conditionally on showSessionsMenu")
-        XCTAssertTrue(overlay.contains("sessionsMenuOverlay"),
-                      "the conditional block must actually render sessionsMenuOverlay")
+        XCTAssertFalse(overlay.contains("sessionsMenuOverlay"),
+                       "the DM floating sessions overlay must no longer render in the thread body")
         XCTAssertFalse(overlay.contains("SessionBanner"),
                        "no SessionBanner reference should remain in the thread body's live layout")
     }
 
     // MARK: - 3. Submenu presentation: translucent/blurred, schedule action, empty state, sections
 
-    func test_source_sessionsMenuOverlay_hasClearScrimWithTapToDismiss() throws {
-        // Task 20260920-sessions-menu-background-blur: the backdrop no longer
-        // blurs the whole chat thread -- it's an invisible tap-catcher now,
-        // scoped so only sessionsMenuCard's own .regularMaterial reads as
-        // translucent/blurred. Tap-outside-to-dismiss and accessibility must
-        // still work exactly as before.
+    func test_source_dmFloatingCardAndScrimGone_groupBodyKeepsNoMaterialCard() throws {
         let submenu = try sessionsSubmenuSource()
-        XCTAssertTrue(submenu.contains("Color.clear"),
-                      "the submenu's backdrop must be Color.clear so the chat thread behind it stays fully visible/unblurred")
-        XCTAssertFalse(submenu.contains(".fill(.ultraThinMaterial)"),
-                       "the full-screen .ultraThinMaterial backdrop must be gone -- blur now lives only on the card itself")
-        XCTAssertTrue(submenu.contains("closeSessionsMenu()"),
-                      "the backdrop (and the card's own close button) must be wired to dismiss the menu")
-        XCTAssertTrue(submenu.contains(#".accessibilityLabel("Close sessions menu")"#),
-                      "the tap-outside-to-dismiss scrim must be accessible, not just a silent hit target")
-    }
-
-    func test_source_sessionsMenuCard_usesRegularMaterialGlassSurface() throws {
-        let submenu = try sessionsSubmenuSource()
-        XCTAssertTrue(submenu.contains(".background(.regularMaterial)"),
-                      "the submenu card itself must use the app's glass-surface material, matching the Ember Glass language")
-        XCTAssertTrue(submenu.contains("topEdgeHighlight("),
-                      "the submenu card must use the app's existing topEdgeHighlight elevation convention, not a dropped shadow")
+        XCTAssertFalse(submenu.contains(#".accessibilityLabel("Close sessions menu")"#),
+                       "the DM tap-outside scrim is gone")
+        XCTAssertFalse(submenu.contains(".background(.regularMaterial)"),
+                       "the DM floating card material is gone; the group panel hosts the list")
     }
 
     func test_source_sessionsMenuCard_hasVisibleScheduleNewSessionAction() throws {
@@ -292,17 +306,6 @@ final class ChatSessionsSubmenuRegressionTests: XCTestCase {
                       "the existing SessionDetailSheet must be reused as-is (same onDelete/onUpdate refresh wiring SessionBanner used), not a new/modified component")
     }
 
-    // MARK: - Reduced motion
-
-    func test_source_sessionsMenuOverlay_hasReducedMotionFallback() throws {
-        let submenu = try sessionsSubmenuSource()
-        XCTAssertTrue(submenu.contains("reduceMotion") && submenu.contains("? .opacity"),
-                      "the submenu's open/close transition must degrade to a plain opacity swap under reduced motion")
-        XCTAssertTrue(submenu.contains("withMotionAwareAnimation(.spring"),
-                      "opening the submenu must use the file's existing motion-aware animation helper, not a raw unconditional animation")
-        XCTAssertTrue(submenu.contains("withMotionAwareAnimation(.easeOut"),
-                      "closing the submenu must use the file's existing motion-aware animation helper, not a raw unconditional animation")
-    }
 }
 
 // MARK: - Sort-order fixture sanity (FSSession + parseFlexibleISO8601 are both

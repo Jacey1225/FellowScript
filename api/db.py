@@ -586,6 +586,18 @@ def create_tables(cur):
     # 20260907-session-summary-wireup). Defaults closed per this project's
     # deny-by-default posture for new opt-in surfaces.
     cur.execute("ALTER TABLE devotions ADD COLUMN IF NOT EXISTS summarize BOOLEAN DEFAULT FALSE")
+    # Task 20261028-dm-direct-call: marker for the ad hoc, non-scheduled call
+    # row that backs a 1:1 DM "Call" (value 'dm_call'). NULL for every
+    # ordinary session -- additive nullable column, no backfill, existing
+    # rows are never touched. Marked rows are excluded from session lists, the
+    # free-plan session cap, reminders, auto-delete and recurring advance.
+    # The partial unique index makes get-or-create of the one call row per DM
+    # room atomic (ON CONFLICT DO NOTHING) under concurrent call starts.
+    cur.execute("ALTER TABLE devotions ADD COLUMN IF NOT EXISTS call_kind TEXT")
+    cur.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS devotions_dm_call_room_uniq "
+        "ON devotions (group_id) WHERE call_kind = 'dm_call'"
+    )
 
     # Task 20260916-call-ring-members: per (sender, recipient) cooldown
     # marker for the in-call "ring" push action -- same single-row-per-key
@@ -612,6 +624,32 @@ def create_tables(cur):
         "recipient_id UUID REFERENCES users(_id) ON DELETE CASCADE,"
         "last_rung_at TIMESTAMPTZ NOT NULL,"
         "PRIMARY KEY (sender_id, recipient_id))"
+    )
+
+    # Task 20261028-dm-direct-call (ring lifecycle): one row per (session,
+    # ringed target) recording the live state of the latest ring so the
+    # server -- not just a client Timer -- owns expiry, and so answer /
+    # decline / caller hang-up / timeout all converge on one record.
+    # status: ringing | answered | declined | canceled | timed_out.
+    # expires_at = NOW() + RING_TIMEOUT_SECONDS at ring time. voip_token is
+    # the target's (latest-device) VoIP token used for that ring, kept so a
+    # ring_cancel VoIP push can be sent later; NULL for plain-push rings.
+    # Additive only; ON DELETE CASCADE so a deleted session drops its rings.
+    cur.execute(
+        "CREATE TABLE IF NOT EXISTS ring_states"
+        "(devotion_id UUID REFERENCES devotions(_id) ON DELETE CASCADE,"
+        "caller_id UUID REFERENCES users(_id) ON DELETE CASCADE,"
+        "target_id UUID REFERENCES users(_id) ON DELETE CASCADE,"
+        "voip_token TEXT,"
+        "status TEXT NOT NULL DEFAULT 'ringing',"
+        "created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),"
+        "expires_at TIMESTAMPTZ NOT NULL,"
+        "resolved_at TIMESTAMPTZ,"
+        "PRIMARY KEY (devotion_id, target_id))"
+    )
+    cur.execute(
+        "CREATE INDEX IF NOT EXISTS ring_states_ringing_expiry_idx "
+        "ON ring_states (expires_at) WHERE status = 'ringing'"
     )
 
     cur.execute(

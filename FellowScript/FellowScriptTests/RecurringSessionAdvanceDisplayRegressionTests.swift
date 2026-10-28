@@ -52,7 +52,7 @@ final class RecurringSessionAdvanceDisplayRegressionTests: XCTestCase {
     private func sessionBucketingSource() throws -> String {
         let source = try chatThreadViewSource()
         guard let start = source.range(of: "private var upcomingSessions: [FSSession] {"),
-              let end = source.range(of: "private var sessionsMenuOverlay: some View {",
+              let end = source.range(of: "private var sessionsBody: some View {",
                                       range: start.upperBound..<source.endIndex) else {
             XCTFail("expected to find ChatThreadView's upcomingSessions/pastSessions properties in the shipped source")
             return ""

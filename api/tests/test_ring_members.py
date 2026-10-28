@@ -19,7 +19,10 @@ acceptance criteria, `POST /devotions/ring`
      the *same* real group, but not a signed-up user who isn't in that
      group's real roster (`not_a_member`), even if nothing else about the
      request looks wrong.
-  3. DM-encoded `group_id` ("uidA|uidB"): a self-minted pair with no real
+  3. (Updated by task 20261028-dm-direct-call: DM sessions can no longer be
+     created via POST /devotions/ -- 410 -- so the verified pair rings over
+     the server-created dm-call row; see section 3 of this file.)
+     DM-encoded `group_id` ("uidA|uidB"): a self-minted pair with no real
      mutual friendship yields an empty roster and denies BOTH the caller and
      the "target" -- proves the exploit security's 2nd bounce fixed
      (`group_id="<attacker>|<victim>"` no longer just string-splits into a
@@ -371,11 +374,17 @@ def test_real_group_member_can_ring_member_but_not_outsider(client):
         cleanup(uid_a, uid_b, uid_outsider, group_ids=[gid] if gid else (), devotion_ids=[devo_id] if devo_id else ())
 
 
-# ── 3. DM-encoded group_id: unverified pair denied, verified pair allowed ──
+# ── 3. DM rooms: no minting via the API; ring authz on the verified call row ──
+# Task 20261028-dm-direct-call changed this section: POST /devotions/ with a
+# DM-encoded group_id ("uidA|uidB") is now refused (410), so a client can no
+# longer self-mint a DM session row at all, and the only DM row that can be
+# rung is the server-created ad hoc call row from POST /devotions/dm-call
+# (verified mutual friendship at creation). The roster re-check at ring time
+# (a friendship undone by a block) still denies it with 403.
 
 def test_dm_group_id_requires_verified_mutual_friendship(client):
-    print("\n=== 3. DM-encoded group_id: self-minted pair denied; verified friend pair allowed; "
-          "block undoes it ===")
+    print("\n=== 3. DM rooms: self-minted DM session refused; verified friend pair rings via the "
+          "dm-call row; block undoes it ===")
     uid_x, tok_x = signup(client, "ring_dm_x")
     uid_y, _ = signup(client, "ring_dm_y")
     uid_z, _ = signup(client, "ring_dm_z")
@@ -383,27 +392,27 @@ def test_dm_group_id_requires_verified_mutual_friendship(client):
     orig_send_push = push_module.send_push
     devo_ids = []
     try:
-        # 3a. X and Y are strangers -- X self-mints a DM group_id "X|Y" with
-        # no real friendship behind it.
-        gid_xy = f"{uid_x}|{uid_y}"
-        devo_xy = create_session(client, tok_x, uid_x, creator_id=uid_x, group_id=gid_xy, participants=[uid_x, uid_y])
-        devo_ids.append(devo_xy)
-        set_live_call(devo_xy)
-        r1 = ring(client, tok_x, uid_x, devo_xy, [uid_y])
-        check("self-minted DM group_id with NO real friendship -> 403 "
-              "(caller X is not even in their own empty real_group_roster)",
-              r1.status_code == 403, f"{r1.status_code} {r1.text}")
+        # 3a. X and Y are strangers -- X cannot self-mint a DM session "X|Y"
+        # (the old exploit surface) and cannot get a dm-call row either.
+        payload = {"devotion_id": str(uuid.uuid4()), "user_id": uid_x, "devotion": {
+            "id": str(uuid.uuid4()), "title": "forged", "creator_id": uid_x,
+            "participants": [uid_x, uid_y], "group_id": f"{uid_x}|{uid_y}", "prompts": ["p1"], "verses": []}}
+        r0 = client.post("/devotions/", json=payload, headers=cookie_header(tok_x))
+        check("self-minted DM group_id session -> 410 (no DM session can be created via the API)",
+              r0.status_code == 410, f"{r0.status_code} {r0.text}")
+        r1 = client.post("/devotions/dm-call", json={"user_id": uid_x, "peer_id": uid_y}, headers=cookie_header(tok_x))
+        check("dm-call for two strangers -> 403 (no row to ring)", r1.status_code == 403, f"{r1.status_code} {r1.text}")
 
-        # 3b. Make X and Z genuine, non-blocked mutual friends -- the exact
-        # legitimate case this session model supports (ringing a real DM
-        # call partner).
+        # 3b. Make X and Z genuine, non-blocked mutual friends and ring over
+        # the server-created dm-call row.
         make_friends(uid_x, uid_z)
         set_device_token(uid_z, f"tok-{uid_z}")
         push = _CapturingPush(result=True)
         push_module.send_push = push
 
-        gid_xz = f"{uid_x}|{uid_z}"
-        devo_xz = create_session(client, tok_x, uid_x, creator_id=uid_x, group_id=gid_xz, participants=[uid_x, uid_z])
+        rc = client.post("/devotions/dm-call", json={"user_id": uid_x, "peer_id": uid_z}, headers=cookie_header(tok_x))
+        assert rc.status_code == 200, f"dm-call failed: {rc.status_code} {rc.text}"
+        devo_xz = rc.json()["id"]
         devo_ids.append(devo_xz)
         set_live_call(devo_xz)
         r2 = ring(client, tok_x, uid_x, devo_xz, [uid_z])
@@ -413,28 +422,23 @@ def test_dm_group_id_requires_verified_mutual_friendship(client):
         check("exactly one ring push sent for the legitimate DM ring",
               len(ring_pushes(push)) == 1, str(push.calls))
 
-        # 3c. Same friend pair, but Z has since blocked X -- must now be
-        # denied the same fail-closed way (merged reason, not distinguished
-        # from "not friends").
+        # 3c. Same friend pair, but Z has since blocked X -- the roster
+        # re-check denies the ring the same fail-closed way, despite the
+        # call row (and a real user_friends row) existing.
         make_blocked(uid_z, uid_x)
-        gid_xz_2 = f"{uid_x}|{uid_z}"
-        devo_xz_2 = create_session(client, tok_x, uid_x, creator_id=uid_x, group_id=gid_xz_2, participants=[uid_x, uid_z])
-        devo_ids.append(devo_xz_2)
-        set_live_call(devo_xz_2)
-        r3 = ring(client, tok_x, uid_x, devo_xz_2, [uid_z])
+        r3 = ring(client, tok_x, uid_x, devo_xz, [uid_z])
         check("a friendship undone by a block (either direction) -> still denied 403, "
               "despite a real user_friends row existing",
               r3.status_code == 403, f"{r3.status_code} {r3.text}")
 
-        # 3d. Malformed split (not the well-formed 2-distinct-id shape) --
-        # e.g. an id paired with itself -- fails closed too.
-        gid_malformed = f"{uid_x}|{uid_x}"
-        devo_malformed = create_session(client, tok_x, uid_x, creator_id=uid_x, group_id=gid_malformed, participants=[uid_x])
-        devo_ids.append(devo_malformed)
-        set_live_call(devo_malformed)
-        r4 = ring(client, tok_x, uid_x, devo_malformed, [uid_x])
-        check("degenerate DM split (same id twice) -> fails closed (403), never trusted as a roster",
-              r4.status_code == 403, f"{r4.status_code} {r4.text}")
+        # 3d. Malformed split (an id paired with itself): neither creatable
+        # through the API nor a roster that is ever trusted.
+        payload["devotion"]["group_id"] = f"{uid_x}|{uid_x}"
+        r4 = client.post("/devotions/", json=payload, headers=cookie_header(tok_x))
+        check("degenerate DM split (same id twice) cannot be created (410)",
+              r4.status_code == 410, f"{r4.status_code} {r4.text}")
+        rs = client.post("/devotions/dm-call", json={"user_id": uid_x, "peer_id": uid_x}, headers=cookie_header(tok_x))
+        check("dm-call with yourself as the peer -> 403", rs.status_code == 403, f"{rs.status_code} {rs.text}")
     finally:
         push_module.send_push = orig_send_push
         cleanup(uid_x, uid_y, uid_z, devotion_ids=devo_ids)

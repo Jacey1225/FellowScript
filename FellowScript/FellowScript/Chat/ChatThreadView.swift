@@ -191,7 +191,10 @@ final class ChatThreadViewModel: ObservableObject {
         if let cached: [FSMessage] = await DiskCache.shared.load([FSMessage].self, forKey: "messages:\(sessionKey)") {
             messages = cached
         }
-        if let cached: [FSSession] = await DiskCache.shared.load([FSSession].self, forKey: "sessions:\(sessionKey)") {
+        // Task 20261028-dm-direct-call: friend DMs no longer have sessions
+        // (they call instead), so only group threads load/cache them.
+        if contact.type == .group,
+           let cached: [FSSession] = await DiskCache.shared.load([FSSession].self, forKey: "sessions:\(sessionKey)") {
             sessions = cached
         }
 
@@ -219,14 +222,18 @@ final class ChatThreadViewModel: ObservableObject {
             }
             if let photoUrl = contact.photoUrl { photoByUsername[contact.name] = photoUrl }
         }
-        sessions = (try? await service.fetchSessionsForContact(contactId: sessionKey)) ?? sessions
+        if contact.type == .group {
+            sessions = (try? await service.fetchSessionsForContact(contactId: sessionKey)) ?? sessions
+        }
 
         // ── Persist the fresh thread for the next open ───────────────────────────
         // A paged thread persists only its newest window (older pages the
         // user scrolled back through are not written to disk).
         await DiskCache.shared.save(pagingEnabled ? Array(messages.suffix(Self.cacheWindow)) : messages,
                                     forKey: "messages:\(sessionKey)")
-        await DiskCache.shared.save(sessions, forKey: "sessions:\(sessionKey)")
+        if contact.type == .group {
+            await DiskCache.shared.save(sessions, forKey: "sessions:\(sessionKey)")
+        }
 
         // Gate for sending client_ref on main-chat sends: pagination OR a
         // feature that needs the server id of a just-sent message (Start
@@ -1203,12 +1210,10 @@ struct ChatThreadView: View {
     @State private var mentionMembers: [FSMentionCandidate]? = nil
     @State private var highlightedMessageId: String? = nil
 
-    // ── Sessions submenu (task 20260920-chat-sessions-submenu) ────────────────
-    // Replaces the old always-visible inline SessionBanner + header
-    // "Schedule" pill pairing with one entry point: the renamed "Sessions"
-    // pill opens this floating, translucent/blurred submenu listing every
-    // session for the chat, with the create-session action folded inside it.
-    @State private var showSessionsMenu: Bool = false
+    // Task 20261028-dm-direct-call: the friend-DM header Call action.
+    @State private var dmCallStarting: Bool = false
+    @ObservedObject private var call = CallController.shared
+    @State private var dmCallError: String? = nil
     @State private var infoBadges: [GroupInfoCategory: Int] = [:]
     // Item-based (rather than reusing `showSession`'s Bool + `.first`
     // convention the old SessionBanner relied on) because any row in the
@@ -1762,16 +1767,6 @@ struct ChatThreadView: View {
                 composer
             }
 
-            // ── Sessions submenu overlay ────────────────────────────────
-            // A floating ZStack layer (unlike GroupMembersPanel above,
-            // which renders inline in the VStack flow) so it needs its own
-            // tap-outside-dismiss rather than relying on
-            // `.dismissesKeyboardOnScrollAndTap()`.
-            if showSessionsMenu {
-                sessionsMenuOverlay
-                    .zIndex(1)
-            }
-
             // iPad workspace: Group Info replaces the thread inside the right
             // panel (push with X to close) instead of a phone-style sheet.
             if embedded && showGroupInfo {
@@ -1785,7 +1780,7 @@ struct ChatThreadView: View {
         // dismisses the keyboard and the Sessions overlay; focusing the composer or
         // opening a thread closes it.
         .modifier(GroupInfoCoordination(category: $infoCategory, composerFocused: $composerFocused,
-                                        showSessions: $showSessionsMenu, isThreadOpen: vm.isThreadOpen))
+                                        isThreadOpen: vm.isThreadOpen))
         .task {
             let uid = appState.currentUser?.user_id ?? ""
             memberNames = contact.memberNames
@@ -2517,7 +2512,7 @@ struct ChatThreadView: View {
                 RoundIconButton(systemIcon: "chevron.left") {}.hidden().accessibilityHidden(true)
             } else {
                 Spacer(minLength: 8)
-                sessionsPill
+                callPill
             }
         }
         // Join-request push tap (task 20261016-push-notifications-and-ui).
@@ -2530,43 +2525,105 @@ struct ChatThreadView: View {
         }
     }
 
-    /// The gold Sessions pill: in the DM header, or the trailing item of the group chip row.
-    private var sessionsPill: some View {
+    /// The gold Call pill in the friend-DM header (task 20261028-dm-direct-call):
+    /// replaces the old Sessions pill in the same slot. Group threads never show it.
+    private var callPill: some View {
         Group {
-            if embedded {
-                PillButton(title: "Sessions", systemIcon: "phone",
+            if dmCallStarting {
+                HStack(spacing: 6) {
+                    ProgressView().controlSize(.small).tint(Theme.goldLight)
+                    Text("Calling...")
+                        .font(.inter(Theme.fontSM, weight: .semibold))
+                        .foregroundColor(Theme.goldLight)
+                }
+                .padding(.horizontal, 18).padding(.vertical, 10)
+                .background(Theme.gold.opacity(0.12))
+                .clipShape(Capsule())
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel("Starting call")
+            } else if call.inCall {
+                PillButton(title: "In call", systemIcon: "phone.fill",
+                           textColor: Theme.textSecondary,
+                           fill: AnyShapeStyle(Theme.gold.opacity(0.06))) {}
+                    .disabled(true)
+                    .accessibilityLabel("In call")
+            } else if embedded {
+                PillButton(title: "Call", systemIcon: "phone.fill",
                            textColor: Theme.goldLight,
                            fill: AnyShapeStyle(Theme.gold.opacity(0.12))) {
-                    openSessionsMenu()
+                    startDmCall()
                 }
+                .accessibilityLabel("Call \(contact.name)")
+                .accessibilityHint("Rings them and starts a voice and video call")
             } else {
-                PillButton(title: "Sessions", systemIcon: "calendar") {
-                    openSessionsMenu()
+                PillButton(title: "Call", systemIcon: "phone.fill") {
+                    startDmCall()
                 }
+                .accessibilityLabel("Call \(contact.name)")
+                .accessibilityHint("Rings them and starts a voice and video call")
             }
         }
-        .accessibilityLabel("View and schedule study sessions")
+        .frame(minHeight: 44)
+        .contentShape(Rectangle())
+        .alert("Call", isPresented: Binding(
+            get: { dmCallError != nil },
+            set: { if !$0 { dmCallError = nil } }
+        )) {
+            Button("OK", role: .cancel) { dmCallError = nil }
+        } message: {
+            Text(dmCallError ?? "")
+        }
+    }
+
+    /// Starts the call through the one existing path: server-issued session ->
+    /// CallController.start (joinCall) -> ringMembers for the single
+    /// counterpart. A failure at any step before the join throws and shows an
+    /// error; nothing is presented as a started call (throw-not-fabricate).
+    private func startDmCall() {
+        guard !dmCallStarting, contact.type == .friend,
+              let uid = appState.currentUser?.user_id, !uid.isEmpty else { return }
+        guard let dmService = appState.service as? DmCallServiceProtocol else {
+            dmCallError = DmCallError.failed.localizedDescription
+            return
+        }
+        dmCallStarting = true
+        let peer = contact
+        Task { @MainActor in
+            defer { dmCallStarting = false }
+            do {
+                var session = try await dmService.startDmCall(userId: uid, peerId: peer.id)
+                if session.title.isEmpty { session.title = peer.name }
+                CallController.shared.start(session: session, service: appState.service, userId: uid)
+                // Ring the other person (existing ring path; honors ring
+                // config + cooldown server-side). The join already happened;
+                // a refused ring is surfaced, not hidden.
+                do {
+                    let results = try await appState.service.ringMembers(
+                        userId: uid, sessionId: session.id, targetIds: [peer.id])
+                    if results[peer.id]?.sent == true {
+                        CallController.shared.sentRingTargets.insert(peer.id)
+                        CallController.shared.ring.begin(sessionId: session.id,
+                                                         targets: [(peer.id, peer.name)],
+                                                         service: appState.service, userId: uid)
+                    } else {
+                        CallController.shared.showRingDeliveryNotice("They weren't alerted. Try ringing again in a few minutes.")
+                    }
+                } catch {
+                    CallController.shared.showRingDeliveryNotice("They weren't alerted. Try ringing again in a few minutes.")
+                }
+            } catch {
+                dmCallError = (error as? DmCallError)?.localizedDescription ?? DmCallError.failed.localizedDescription
+            }
+        }
     }
 
     // ── Sessions submenu (task 20260920-chat-sessions-submenu) ────────────────
-    // Replaces the old inline SessionBanner card: tapping the header's
-    // "Sessions" pill opens this floating panel over a translucent, blurred
-    // scrim rather than a modal `.sheet` -- keeping the chat thread visible
-    // (dimmed) behind it reads as a lightweight submenu, matching the
-    // request, rather than a full context switch away from the thread.
-
-    private func openSessionsMenu() {
-        infoCategory = nil
-        withMotionAwareAnimation(.spring(response: 0.35, dampingFraction: 0.82), reduceMotion: reduceMotion) {
-            showSessionsMenu = true
-        }
-    }
+    // Group threads only (task 20261028-dm-direct-call removed the friend-DM
+    // entry point, floating card and overlay): the Sessions list lives in the
+    // group info panel (`sessionsPanelContent`).
 
     private func closeSessionsMenu() {
         if infoCategory == .sessions { infoCategory = nil }
-        withMotionAwareAnimation(.easeOut(duration: 0.18), reduceMotion: reduceMotion) {
-            showSessionsMenu = false
-        }
     }
 
     // `fetch_by_contact` (api/backend/interactions/devotion.py) returns
@@ -2599,43 +2656,6 @@ struct ChatThreadView: View {
         return vm.sessions
             .filter { (parseFlexibleISO8601($0.time_start) ?? .distantPast) < now }
             .sorted { (parseFlexibleISO8601($0.time_start) ?? .distantPast) > (parseFlexibleISO8601($1.time_start) ?? .distantPast) }
-    }
-
-    private var sessionsMenuOverlay: some View {
-        ZStack {
-            // Task 20260920-sessions-menu-background-blur: this used to be a
-            // full-screen `.ultraThinMaterial` fill, which blurred/dimmed the
-            // entire chat thread behind the card instead of just sitting
-            // behind it. Swapped for an invisible tap-catcher -- the thread
-            // stays fully visible, and `sessionsMenuCard` below already
-            // supplies its own `.regularMaterial` translucency, so the
-            // glassmorphism treatment still reads on the card itself.
-            // `.contentShape(Rectangle())` keeps the whole screen tappable
-            // for dismiss even though `Color.clear` has no fill to hit-test
-            // against on its own.
-            Color.clear
-                .ignoresSafeArea()
-                .contentShape(Rectangle())
-                .onTapGesture { closeSessionsMenu() }
-                .accessibilityLabel("Close sessions menu")
-                .accessibilityAddTraits(.isButton)
-
-            VStack {
-                sessionsMenuCard
-                    .padding(.horizontal, Theme.spacingMD)
-                Spacer()
-            }
-            .padding(.top, 76) // clears the header so the card reads as anchored under the DM "Sessions" pill (groups open Sessions from the bottom chip row panel)
-            .frame(maxWidth: .infinity, alignment: .trailing)
-        }
-        .transition(
-            reduceMotion
-                ? .opacity
-                : .asymmetric(
-                    insertion: .scale(scale: 0.9, anchor: .topTrailing).combined(with: .opacity),
-                    removal: .opacity
-                )
-        )
     }
 
     /// Schedule button + session list, shared by the DM floating card and the group submenu panel.
@@ -2709,40 +2729,6 @@ struct ChatThreadView: View {
             .padding(.horizontal, Theme.spacingMD)
             .padding(.bottom, Theme.spacingMD)
             .frame(maxHeight: .infinity, alignment: .top)
-    }
-
-    private var sessionsMenuCard: some View {
-        VStack(alignment: .leading, spacing: Theme.spacingSM) {
-            HStack {
-                Text(embedded ? "SESSIONS" : "Sessions")
-                    .font(.inter(embedded ? Theme.fontXS : Theme.fontSM, weight: .bold))
-                    .tracking(embedded ? 3 : 0)
-                    .foregroundColor(embedded ? Theme.goldLight : Theme.parchment)
-                    .accessibilityAddTraits(.isHeader)
-                Spacer()
-                Button {
-                    closeSessionsMenu()
-                } label: {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 11, weight: .bold))
-                        .foregroundColor(Theme.textGoldMuted)
-                        .frame(width: 24, height: 24)
-                        .background(Color.white.opacity(0.05))
-                        .clipShape(Circle())
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Close")
-            }
-
-            sessionsBody
-        }
-        .padding(Theme.spacingMD)
-        .frame(width: WorkspaceLayout.popoverWidth)
-        .background(.regularMaterial)
-        .clipShape(RoundedRectangle(cornerRadius: Theme.radiusXL))
-        .overlay(RoundedRectangle(cornerRadius: Theme.radiusXL).stroke(Theme.borderGoldDim, lineWidth: 1))
-        .topEdgeHighlight(RoundedRectangle(cornerRadius: Theme.radiusXL))
-        .accessibilityElement(children: .contain)
     }
 
     @ViewBuilder
@@ -3011,7 +2997,7 @@ struct ChatThreadView: View {
     private func setAttachMode(_ on: Bool) {
         guard on != showAttachSheet else { return }
         withMotionAwareAnimation(ComposerAccessoryMotion.swap, reduceMotion: reduceMotion) {
-            if on { infoCategory = nil; showSessionsMenu = false }
+            if on { infoCategory = nil }
             showAttachSheet = on
         }
         UIAccessibility.post(notification: .layoutChanged, argument: nil)

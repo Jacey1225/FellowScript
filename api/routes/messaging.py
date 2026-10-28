@@ -4,7 +4,7 @@ from backend.interactions.thread_send import send_thread_message
 from backend.interactions.friends import FriendsManager
 from backend.interactions import flags, friend_request_notifier
 from backend.interactions.chat_config import get_pagination_config
-from backend.interactions.devotion import DevotionManager
+from backend.interactions.devotion import DevotionManager, is_legacy_dm_session
 from backend.interactions.attachments import generate_upload_policy, AttachmentConfigError
 from backend.interactions.gif_search import search_gifs, browse_gifs, GifConfigError, GifSearchError
 from backend.auth.dependencies import get_current_user, require_match, authenticate_ws
@@ -23,6 +23,22 @@ manager      = ConnectionManager()
 logger       = logging.getLogger(__name__)
 
 _CHIME_ERROR_DETAIL = "Could not start the call. Please try again."
+
+
+def _enforce_dm_call_rules(db: DevotionManager, session: dict, user_id: str) -> None:
+    """Task 20261028-dm-direct-call security review: the /chime routes are a
+    second entry to the same Chime meeting as /devotions/join-call, so they
+    must apply the same DM rules. Legacy scheduled DM rows are inert (410), and
+    the ad hoc DM call row also requires the caller to be in the verified,
+    non-blocked friendship roster (fail closed). Group sessions: no change."""
+    if is_legacy_dm_session(session):
+        raise HTTPException(
+            status_code=410,
+            detail="Scheduled sessions are no longer available in direct messages. Start a call instead.",
+        )
+    if session.get("call_kind") and user_id not in db.real_group_roster(str(session.get("group_id") or "")):
+        raise HTTPException(status_code=403, detail="Not authorized")
+
 
 _SIGNAL_TYPES = frozenset({
     "call-invite", "call-accept", "call-reject", "call-end",
@@ -91,6 +107,7 @@ def _get_or_create_meeting(session_id: str, user_id: str) -> dict:
             raise HTTPException(status_code=404, detail="Session not found")
         if not db.is_authorized(session, user_id):
             raise HTTPException(status_code=403, detail="Not authorized")
+        _enforce_dm_call_rules(db, session, user_id)
 
         chime_meeting_id = session.get("chime_meeting_id", "")
         meeting_data     = session.get("chime_meeting") or {}
@@ -217,6 +234,7 @@ async def join_meeting(session_id: str, user_id: str, _: str = Depends(require_m
             raise HTTPException(status_code=404, detail="Session not found")
         if not db.is_authorized(session, user_id):
             raise HTTPException(status_code=403, detail="Not authorized")
+        _enforce_dm_call_rules(db, session, user_id)
         chime_meeting_id = session.get("chime_meeting_id", "")
         if not chime_meeting_id:
             raise HTTPException(status_code=400, detail="No active meeting for this session")

@@ -168,18 +168,22 @@ final class GroupInfoRowTests: XCTestCase {
 
     // MARK: Sessions pill moved into the row (groups); stays in the DM header
 
+    // UPDATED for task 20261028-dm-direct-call (Jacey option a): the DM header's
+    // trailing item is now the Call pill (callPill) instead of the Sessions pill.
+    // Groups are unchanged: no pill in the group header, Sessions is a chip.
     func test_sessionsPill_isTrailingRowItemInGroups_andStaysInDMHeader() throws {
         let s = try src("Chat/ChatThreadView.swift")
         let hs = try XCTUnwrap(s.range(of: "private var header: some View {")?.lowerBound)
-        let he = try XCTUnwrap(s.range(of: "private var sessionsPill: some View {")?.lowerBound)
+        let he = try XCTUnwrap(s.range(of: "private var callPill: some View {")?.lowerBound)
         let header = String(s[hs..<he])
         XCTAssertTrue(header.contains("if contact.type == .group {"))
-        XCTAssertTrue(header.contains("sessionsPill"), "DM header keeps the Sessions pill")
+        XCTAssertTrue(header.contains("callPill"), "DM header shows the Call pill in the old Sessions slot")
+        XCTAssertFalse(header.contains("sessionsPill"), "the DM Sessions pill is removed")
         let groupBranch = try XCTUnwrap(header.range(of: "if contact.type == .group {\n                // Sessions lives"))
-        let elseBranch = try XCTUnwrap(header.range(of: "} else {\n                Spacer(minLength: 8)\n                sessionsPill"))
+        let elseBranch = try XCTUnwrap(header.range(of: "} else {\n                Spacer(minLength: 8)\n                callPill"))
         XCTAssertTrue(groupBranch.lowerBound < elseBranch.lowerBound)
-        XCTAssertFalse(String(header[groupBranch.lowerBound..<elseBranch.lowerBound]).contains("sessionsPill"),
-                       "no Sessions pill in the group header")
+        XCTAssertFalse(String(header[groupBranch.lowerBound..<elseBranch.lowerBound]).contains("callPill"),
+                       "no Call or Sessions pill in the group header")
         XCTAssertTrue(s.contains("badges: infoBadges)"), "badges are passed to the chip row")
         XCTAssertTrue(s.contains("media: appState.capabilities.groupMediaEnabled) + [.sessions]"), "Sessions is a normal chip in the group row")
         let row = try src("Chat/GroupInfoChipRow.swift")

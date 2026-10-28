@@ -54,7 +54,10 @@ final class ComposerAccessorySlotRegressionTests: XCTestCase {
         let start = try XCTUnwrap(s.range(of: "private func setAttachMode(_ on: Bool) {")?.lowerBound)
         let body = String(s[start...].prefix(700))
         XCTAssertTrue(body.contains("withMotionAwareAnimation(ComposerAccessoryMotion.swap, reduceMotion: reduceMotion)"))
-        XCTAssertTrue(body.contains("if on { infoCategory = nil; showSessionsMenu = false }"))
+        // Task 20261028-dm-direct-call: the DM floating Sessions menu is gone, so only
+        // the group info panel needs closing; the removed state must not come back.
+        XCTAssertTrue(body.contains("if on { infoCategory = nil }"))
+        XCTAssertFalse(body.contains("showSessionsMenu"))
         XCTAssertTrue(body.contains("showAttachSheet = on"))
     }
 
@@ -73,7 +76,10 @@ final class ComposerAccessorySlotRegressionTests: XCTestCase {
 
     func test_sessionsCard_headerOnlyAnchor() throws {
         let s = try src("Chat/ChatThreadView.swift")
-        XCTAssertTrue(s.contains(".padding(.top, 76)"))
+        // Task 20261028-dm-direct-call: the DM floating Sessions card (and its 76pt
+        // header anchor) is gone; group Sessions live in the info panel.
+        XCTAssertFalse(s.contains(".padding(.top, 76)"))
+        XCTAssertFalse(s.contains("sessionsMenuCard"))
         XCTAssertFalse(s.contains("? 132 : 76"))
     }
 }
