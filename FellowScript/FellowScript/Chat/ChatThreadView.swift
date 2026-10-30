@@ -3054,15 +3054,12 @@ struct ChatThreadView: View {
         }
     }
 
-    /// Sends a verse/note picked through "Send in chat" once this chat is loaded
-    /// and showing its main conversation (not an open thread). One-shot.
+    /// Delivers a "Send in chat" share once loaded (chat or thread; one-shot).
     private func consumePendingChatShare() {
-        guard readyForInitialScroll, !vm.isThreadOpen,
-              let pending = appState.pendingChatShare, pending.contact.id == contact.id else { return }
+        guard readyForInitialScroll, let pending = appState.pendingChatShare, pending.contact.id == contact.id,
+              ChatShareDelivery.canDeliver(pending, vm: vm) else { return }
         appState.pendingChatShare = nil
-        let uid = appState.currentUser?.user_id ?? ""
-        vm.sendMessage(text: pending.payload.fallbackText, attachment: nil, contact: contact,
-                       userId: uid, shared: pending.payload)
+        ChatShareDelivery.deliver(pending, vm: vm, appState: appState, contact: contact)
     }
 
     private func sendMessage() {
