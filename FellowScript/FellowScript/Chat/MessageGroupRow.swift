@@ -223,7 +223,11 @@ struct MessageGroupRow: View {
 
     var body: some View {
         if group.isSystem, let line = group.messages.first {
-            systemLine(line)
+            if line.systemKind == "announcement", let card = line.announcement {
+                AnnouncementTimelineRow(message: line, card: card, posterName: line.mine ? "You" : group.senderName)
+            } else {
+                systemLine(line)
+            }
         } else {
             groupBody
         }
@@ -260,6 +264,7 @@ struct MessageGroupRow: View {
         if message.systemKind == "pin" { return "\(who) pinned a message" }
         // Text is built client-side (never from server text), as for pins.
         if message.systemKind == "member_joined" { return "\(who) joined the group" }
+        if message.systemKind == "announcement" { return "\(who) posted an announcement" }
         return message.text.isEmpty ? who : "\(who) \(message.text)"
     }
 

@@ -12,7 +12,7 @@ from backend.content_config import get_content_config
 from backend.errors import SaveFailedError
 from backend.interactions.attachments import generate_download_url
 from backend.interactions.html_text import clean_shared_note_meta
-from backend.interactions import lifecycle, member_joined_line, paging
+from backend.interactions import chat_announcements, lifecycle, member_joined_line, paging
 from backend.interactions.message_pins import attach_pins
 from backend.interactions.message_reactions import attach_reactions
 from backend.interactions.message_mentions import attach_mentions
@@ -34,7 +34,7 @@ GALLERY_PAGE_SIZE = 24
 # reply_to_id is stripped here and re-added (flag-gated, with the read-time label) by
 # ``message_replies.attach_replies``. ``mentions`` (raw JSONB, no usernames, not flag gated)
 # must never leak; ``message_mentions.attach_mentions`` is the only emitter.
-_INTERNAL_MESSAGE_COLUMNS = ("seq", "deleted_at", "deleted_by", "reply_to_id", "system_kind", "mentions")
+_INTERNAL_MESSAGE_COLUMNS = ("seq", "deleted_at", "deleted_by", "reply_to_id", "system_kind", "mentions", "announcement_id")
 
 # Task 20261016 G2: the "member joined" system line is hidden from every group
 # history reader unless the caller opts in (``include_system``), so clients that
@@ -276,10 +276,12 @@ class GroupsManager(DBManager):
 
     def _system_filter(self) -> str:
         """SQL suffix hiding the member-joined line unless the caller opted in.
-        Constant text only (no user input)."""
+        Constant text only (no user input). The announcement-line filter
+        (flag ``chat_announcements``) always applies."""
+        announce = chat_announcements.history_filter_sql(self.user_id)
         if self.include_system:
-            return ""
-        return f" AND system_kind IS DISTINCT FROM '{MEMBER_JOINED_KIND}' "
+            return announce
+        return f" AND system_kind IS DISTINCT FROM '{MEMBER_JOINED_KIND}' " + announce
 
     def mention_members(self) -> list[dict]:
         """``[{"user_id", "username"}]`` the caller may @mention in this group:
@@ -346,17 +348,19 @@ class GroupsManager(DBManager):
             # Ordering/soft-delete columns are internal: the legacy shape is
             # unchanged except for the additive ``id`` (string UUID), added
             # last so key order is otherwise identical.
-            joined_kind = data.get("system_kind") == MEMBER_JOINED_KIND
+            kind_in = data.get("system_kind")
+            joined_kind = data.get("system_kind") in (MEMBER_JOINED_KIND, chat_announcements.SYSTEM_KIND)
             for internal in _INTERNAL_MESSAGE_COLUMNS:
                 data.pop(internal, None)
-            if joined_kind:  # only present when the caller opted in (see _system_filter)
-                data["system_kind"] = MEMBER_JOINED_KIND
+            if joined_kind:  # only present when the caller opted in / flag on (see _system_filter)
+                data["system_kind"] = kind_in
             data["id"] = str(message_id)
             result.append(data)
         attach_reactions(self, result, self.user_id)
         attach_pins(self, result, self.user_id)
         attach_replies(self, result, self.user_id)
         attach_mentions(self, result, self.user_id)
+        chat_announcements.attach_announcements(self, result, self.user_id)
         return result
 
     def _validate_new_member_ids(self, ids) -> dict[str, str]:
@@ -475,12 +479,13 @@ class GroupsManager(DBManager):
                 "attachment_kind": kind,
                 "attachment_meta": clean_shared_note_meta(kind, meta),
                 "attachment_url": generate_download_url(key) if key else None,
-                **({"system_kind": MEMBER_JOINED_KIND} if sys_kind == MEMBER_JOINED_KIND else {}),
+                **({"system_kind": sys_kind} if sys_kind in (MEMBER_JOINED_KIND, chat_announcements.SYSTEM_KIND) else {}),
             })
         attach_reactions(self, messages, self.user_id)
         attach_pins(self, messages, self.user_id)
         attach_replies(self, messages, self.user_id)
         attach_mentions(self, messages, self.user_id)
+        chat_announcements.attach_announcements(self, messages, self.user_id)
         return {"messages": messages, "has_more": has_more, "next_cursor": next_cursor}
 
     def fetch_media_page(

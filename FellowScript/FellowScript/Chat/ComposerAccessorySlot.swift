@@ -27,6 +27,8 @@ struct ComposerAccessorySlot<Chips: View>: View {
     var onPickGif: () -> Void
     /// DMs: the Pinned chip for the attach row (nil elsewhere).
     var pinned: AttachPinnedChip? = nil
+    /// Groups: the Announcement chip for the attach row (nil when the flag is off).
+    var announcement: AttachAnnouncementChip? = nil
     @ViewBuilder var chips: () -> Chips
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -49,7 +51,7 @@ struct ComposerAccessorySlot<Chips: View>: View {
                     .accessibilityHidden(attachMode)
             }
             AttachPickerRow(compact: compact, onPickPhotoVideo: onPickPhotoVideo,
-                            onPickFile: onPickFile, onPickGif: onPickGif, pinned: pinned)
+                            onPickFile: onPickFile, onPickGif: onPickGif, pinned: pinned, announcement: announcement)
                 .opacity(attachMode ? 1 : 0)
                 .animation(fade, value: attachMode)
                 .offset(y: attachMode ? 0 : slide)

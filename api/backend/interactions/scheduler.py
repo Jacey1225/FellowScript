@@ -1352,6 +1352,15 @@ def start_scheduler() -> None:
     scheduler.add_job(fire_due_announcement_pushes, "interval",
                       seconds=ANNOUNCEMENT_PUSH_POLL_INTERVAL_SECONDS,
                       id="announcement_push_fire", replace_existing=True)
+    # Scheduled announcements posted to the chat timeline (task 20261030-chat-
+    # announcements): the unique index on messages.announcement_id, not the poll
+    # rate, guarantees one line per announcement. Inert per poster while the
+    # chat_announcements flag is off.
+    from backend.interactions.chat_announcements import (
+        POLL_INTERVAL_SECONDS as CHAT_ANNOUNCEMENT_POLL_SECONDS, fire_due_chat_announcements,
+    )
+    scheduler.add_job(fire_due_chat_announcements, "interval", seconds=CHAT_ANNOUNCEMENT_POLL_SECONDS,
+                      id="chat_announcement_fire", replace_existing=True)
     # One-hour-before reminder for scheduled announcements and the opt-in daily
     # prayer / check-in / deep-question reminders (task 20261016). Both claim an
     # atomic dedup marker before sending, so the poll rate never causes repeats.

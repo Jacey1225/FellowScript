@@ -9,6 +9,7 @@ extension MessageGroupRow {
         switch kind {
         case "pin": return "pin.fill"
         case "member_joined": return "person.badge.plus"
+        case "announcement": return "megaphone.fill"
         default: return nil
         }
     }

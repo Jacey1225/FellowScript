@@ -129,6 +129,15 @@ may still be populated.
 
 ---
 
+### Announcements in chat (task 20261030-chat-announcements)
+
+Behind the default-OFF flag `chat_announcements` (`features.chat_announcements` in `/app/capabilities`). Groups only.
+
+- `POST /groups/{user_id}/{group_id}/announcements` takes a new optional `post_to_chat` (boolean). `true` also publishes the announcement as a line in the group timeline once it is published (immediately, or at `publish_at`). `422` while the flag is off for the caller. Everything else (member-only 403, free-plan 403 body, 422 validation) is unchanged. Edit, delete and restore are unchanged; the line follows the announcement (an edit shows in place, a deleted announcement's line disappears and returns on restore within the grace window).
+- `GET /groups/{user_id}/{group_id}/messages` (legacy and paged): with the flag on for the caller, announcement lines are returned with `system_kind: "announcement"`, `announcement_id` and `announcement` (the caller's view of the announcement plus `edited`). With the flag off they are omitted entirely. Older clients that ignore `system_kind` show the line text `posted an announcement`.
+- WebSocket: the line is delivered as a message frame carrying the same three keys (the `announcement` card is viewer-neutral; re-GET the announcement for viewer fields), and `{"type": "announcement_updated", "group_id", "announcement_id", "action"}` tells clients to refetch after an edit, delete or restore.
+- No new endpoints. The announcement push is unchanged and the line sends no push of its own.
+
 ## Friends
 
 | Method | Route | Description |

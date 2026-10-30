@@ -358,7 +358,7 @@ final class ChatThreadViewModel: ObservableObject {
             attachmentURL: message.attachmentURL, attachmentMeta: message.attachmentMeta,
             reactions: message.reactions, reply: message.reply,
             pinned: message.pinned, systemKind: message.systemKind,
-            mentions: message.mentions
+            mentions: message.mentions, announcement: message.announcement
         )
     }
 
@@ -594,7 +594,7 @@ final class ChatThreadViewModel: ObservableObject {
                 reactions: old.reactions,
                 reply: reply ?? old.reply,
                 pinned: old.pinned, systemKind: old.systemKind,
-                mentions: mentions ?? old.mentions
+                mentions: mentions ?? old.mentions, announcement: old.announcement
             )
         }
         return true
@@ -650,6 +650,8 @@ final class ChatThreadViewModel: ObservableObject {
                 handleReactionUpdated(json)
             case "pin_updated":
                 handlePinUpdated(json)
+            case "announcement_updated":
+                handleAnnouncementSync(json)
             case "thread_deleted":
                 handleThreadDeleted(json)
             case "ping":
@@ -665,7 +667,9 @@ final class ChatThreadViewModel: ObservableObject {
         // group send is fanned out to every member in `to_users`, including the
         // sender. The backend no longer re-delivers to the sender, but this
         // stays as defense-in-depth.
-        if !fromUser.isEmpty, fromUser == wsUserId {
+        // The poster's own announcement line is a server-made row (REST post, no optimistic echo), so it is kept.
+        let ownAnnouncementLine = !fromUser.isEmpty && fromUser == wsUserId && (json["system_kind"] as? String) == "announcement"
+        if !fromUser.isEmpty, fromUser == wsUserId, !ownAnnouncementLine {
             print("[ChatThreadViewModel] dropping self-echoed inbound frame from_user=\(fromUser) -- already shown via optimistic local append")
             return
         }
@@ -681,15 +685,16 @@ final class ChatThreadViewModel: ObservableObject {
         let incoming = FSMessage(
             id:        (json["id"] as? String) ?? UUID().uuidString,
             text:      msgText,
-            mine:      false,
-            sender:    resolvedSenderName(forRawId: fromUser),
+            mine:      ownAnnouncementLine,
+            sender:    ownAnnouncementLine ? "" : resolvedSenderName(forRawId: fromUser),
             timestamp: (json["timestamp"] as? String) ?? "",
             attachmentKind: json["attachment_kind"] as? String,
             attachmentURL:  json["attachment_url"] as? String,
             attachmentMeta: attachmentMeta,
             reply: FSReplyRef(frame: json),
             systemKind: json["system_kind"] as? String,
-            mentions: FSMention.parse(json["mentions"])
+            mentions: FSMention.parse(json["mentions"]),
+            announcement: FSMessageAnnouncement.parse(json["announcement"])
         )
         // Dedup by id (a live frame for a row a history fetch already
         // delivered must not render twice); a frame without an id always appends.
@@ -788,6 +793,26 @@ final class ChatThreadViewModel: ObservableObject {
             change(&st.messages)
             mainStash = st
         }
+    }
+
+    // Task 20261030-chat-announcements: an announcement line changed. Deleted drops
+    // the row now; updated/restored bump the token so the view re-reads history
+    // (a failed read keeps what is shown).
+    @Published private(set) var announcementSyncToken = 0
+
+    private func handleAnnouncementSync(_ json: [String: Any]) {
+        guard frameBelongsToCurrentGroup(json), let sync = FSAnnouncementSync(frame: json) else { return }
+        if sync.action == .deleted { mutateMain { $0.removeAnnouncementLines(announcementId: sync.announcementId) } }
+        else { announcementSyncToken += 1 }
+    }
+
+    func refreshAnnouncementLines(service: DataServiceProtocol, contact: FSContact, userId: String) async {
+        guard contact.type == .group, activeThread == nil,
+              let history = try? await service.fetchMessageHistory(userId: userId, contactId: contact.id, isGroup: true,
+                                                                   limit: pagingEnabled ? Self.initialPageLimit : nil) else { return }
+        let names = groupUsernameById
+        let lines = AnnouncementLineMerge.lines(in: history).map { resolvedMessage($0, senderName: names[$0.sender]) }
+        messages = AnnouncementLineMerge.merge(messages, fetched: lines)
     }
 
     private func removeMainMessage(_ id: String) {
@@ -1200,6 +1225,7 @@ struct ChatThreadView: View {
     // Task 20261012-message-pins: Pinned list sheet + the message briefly
     // outlined after jumping to it.
     @State private var showPinned: Bool = false
+    @State private var showAnnouncementForm: Bool = false
     // Task 20261023-group-info-row: the open group info submenu (nil = closed).
     @State private var infoCategory: GroupInfoCategory? = nil
     // Task 20261017-chat-mentions: the composer's recorded mentions, the text
@@ -1681,6 +1707,14 @@ struct ChatThreadView: View {
                     .onChange(of: vm.reactionRevision) { _ in
                         recomputeMessageGroups()
                     }
+                    // Task 20261030-chat-announcements: an announcement line was edited/restored.
+                    .onChange(of: vm.announcementSyncToken) { _ in
+                        Task {
+                            await vm.refreshAnnouncementLines(service: appState.service, contact: contact, userId: appState.currentUser?.user_id ?? "")
+                            recomputeMessageGroups()
+                        }
+                    }
+                    .environment(\.chatAnnouncementGroupId, contact.type == .group && appState.capabilities.isEnabled("chat_announcements") ? contact.id : nil)
                     // Task 20261001-message-threads: entering/leaving a thread
                     // swaps the whole list (the count can be equal across the
                     // swap, so the count-based handler alone is not enough).
@@ -2135,6 +2169,12 @@ struct ChatThreadView: View {
                                             onSelect: { pin in jumpToPin(pin) })
                     .frame(width: WorkspaceLayout.popoverWidth, height: WorkspaceLayout.pinnedPopoverHeight))
             })
+    }
+
+    /// Groups with chat_announcements on: the Announcement chip in the "+" attach row.
+    private var attachAnnouncementChip: AttachAnnouncementChip? {
+        guard contact.type == .group, !vm.isThreadOpen, appState.capabilities.isEnabled("chat_announcements") else { return nil }
+        return AttachAnnouncementChip(action: { setAttachMode(false); showAnnouncementForm = true })
     }
 
     private func rowActions(for message: FSMessage) -> [MessageRowAction] {
@@ -2764,7 +2804,8 @@ struct ChatThreadView: View {
                 onPickPhotoVideo: { setAttachMode(false); DispatchQueue.main.async { showPhotoVideoPicker = true } },
                 onPickFile:       { setAttachMode(false); DispatchQueue.main.async { showDocumentPicker = true } },
                 onPickGif:        { setAttachMode(false); DispatchQueue.main.async { showGifSheet = true } },
-                pinned: attachPinnedChip
+                pinned: attachPinnedChip,
+                announcement: attachAnnouncementChip
             ) {
                 GroupInfoChipRow(categories: groupInfoCategories, selected: $infoCategory, pinCount: vm.pinCount,
                                  compact: !embedded, badges: infoBadges)
@@ -2851,6 +2892,8 @@ struct ChatThreadView: View {
         .onChange(of: vm.activeThread?.id) { _, newId in if newId != nil { replyTarget = nil } }
         .modifier(MentionComposerSupport(text: $text, draft: $mentionDraft, lastText: $mentionLastText,
                                          loadKey: mentionLoadKey, load: loadMentionMembers))
+        .chatAnnouncementSheet(isPresented: $showAnnouncementForm, service: appState.service,
+                               groupId: contact.id, userId: appState.currentUser?.user_id ?? "")
         .modifier(ComposerAttachCoordination(attachMode: $showAttachSheet, composerFocused: $composerFocused,
                                              category: infoCategory, isThreadOpen: vm.isThreadOpen,
                                              collapse: { setAttachMode(false) }))

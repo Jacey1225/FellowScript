@@ -30,6 +30,10 @@ final class GroupAnnouncementsViewModel: ObservableObject {
     @Published private(set) var hiddenIds: Set<String> = []
     @Published var undoItem: FSGroupAnnouncement?
 
+    /// Task 20261030-chat-announcements: set by the chat composer's instance so a
+    /// new announcement is also posted into the chat (create only).
+    var postsToChat = false
+
     private var pending: [String: (task: Task<Void, Never>, item: FSGroupAnnouncement)] = [:]
 
     init(service: DataServiceProtocol, groupId: String, userId: String) {
@@ -94,6 +98,8 @@ final class GroupAnnouncementsViewModel: ObservableObject {
     /// Create or update. Throws so the form can keep its content and show the
     /// right message; `.limitReached` also refreshes the local gate.
     func save(_ draft: FSAnnouncementDraft, editing: FSGroupAnnouncement?) async throws -> FSGroupAnnouncement {
+        var draft = draft
+        draft.postToChat = postsToChat && editing == nil
         do {
             let saved: FSGroupAnnouncement
             if let editing {

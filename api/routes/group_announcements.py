@@ -21,6 +21,7 @@ from backend.interactions.announcements import (
     AnnouncementsManager, REPEAT_KEYS, parse_publish_at,
 )
 from backend.interactions.announcement_repeat_rules import RepeatLimitReached
+from backend.interactions import chat_announcements
 from backend.interactions.announcement_notifier import notify_on_create
 from backend.interactions.announcement_polls import PollClosed, PollForbidden, PollNotFound
 from backend.interactions.attachments import AttachmentConfigError
@@ -90,6 +91,7 @@ class AnnouncementCreateRequest(BaseModel):
     capacity: StrictInt | None = None
     location: str | None = None  # flag-gated (422 while off); blank/null = none
     poll: PollIn | None = None  # flag-gated (422 while off)
+    post_to_chat: StrictBool | None = None  # also show in the group timeline (flag chat_announcements; 422 while off)
     # Recurring reminder (ANNOUNCEMENT_REPEAT_ENABLED; a non-null interval is 422 while off).
     repeat_interval: str | None = None  # "daily" | "weekly" | "monthly"; null = no repeat
     repeat_until: str | None = None  # ISO-8601 with offset, after publish_at, <= 365d ahead
@@ -199,16 +201,20 @@ async def create_announcement(
         if not gate["allowed"]:
             raise HTTPException(status_code=403, detail=gate)
         try:
+            post_to_chat = chat_announcements.checked_post_flag(user_id, body.post_to_chat)
             created = manager.create_announcement(body.title, body.description, body.banner_key, publish_at,
                                                 title_color=body.title_color,
                                                 title_font=body.title_font, bg_theme=body.bg_theme,
                                                 extra=_extra_fields({k: getattr(body, k) for k in body.model_fields_set}),
                                                 poll=body.poll.model_dump() if body.poll else None,
                                                 repeat={k: getattr(body, k) for k in REPEAT_KEYS
-                                                        if k in body.model_fields_set})
+                                                        if k in body.model_fields_set},
+                                                post_to_chat=post_to_chat)
             # Group push runs after the response (off the request path); the
             # notifier claims atomically and never raises.
             background_tasks.add_task(notify_on_create, created["id"])
+            if post_to_chat:  # timeline line (immediate posts; scheduled ones are emitted by the scheduler tick)
+                background_tasks.add_task(chat_announcements.emit_and_broadcast, created["id"])
             return created
         except RepeatLimitReached as e:
             raise HTTPException(status_code=409, detail=str(e))
@@ -251,7 +257,8 @@ async def get_announcement(
 @limiter.limit("30/minute")
 async def update_announcement(
     request: Request, user_id: str, group_id: str, announcement_id: str,
-    body: AnnouncementUpdateRequest, _: str = Depends(require_match("user_id")),
+    body: AnnouncementUpdateRequest, background_tasks: BackgroundTasks,
+    _: str = Depends(require_match("user_id")),
 ) -> dict:
     """Edit (creator or group creator). Not counted against the free limit.
 
@@ -271,7 +278,9 @@ async def update_announcement(
         if "publish_at" in fields:
             fields["publish_at"] = _publish_at(fields["publish_at"])
         try:
-            return manager.update_announcement(announcement_id, fields)
+            updated = manager.update_announcement(announcement_id, fields)
+            background_tasks.add_task(chat_announcements.broadcast_sync, group_id, announcement_id, "updated")
+            return updated
         except AnnouncementNotFound:
             raise HTTPException(status_code=404, detail="Announcement not found")
         except AnnouncementForbidden:
@@ -287,7 +296,7 @@ async def update_announcement(
 @group_announcements_router.delete("/{user_id}/{group_id}/announcements/{announcement_id}")
 @limiter.limit("30/minute")
 async def delete_announcement(
-    request: Request, user_id: str, group_id: str, announcement_id: str,
+    request: Request, user_id: str, group_id: str, announcement_id: str, background_tasks: BackgroundTasks,
     _: str = Depends(require_match("user_id")),
 ) -> dict:
     """Soft delete; undo via ``.../restore`` within the grace window.
@@ -296,6 +305,7 @@ async def delete_announcement(
     manager = _open(user_id, group_id)
     try:
         manager.delete_announcement(announcement_id)
+        background_tasks.add_task(chat_announcements.broadcast_sync, group_id, announcement_id, "deleted")
         return {"deleted": True, "id": announcement_id}
     except AnnouncementNotFound:
         raise HTTPException(status_code=404, detail="Announcement not found")
@@ -308,14 +318,16 @@ async def delete_announcement(
 @group_announcements_router.post("/{user_id}/{group_id}/announcements/{announcement_id}/restore")
 @limiter.limit("30/minute")
 async def restore_announcement(
-    request: Request, user_id: str, group_id: str, announcement_id: str,
+    request: Request, user_id: str, group_id: str, announcement_id: str, background_tasks: BackgroundTasks,
     _: str = Depends(require_match("user_id")),
 ) -> dict:
     """Undo a delete within the grace window. Raises: 403; 404 if not deleted
     or the grace window has lapsed."""
     manager = _open(user_id, group_id)
     try:
-        return manager.restore_announcement(announcement_id)
+        restored = manager.restore_announcement(announcement_id)
+        background_tasks.add_task(chat_announcements.broadcast_sync, group_id, announcement_id, "restored")
+        return restored
     except AnnouncementNotFound:
         raise HTTPException(status_code=404, detail="Announcement not found")
     except AnnouncementForbidden:
