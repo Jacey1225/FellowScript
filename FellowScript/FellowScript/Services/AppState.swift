@@ -402,6 +402,7 @@ final class AppState: ObservableObject {
         pendingNoteDraft = nil   // in-memory verse draft must not outlive the session
         clearPendingInvite()
         clearShareLinks()
+        ProfileCache.shared.clear()   // task 20261030-user-profiles: memory-only, never outlives the session
         storedUserId    = ""
         storedUsername  = ""
         storedEmail     = ""

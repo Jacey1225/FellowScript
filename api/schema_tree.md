@@ -18,7 +18,7 @@ on `devotions`, not child tables.
 ## Level 0 — No foreign keys (create first)
 
 ```
-users
+users                  # incl. nullable bio TEXT (user_bio DDL module)
 groups
 log_group_cursors      # CloudWatch watchdog cursor, unscoped to any user
 error_detections       # CloudWatch watchdog findings, unscoped to any user

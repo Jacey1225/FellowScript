@@ -622,7 +622,7 @@ function UndoToast({ toast, onUndo, onExpire }) {
 // ── Chat thread (iMessage style) ──────────────────────────────────────────────
 
 export default function ChatThread({
-  contact, messages, groupMembers, user, onBack, onSend,
+  contact, messages, groupMembers, user, onBack, onSend, onViewProfile,
   onRequestUploadUrl, onUploadToS3, onSearchGifs, onBrowseGifs,
   sessions, activeSessionId, talkingUserId,
   onJoinSession, onLeaveSession, onOpenSessionCreator,
@@ -1345,6 +1345,16 @@ export default function ChatThread({
             <Avatar size={32} src={contact.photoUrl} style={{ background: 'rgba(255,198,26,0.12)', color: 'var(--gold)', flexShrink: 0 }}>
               {(contact.name || '?')[0].toUpperCase()}
             </Avatar>
+            <span className="group-info-header-name">{contact.name}</span>
+          </button>
+        ) : contact?.type === 'friend' && onViewProfile ? (
+          // Task 20261030-user-profiles: DM header name opens the profile.
+          <button
+            type="button"
+            className="group-info-header-btn"
+            aria-label={`View ${contact.name}'s profile`}
+            onClick={() => onViewProfile(contact.id)}
+          >
             <span className="group-info-header-name">{contact.name}</span>
           </button>
         ) : (

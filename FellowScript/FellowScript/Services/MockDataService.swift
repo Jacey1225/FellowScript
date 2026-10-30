@@ -252,6 +252,13 @@ protocol DataServiceProtocol {
     func sendFriendRequest(userId: String, username: String) async throws
     func acceptFriendRequest(userId: String, username: String) async throws
     func removeFriend(userId: String, friendId: String) async throws
+    // Task 20261030-user-profiles: profile read / own-bio edit / id-keyed friend
+    // request+accept. Defaults (throwing) live in NetworkService+Profile.swift so
+    // existing conformers need no stubs.
+    func fetchProfile(targetId: String) async throws -> FSProfile
+    func updateBio(userId: String, bio: String?) async throws -> String?
+    func sendProfileFriendRequest(targetId: String) async throws
+    func acceptProfileFriendRequest(targetId: String) async throws
     // Dashboard's Friend Activity hero card -- friend-only, block-respecting
     // read of each friend's most recent public note + a "check in" nudge
     // candidate. See FSFriendActivityFeed for the response shape.

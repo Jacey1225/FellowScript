@@ -7,6 +7,7 @@ from backend import content_store
 from backend.errors import SaveFailedError
 from backend.interactions.attachments import generate_download_url
 from backend.interactions.blocks import BlockManager
+from backend.interactions.friend_peer import dm_peer, friend_view
 from backend.interactions.html_text import clean_shared_note_meta
 from backend.interactions import paging
 from backend.interactions.message_pins import attach_pins
@@ -121,30 +122,37 @@ class FriendsManager(DBManager):
             self.user = User()
 
     def send_add_request(self, friend_username: str) -> dict | None:
-        """Append the acting user's ID to the target user's friend_requests list.
+        """Send a friend request to the user with ``friend_username``.
 
-        Args:
-            friend_username: Username of the user to send the request to.
+        Unknown, suspended, blocked and already-friends targets are a silent
+        no-op (``None``), identical to a real send, so the response cannot be
+        used to enumerate usernames or detect a block (security D5).
 
         Returns:
-            dict | None: ``{"error": str}`` if the user is not found or the
-                user attempts to add themselves; ``None`` on success.
-                On success ``self.new_request_recipient_id`` is the recipient's
-                id for a newly created request (else ``None``).
+            dict | None: ``{"error": str, "status": int}`` only for a refusal
+                the caller already knows about (self-request 400, outstanding
+                cap 429); ``None`` otherwise. For a NEW request
+                ``self.new_request_recipient_id`` is the recipient's id.
         """
         self.new_request_recipient_id = None
         result = self.lookup("users", {"username": friend_username})
         if not result:
-            return {"error": "User not found"}
-        friend_id = list(result.keys())[0]
+            return None
+        return self.send_add_request_by_id(str(list(result.keys())[0]))
+
+    def send_add_request_by_id(self, friend_id: str) -> dict | None:
+        """Id-keyed twin of ``send_add_request`` (same uniform semantics)."""
+        self.new_request_recipient_id = None
         if friend_id == self.user_id:
-            return {"error": "Cannot add yourself"}
-        blocks = BlockManager(self.user_id)
-        try:
-            if blocks.is_blocked(friend_id):
-                return {"error": "Cannot send request"}
-        finally:
-            blocks.close()
+            return {"error": "Cannot add yourself", "status": 400}
+        from backend.interactions.friend_request_policy import request_allowed, outstanding_cap_hit
+        if outstanding_cap_hit(self.cur, self.user_id):
+            self.conn.rollback()
+            return {"error": "Too many pending requests", "status": 429}
+        allowed = request_allowed(self.cur, self.user_id, friend_id)
+        self.conn.rollback()
+        if not allowed:
+            return None
         self.cur.execute(
             "SELECT 1 FROM friend_requests WHERE to_user_id = %s AND from_user_id = %s",
             (friend_id, self.user_id),
@@ -163,35 +171,25 @@ class FriendsManager(DBManager):
         return None
 
     def add_friend(self, friend_username: str) -> dict | None:
-        """Accept a pending friend request and establish a mutual friendship.
+        """Accept a pending friend request from ``friend_username``.
 
-        Args:
-            friend_username: Username of the user to accept as a friend.
+        Requires a pending request from that user (security D1); one atomic
+        transaction, one uniform refusal.
 
         Returns:
-            dict | None: ``{"error": str}`` if the user is not found;
-                ``None`` on success.
+            dict | None: ``{"error": str}`` on any refusal; ``None`` on success.
         """
+        from backend.interactions.friend_accept import REFUSED_DETAIL
         result = self.lookup("users", {"username": friend_username})
         if not result:
-            return {"error": "User not found"}
-        friend_id = list(result.keys())[0]
-        blocks = BlockManager(self.user_id)
-        try:
-            if blocks.is_blocked(friend_id):
-                return {"error": "Cannot add this user"}
-        finally:
-            blocks.close()
-        if not self.insertion("user_friends", {"user_id": self.user_id, "friend_id": friend_id}):
-            raise SaveFailedError()
-        if not self.insertion("user_friends", {"user_id": friend_id, "friend_id": self.user_id}):
-            raise SaveFailedError()
-        # Best-effort cleanup of the now-accepted request row -- the
-        # friendship itself (the two inserts above) is already established,
-        # so a stray/already-gone request row here is not treated as this
-        # call's own failure (a real DB error is still visible via db.py's
-        # DB_WRITE_FAILURE log line).
-        self.delete("friend_requests", {"to_user_id": self.user_id, "from_user_id": friend_id})
+            return {"error": REFUSED_DETAIL}
+        return self.add_friend_by_id(str(list(result.keys())[0]))
+
+    def add_friend_by_id(self, friend_id: str) -> dict | None:
+        """Id-keyed twin of ``add_friend``."""
+        from backend.interactions.friend_accept import REFUSED_DETAIL, accept_pending_request
+        if not accept_pending_request(self.conn, self.cur, self.user_id, friend_id):
+            return {"error": REFUSED_DETAIL}
         return None
 
     def get_requests(self) -> list[dict]:
@@ -219,16 +217,18 @@ class FriendsManager(DBManager):
         """Return the full friend list for the acting user.
 
         Returns:
-            list[dict]: List of friend user records with ``hash_pass`` excluded.
+            list[dict]: ``[{"user_id", "username", "profile_photo_url"}, ...]``
+                (never email or any other private column).
         """
         self.cur.execute(
-            "SELECT u._id, u.username, u.email, u.profile_photo_key FROM users u "
+            "SELECT u._id, u.username, u.profile_photo_key FROM users u "
             "JOIN user_friends uf ON u._id = uf.friend_id "
             "WHERE uf.user_id = %s",
             (self.user_id,)
         )
+        # No email (security D4): a friend's address is private and no client reads it.
         return [
-            {"user_id": r[0], "username": r[1], "email": r[2], "profile_photo_url": generate_download_url(r[3])}
+            {"user_id": r[0], "username": r[1], "profile_photo_url": generate_download_url(r[2])}
             for r in self.cur.fetchall()
         ]
 
@@ -356,16 +356,9 @@ class FriendsManager(DBManager):
         Returns ``{"error": str}`` exactly as ``read_friend`` does for an
         unknown or blocked friend.
         """
-        result = self.lookup("users", {"_id": friend_id})
-        if not result:
+        friend_data = dm_peer(self, friend_id)
+        if friend_data is None:
             return {"error": "Friend not found"}
-        blocks = BlockManager(self.user_id)
-        try:
-            if blocks.is_blocked(friend_id):
-                return {"error": "This contact is unavailable"}
-        finally:
-            blocks.close()
-        _, friend_data = list(result.items())[0]
         return self.fetch_dm_page(friend_id, limit, cursor, friend_data.get("username", ""))
 
     def read_friend(self, friend_id: str, page_limit: int | None = None) -> dict:
@@ -378,24 +371,16 @@ class FriendsManager(DBManager):
                 ``other_msgs``; None keeps the exact legacy shape.
 
         Returns:
-            dict: Contains ``friend`` profile (without hash_pass), ``host_msgs``,
+            dict: Contains ``friend`` (allow-listed: user_id, username,
+                profile_photo_url, bio -- no email), ``host_msgs``,
                 and ``other_msgs``. Returns ``{"error": str}`` if not found.
         """
-        result = self.lookup("users", {"_id": friend_id})
-        if not result:
+        friend_data = dm_peer(self, friend_id)
+        if friend_data is None:
             return {"error": "Friend not found"}
-        blocks = BlockManager(self.user_id)
-        try:
-            if blocks.is_blocked(friend_id):
-                return {"error": "This contact is unavailable"}
-        finally:
-            blocks.close()
-        _, friend_data = list(result.items())[0]
         if page_limit is not None:
             page = self.fetch_dm_page(friend_id, page_limit, None, friend_data.get("username", ""))
-            friend_view = {k: v for k, v in friend_data.items() if k != "hash_pass"}
-            friend_view["profile_photo_url"] = generate_download_url(friend_view.pop("profile_photo_key", None))
-            out = {"friend": friend_view}
+            out = {"friend": friend_view(friend_id, friend_data)}
             out.update(paging.envelope(
                 "messages", page["messages"], page_limit, page["has_more"], page["next_cursor"],
             ))
@@ -432,14 +417,10 @@ class FriendsManager(DBManager):
         attach_replies(self, other_msgs, self.user_id)
         attach_mentions(self, host_msgs, self.user_id)
         attach_mentions(self, other_msgs, self.user_id)
-        # Same raw-key-never-leaves-the-server treatment as hash_pass just
-        # below -- friend_data here is a raw `lookup()` row, so
-        # profile_photo_key must be popped unconditionally and resolved to a
-        # fresh presigned GET (task 20260905-profile-photo).
-        friend_view = {k: v for k, v in friend_data.items() if k != "hash_pass"}
-        friend_view["profile_photo_url"] = generate_download_url(friend_view.pop("profile_photo_key", None))
+        # friend_data is a raw `lookup()` row: project it through an allow-list
+        # (never email, hash_pass, the raw photo key or any other column).
         return {
-            "friend":     friend_view,
+            "friend":     friend_view(friend_id, friend_data),
             "host_msgs":  host_msgs,
             "other_msgs": other_msgs,
         }

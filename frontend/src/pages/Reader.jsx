@@ -1,6 +1,7 @@
 import React, { useEffect, useLayoutEffect, useState, useRef, useCallback, useMemo } from 'react';
 import { peekGroupToOpen, takeGroupToOpen } from '../lib/pendingInvite.js';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, useNavigate } from 'react-router-dom';
+import { useOpenDmFromRoute } from '../hooks/useOpenDmFromRoute.js';
 import { Layout } from 'antd';
 import { DockviewReact } from 'dockview-react';
 
@@ -295,6 +296,9 @@ export default function Reader() {
   }, [openChat, loadSessions, closeAgentChat]);
 
   const handleCloseChat = useCallback(() => { closeChat(); }, [closeChat]);
+  const navigate = useNavigate();
+  const handleViewProfile = useCallback((id) => navigate(`/profile/${encodeURIComponent(id)}`), [navigate]);
+  useOpenDmFromRoute({ loaded: contactsLoaded, onLoad: handleLoadContacts, friends, onOpen: handleOpenChat });
 
   // Task 20260929-group-invite-links: after joining via a link the join page
   // leaves a one-shot group id; open that group's chat once the contact list
@@ -471,7 +475,7 @@ export default function Reader() {
 
   const messagingPanelValue = useMemo(() => ({
     user, friends, groups: msgGroups, currentContact, messages, groupMembers,
-    onOpen: handleOpenChat, onBack: handleCloseChat,
+    onOpen: handleOpenChat, onViewProfile: handleViewProfile, onBack: handleCloseChat,
     onAddFriend: addFriend, onRemoveFriend: removeFriend,
     onReportUser: reportUser, onBlockUser: blockUser,
     onCreateGroup: createGroup, onUpdateGroup: updateGroup, onLeaveGroup: leaveGroup,
@@ -498,7 +502,7 @@ export default function Reader() {
     },
   }), [addGroupMembers, retryFailedMessage, toggleReaction, pinList, pinsEnabled, loadPins, loadMorePins, togglePin, unpinFromList, ensureMessageLoaded, threadView, threadMessages, threadPage, threadLoad, restoredDraft, openThread, closeThread, retryThread,
        loadOlderThread, sendThreadMessage, startThread, deleteMessage, restoreMessage,
-       olderPage, loadOlder, applyGroupChange, dropGroup, user, friends, msgGroups, currentContact, messages, groupMembers, handleOpenChat, handleCloseChat,
+       olderPage, loadOlder, applyGroupChange, dropGroup, user, friends, msgGroups, currentContact, messages, groupMembers, handleOpenChat, handleViewProfile, handleCloseChat,
        addFriend, removeFriend, reportUser, blockUser, createGroup, updateGroup, leaveGroup,
        contactsLoaded, handleLoadContacts, sendMessage, requestUploadUrl, uploadToS3, searchGifs, browseGifs,
        sessions, activeSessionId, talkingUserId,

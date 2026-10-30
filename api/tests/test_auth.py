@@ -162,6 +162,17 @@ def main():
 
             # ── Messaging: DM read + WebSocket ────────────────────────────
             print("\n=== 6. Messaging (HTTP + WebSocket) ===")
+            # user-profiles D4: DM thread reads require an existing friendship
+            # (strangers get the same 404 as an unknown user), so befriend A and B first.
+            r = client.get(f"/message/messages/{uid_a}/", params={"guest_user": uid_b}, headers=cookie_header(token_a))
+            check("messaging: host reads a non-friend's DM thread -> 404", r.status_code == 404, str(r.status_code))
+            _fdb = DBManager()
+            try:
+                for _x, _y in ((uid_a, uid_b), (uid_b, uid_a)):
+                    _fdb.cur.execute("INSERT INTO user_friends (user_id, friend_id) VALUES (%s, %s) ON CONFLICT DO NOTHING", (_x, _y))
+                _fdb.conn.commit()
+            finally:
+                _fdb.close()
             r = client.get(f"/message/messages/{uid_a}/", params={"guest_user": uid_b}, headers=cookie_header(token_a))
             check("messaging: host reads own DM thread -> 200", r.status_code == 200, str(r.status_code))
             r = client.get(f"/message/messages/{uid_a}/", params={"guest_user": uid_b}, headers=cookie_header(token_b))

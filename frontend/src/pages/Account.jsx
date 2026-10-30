@@ -19,6 +19,7 @@ import { useWarmCanvas } from '../hooks/useWarmCanvas.js';
 import AppBloom from '../components/AppBloom.jsx';
 import SubscriptionCard from '../components/SubscriptionCard.jsx';
 import { FormSkin, FORM_CARD_STYLE, useUndoDelete, DeleteAccountDialog } from '../components/forms/index.js';
+import ViewMyProfileRow from '../components/profile/ViewMyProfileRow.jsx';
 import RewardNotice from '../components/RewardNotice.jsx';
 import EmailVerifyNotice from '../components/EmailVerifyNotice.jsx';
 import DonationButton from '../components/DonationButton.jsx';
@@ -1126,6 +1127,8 @@ export default function Account() {
             <Switch checked={!!profileData?.mfa_enabled} loading={mfaLoading} onChange={handleMfaToggle} />
           </div>
         </Card>
+
+        <ViewMyProfileRow userId={user.user_id} />
 
         {/* Hidden in the desktop shell: /account/notifications is not on the
             closed DESKTOP_ALLOWED_ROUTES allowlist (task 20261012-notification-settings). */}

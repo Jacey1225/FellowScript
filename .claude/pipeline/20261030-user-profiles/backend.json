@@ -1,0 +1,142 @@
+{
+  "task_id": "20261030-user-profiles",
+  "step": 4,
+  "gate": "backend",
+  "result": "pass",
+  "summary": "Implemented bio column, config, tiered profile read, own-bio edit, and approved security items D1-D5 plus server-side D6-D10 in the user-profiles worktree (nothing pushed, deployed or migrated on production). Verified on a private scratch Postgres (port 55477, not the 55432 cluster): a 61-check end-to-end script passed, and existing suites test_db_managers, messaging_attachments, friend_nudges, db_write_failure_signaling, security_hardening, group_notes_photo, profile_photo, moderation, friend_activity, ws_send_hardening, message_delete all pass. Two existing suites (test_chat_pagination.py, test_chat_pagination_endpoints.py) fail by design because their fixtures read DM threads between non-friends, which D4 now refuses with 404; the testing gate must add user_friends rows to those fixtures.",
+  "new_files": [
+    "api/schema_ddl/user_bio.py (users.bio TEXT; registered in db.py DDL_MODULES)",
+    "api/config/profile.json + api/backend/interactions/profile_config.py (eager validation; check_profile_config added to startup_checks.CHECKS)",
+    "api/backend/interactions/profile_bio.py (normalize/validate bio)",
+    "api/backend/interactions/profile.py (ProfileManager, legacy_user_view allow-list)",
+    "api/backend/interactions/profile_limits.py (per-user limits, distinct-profile sweep guard, route dependencies)",
+    "api/backend/interactions/friend_accept.py (atomic accept), friend_request_policy.py, friend_peer.py (friend-gated DM reads + allow-list friend view)",
+    "api/routes/profile.py (router, included in main.py)",
+    "api/backend/moderation/bio_admin.py (python -m backend.moderation.bio_admin clear <user_id>)"
+  ],
+  "changed_files": [
+    "api/main.py (get_user now allow-list via legacy_user_view, router include)",
+    "api/backend/interactions/friends.py (send/accept by id and uniform, get_friends no email, read_friend/dm_page friend-gated)",
+    "api/routes/community.py and api/routes/messaging.py (rate-limit dependencies, error mapping)",
+    "api/db.py, api/backend/startup_checks.py",
+    "docs/api/overview.md, api/schema_tree.md"
+  ],
+  "endpoints_for_frontend": {
+    "GET /profiles/{target_id}": "200 {user_id, username, profile_photo_url, relationship:{state: self|friends|request_sent|request_received|none}, editable: bool, bio?: string|null}. bio key is ABSENT for strangers (hidden) and present (maybe null) for self and friends. 404 {detail:'User not found'} for unknown/malformed/suspended/blocked/suspended-viewer: per D10 evict the cached profile on 404 (not on network/5xx). 429 {detail} generic message.",
+    "PUT /profile/{user_id}/bio": "body exactly {bio: string|null}; 200 {bio: stored string|null} (stored value is the normalized text, show it back); 422 {detail: user-facing sentence} for too long / link-email-markup / content filter (keep the draft, show detail); 403 for terms-not-accepted ('Please accept the latest Terms to edit your bio.') or suspended; 429 generic. Limit is 160 characters counted after NFC normalization and whitespace collapse (newlines become single spaces), client should mirror 160 (read from config value bio_max_length; no endpoint exposes it yet, hardcode 160 or ask backend to expose).",
+    "POST /profiles/{target_id}/friend-request": "204 always (uniform), 400 self, 429 limits/cap. Refetch the profile for the new state; do not assume request_sent was recorded.",
+    "POST /profiles/{target_id}/friend-accept": "204, or uniform 404 {detail:'No pending friend request found'}. Idempotent 204 if already friends.",
+    "unfriend/block/report": "unchanged existing endpoints: DELETE /friends/{uid}/{friend_id}, /blocks, POST /reports/ content_type 'user' with reported_user_id.",
+    "message button": "only for relationship.state == friends; DM thread read GET /friends/{uid}/{friend_id} and /message/messages now 404 for non-friends."
+  },
+  "decisions": {
+    "D1": "Done. FriendsManager.add_friend/add_friend_by_id call friend_accept.accept_pending_request: DELETE ... RETURNING on the pending request (locks it) then in the same transaction re-check blocked/suspended, insert both user_friends rows ON CONFLICT DO NOTHING, delete the reverse request, commit. All refusals return the same 404 body 'No pending friend request found'. Covers POST /friends/{id}/add and POST /add-friend (the latter now also 404s instead of silently 204). Idempotent success only if the friendship already exists and the pair is not blocked.",
+    "D2": "Done. GET /user/{id} for another user returns only user_id, username, profile_photo_url plus blank email/mfa_enabled/friend_requests/suspended_at (iOS FSUser requires an email key). This also closes a larger pre-existing leak: it used to return the other user's friends list, groups, notes-derived keys, highlights, bookmarks, timezone, terms fields. Self keeps the full existing record plus bio. Non-self lookup is a targeted query (no longer loads every user).",
+    "D3": "Done for GET /profiles/{id} (single query: 404 for unknown/malformed/suspended target, blocked either direction, suspended viewer; self always allowed). FALLBACK APPLIED for legacy GET /user/{id}: it stays allow-list only with NO 404 for blocked/suspended. Reason: web and iOS resolve group member names, friend-request names, blocked-users photos and group highlight authors through /user/{id} (useMessaging.js group members, useHighlights.js, Account.jsx blocked list and requests, iOS fetchContacts); a 404 would show 8-char id fragments for a blocked or suspended co-member. Residual risk accepted: username+photo of blocked or suspended users stay readable by id (they were already readable and are not private). Record in final review.",
+    "D4": "Done. get_friends returns user_id, username, profile_photo_url (no email). read_friend / GET /message/messages return friend = {user_id, username, profile_photo_url, bio}; both and the paged /messages route require an existing user_friends row and unblocked pair else 404 (same body as unknown). Client check: no web or iOS code reads friend.email, GET /friends/{id} list, or the 'friend' object of the thread read; iOS only decodes host_msgs/other_msgs/messages. Frontend steps depend on nothing removed. Note the friend object previously had no user_id and now has one (additive).",
+    "D5": "Done. Username request route and new id route return identical success for unknown/blocked/suspended/already-friends targets (no row written, no push). Self 400, pending cap 429. CLIENT DEPENDENCY: web useMessaging.addFriend and iOS AddFriendSheet used to receive 404 'User not found' for an unknown username (web displayed the detail); that now returns 200 success, so the UI wording must be 'If that username exists, a request was sent' and must not claim certainty. Accept refusals are uniform 404; web Account.jsx handleAccept and iOS acceptFriendRequest only act on success so need no change.",
+    "D6": "Done via api/config/profile.json (eager validation, exact rate-key set): profile_read_user 120/minute and profile_read_ip 300/minute, distinct profiles 60 per 600 seconds per user (self exempt), bio_edit 3/minute burst plus 10/hour, friend_request 20/hour and 100/day (per user, all request entry points), friend_accept 60/hour, max 200 outstanding sent requests. 429 body is a generic sentence with no counters. NOT IMPLEMENTED: the 24h re-request cooldown after a declined/removed request, because there is no decline action and friend_requests has no timestamp (would need a new table or column); recommend deferring, outstanding-request cap and hourly/daily limits cover the spam threat. Storage is slowapi's in-memory store: per process, reset on restart, approximate across workers.",
+    "D7": "Done. profile_bio.validate_bio: NFC, strip Cc/Cf/Cs/Co/Cn (zero-width, bidi overrides), all whitespace including newlines collapsed to single spaces, trim, empty -> NULL, length counted post-normalization and rejected not truncated, >4 stacked combining marks rejected, links (schemes, www., bare domains with common TLDs), email addresses and HTML tag starts rejected, content_filter.check_clean on text and NFKC-folded text. Admin removal: bio_admin.clear_bio / CLI (not wired into the generic 'user' report remover because block auto-reports are also 'user' reports and resolving one would wrongly wipe a bio). Terms gate: bio edit needs terms_accepted_at set and terms_version == CURRENT_TERMS_VERSION, and non-suspended.",
+    "D8": "Done. PUT /profile/{user_id}/bio uses require_match; body BioUpdate extra='forbid', max_length 1000 ceiling; UUID validation with 404 on reads; all SQL parameterized; a check enumerates routes under /profile* and asserts each has an auth dependency (in my scratch script; testing gate should make it a real test).",
+    "D9": "Done. New code logs only PROFILE_AUDIT events (actor id, reason code; events: bio_updated, bio_rejected, rate_limited, profile_unavailable, accept_refused) and never bio text, message bodies or request bodies; verified by capturing logs while submitting a distinctive bio and a filter-rejected bio. FastAPI's 422 for a >1000 char body echoes the input to the caller only (no server logging of it exists).",
+    "D10": "Server side is stateless: a former friend's read now simply omits the bio key and a blocked/suspended read is 404, which is what the client cache rule (evict on 404, keep on network/5xx) needs. Client work for steps 5 and 6."
+  },
+  "residual_risks_and_notes": [
+    "Accept/block race: a block committed between the in-transaction block check and commit can leave a friendship row for a blocked pair; read paths (profile read, dm_peer, send_guard) all re-check blocks so it is not exploitable, but it is not cleaned up.",
+    "bio is plaintext at rest (users table is not in content_store.TABLE_COLUMNS), consistent with username.",
+    "Repository tracks api/**/__pycache__/*.pyc files in git; running tests dirties them. I reverted all pyc changes so the diff contains only source.",
+    "Existing test files that need fixture updates from D4/D5/D1: test_chat_pagination.py and test_chat_pagination_endpoints.py (create user_friends rows for the DM peer). test_db_managers passes.",
+    "Scratch DB: cluster on port 55477 was created for verification and stopped/removed afterwards; port 55432 and 5432 were never touched. The verification script lives at /private/tmp/claude-501/-Users-jaceysimpson/756c81e3-950d-4047-b54b-7b5bff6b94b8/scratchpad/verify_profiles.py and is a reference for the testing gate, not committed.",
+    "Docs updated: docs/api/overview.md and api/schema_tree.md."
+  ],
+  "step_1_findings": {
+    "task_id": "20261030-user-profiles",
+    "step": 1,
+    "gate": "backend",
+    "result": "pass",
+    "summary": "Base verified: worktree /Users/jaceysimpson/Vscode/FellowScript-profiles, branch user-profiles at origin/main c01ab7eb (git status clean vs origin/main). All reuse targets named in the spec exist on this base. No code changed in this step. Q1-Q10 defaults accepted by Jacey; but see blocking_findings: friend accept path has an authorization gap that the step-2 security gate must resolve before Q3/Q4 defaults ('friends-only DMs', 'requests need acceptance') actually hold.",
+    "base": {
+      "worktree": "/Users/jaceysimpson/Vscode/FellowScript-profiles",
+      "branch": "user-profiles",
+      "head": "c01ab7eb",
+      "notes": "Directory layout differs from the spec: Swift sources are at FellowScript/FellowScript/ (not ios/); 'ios/' exists but is a separate dir. Frontend is frontend/src; backend is api/. No pushes made."
+    },
+    "blocking_findings": [
+      {
+        "id": "B1",
+        "severity": "high (authorization hole, pre-existing)",
+        "where": "api/backend/interactions/friends.py FriendsManager.add_friend (line ~165); routes: POST /friends/{user_id}/add (api/routes/community.py:645) and POST /add-friend (api/routes/messaging.py:373)",
+        "what": "add_friend(friend_username) only checks the user exists and the pair is not blocked, then inserts BOTH user_friends rows. It never checks that a friend_requests row from the target to the caller exists. So any authenticated user can call /add with any username and instantly become a mutual friend, with no acceptance by the target. Because DM send (send_guard._authorize_dm) is friend-row-gated, this converts into the ability to DM anyone who is not blocking you, and would let a profile 'Add friend' bypass acceptance. Request (send_add_request) is therefore decorative for a malicious client.",
+        "implication": "Q3 (DMs friends-only) and Q4 (acceptance required) defaults are only true for honest clients. Fix needed in the backend step 4 (or a dedicated hardening step): add_friend must require a pending incoming friend_requests row (to_user_id=caller, from_user_id=target) and delete it atomically with the two inserts; return a uniform error otherwise. This changes the friend permission model, so it needs security-gate and Jacey sign-off at step 2 (hard stop already planned). Recommend the security gate treats this as in-scope for this feature since profile 'Add Friend/Accept' depends on it."
+      }
+    ],
+    "verified_answers": {
+      "Q3_dm_friend_scoping": "CONFIRMED friends-only at the send layer. Realtime DM sends go through WebSocket /ws/{user_id} -> ConnectionManager.send_msg -> send_guard.authorize_send -> _authorize_dm (api/backend/interactions/send_guard.py): exactly one recipient, not self, sender not suspended, recipient exists, and a user_friends(sender, recipient) row must exist; else Reject(not_friend/unknown_user/sender_unavailable); a blocked pair is silently Dropped. Fails closed (Unavailable on guard error). Sender id is overwritten from the session, not client payload. DM reads: GET /friends/{user_id}/{friend_id} (read_friend) and /messages (dm_page_for_route) check the target exists and is not blocked (either direction via BlockManager.is_blocked) but do NOT require an existing friendship for reads (a stranger returns an empty thread plus the user's data, see leak L1). Writing is the gate that matters, and it is only as strong as add_friend (B1).",
+      "Q4_friend_request_accept_and_auto_accept_paths": "Request: POST /friends/{user_id}/request?friend_username= (community.py) and POST /friend-request (messaging.py) -> FriendsManager.send_add_request: lookup by USERNAME, rejects self, rejects blocked, idempotent insert into friend_requests(to_user_id, from_user_id), sets new_request_recipient_id only for a new row so the essential push fires once (friend_request_notifier). Accept: POST /friends/{user_id}/add?friend_username= and POST /add-friend -> add_friend (see B1, no pending-request verification). Remove: DELETE /friends/{user_id}/{friend_id}, /remove-friend. Pending list: GET /friends/{user_id}/requests (get_requests: id, username, photo only). NO auto-accept path exists: grep of all INSERTs into user_friends shows only add_friend (friends.py:185,187) and the one-off scripts/migrate_json_to_postgres.py. Invite links (invites.py/join_requests) create group membership only, not friendships. Mutual requests (A->B and B->A) do not auto-friend; each must still call /add. Block (BlockManager.block_user) deletes both user_friends rows and both friend_requests directions and auto-files a report. Request and accept are keyed by username, not user_id: the profile endpoint must expose username so clients can call these, or new id-keyed wrappers are needed (do not break existing ones).",
+      "Q5_AcceptRequestsSwitch": "NOT a friend-request setting. frontend/src/components/AcceptRequestsSwitch.jsx is the 'Accept join requests' toggle for GROUP join requests (label text: 'People can ask to join. You approve each request.'), used with JoinRequestsList.jsx; iOS counterpart is Chat/GroupJoinRequestsSection.swift. There is no existing per-user toggle for incoming friend requests (no column, no route). Default stays: do not add one; the component must not be reused for this.",
+      "Q10_desktop": "Desktop (Tauri) loads the live https://fellowscript.com/#/reader web bundle (desktop/PROGRESS.md), so web work ships to desktop. BUT desktop is scope-locked (task 20260906-desktop-scope-lockdown): frontend/src/lib/desktopScope.js DESKTOP_ALLOWED_ROUTES = ['/reader','/account','/signin','/forgot-password','/reset-password','/verify-2fa'] plus DESKTOP_ALLOWED_ROUTE_PATTERNS (/join/<43 chars>), enforced by DesktopRouteGuard.jsx in App.jsx (deny-by-default, redirects to /reader). A standalone /profile/:id route would be redirected to /reader inside the desktop app unless desktopScope.js is edited (add a pattern like /^\\/profile\\/<uuid>$/ and update desktopScope.test.js / Account.desktop-scope.test.jsx). Alternatively render the profile as a Reader panel/overlay or an /account sub-view and avoid a new route. Tauri capabilities (desktop/src-tauri/capabilities/default.json: core:default + opener:allow-open-url https://* only) need no change; no new native permissions are needed. No Tauri Rust/config change required. The frontend gate must pick route-vs-overlay with the design gate. Note the Reader is a dockview workspace and contacts live there (Reader.jsx uses loadContacts/openChat), so the main entry point on both web and desktop is the Reader, not a standalone page."
+    },
+    "other_findings": [
+      {
+        "id": "L1",
+        "where": "GET /friends/{user_id}/{friend_id} (read_friend) and GET /messages/{host_user}/ (messaging.py:258)",
+        "what": "read_friend returns friend_view = every users column except hash_pass (and swaps photo key for URL), including email, for any existing non-blocked user id, friend or not. GET /friends/{user_id} (get_friends) also returns each friend's email. This is a pre-existing private-field exposure that the new profile must not copy; step 2 should decide whether to narrow it (iOS/web clients may depend on it, check before changing)."
+      },
+      {
+        "id": "L2",
+        "where": "GET /user/{user_id} (api/main.py:862)",
+        "what": "Any authenticated caller can read any user's row; email/mfa/friend_requests/suspended_at are blanked for others but every other users column is returned. Any new column added to users (bio) would be exposed to all signed-in users by this endpoint's 'everything except hash_pass' pattern, which conflicts with the friends-only-bio default. The profile read must be a separate allow-list projection, and get_user must be changed to an allow-list (or must explicitly strip bio) to avoid leaking bio. Also: it does not check blocked or suspended state (suspended user is still returned), is un-rate-limited (enumeration), and has no 404 for blocked pairs. Changing get_user is an authorization-model change (step 2 hard stop)."
+      },
+      {
+        "id": "L3",
+        "where": "send_add_request / add_friend lookup by username",
+        "what": "Returns {'error': 'User not found'} vs success/block messages, so usernames can be enumerated; the route layer returns different errors for not found vs blocked. Request route has no rate limit (only /nudge has 30/minute IP + per-pair limit)."
+      }
+    ],
+    "reuse_map": {
+      "backend": {
+        "schema_pattern": "api/schema_ddl/<concern>.py with apply(cur) using ADD COLUMN IF NOT EXISTS (see notification_preferences.py), registered in the module list in api/db.py (~line 100 lists names). New: schema_ddl/user_bio.py adding users.bio TEXT. users table has no bio column on this base (confirmed).",
+        "profile_read_base": "api/main.py get_user (GET /user/{user_id}) and api/schemas/users.py (User). Do not grow main.py: put new routes in api/routes/profile.py (new router, include_router in main.py next to friend_router/block_router/report_router at ~lines 395-409) and logic in api/backend/interactions/profile.py (DBManager subclass like FriendsManager/BlockManager).",
+        "friends": "backend/interactions/friends.py FriendsManager (send_add_request, add_friend, get_requests, get_friends, remove_friend, read_friend, dm_page_for_route); routes in routes/community.py friend_router (/friends/...) and routes/messaging.py (/friend-request, /add-friend, /remove-friend). Relationship state for profile = query user_friends (+ friend_requests both directions + blocked_users both directions) via send_guard.is_friend / BlockManager.is_blocked patterns.",
+        "dm": "WebSocket /ws/{user_id}; send_guard._authorize_dm; thread read GET /friends/{user_id}/{friend_id}/messages (paged) and GET /friends/{uid}/{friend_id}. No new DM code needed; 'Message' just opens the thread (friends only).",
+        "blocks": "routes/blocks.py block_router (/blocks/{user_id}[/{blocked_id}], GET/POST/DELETE) + backend/interactions/blocks.py BlockManager.is_blocked / block_user (severs friendship and requests, auto-reports).",
+        "reports": "routes/reports.py POST /reports/ with ReportRequest content_type in {note,message,devotion_prompt,group_title,user,group_listing,thread_message}; 'user' with reported_user_id exists. There is NO 'bio' content_type; reporting a bio = content_type 'user' (reuse, no schema change) unless the security gate wants a distinct type. Rate limit for reports is only applied to group_listing (config listings_config.rate_limits.report).",
+        "moderation": "backend/moderation/content_filter.py check_clean(**fields) raises ContentRejected; rejection_message(e) gives the warm 422 text. Call site pattern: listing_content.py. Admin removal: backend/moderation/admin_actions.py, removers.py (bio clear can be added via a remover if admin removal is required).",
+        "rate_limiting": "backend/rate_limiting.py shared slowapi `limiter` (key_func = client IP). Per-user limit pattern: limits.parse + limiter.limiter.hit(rate, key, user_id) (reports.py _listing_report_limited). Per-route pattern with config: @limiter.limit(lambda: cfg.rate_limits['x']) (community.py messages_page). Note IP-keyed slowapi alone is weak for per-user bio edit limits; use the per-user hit() pattern.",
+        "config_pattern": "api/config/*.json + a *_config.py loader with validate_*() called eagerly at startup in main.py (~line 252: validate_invites_config). New: api/config/profile.json (bio_max_length 160, rate_limits) + backend/interactions/profile_config.py + validate_profile_config() wired in main.py startup.",
+        "photo": "routes/profile_photo.py + backend/interactions/profile_photo.py; generate_download_url(profile_photo_key) is how photo URLs are produced; never return raw key.",
+        "auth_deps": "backend.auth.dependencies get_current_user, require_match('user_id')."
+      },
+      "ios": {
+        "root": "FellowScript/FellowScript/ (not ios/)",
+        "existing_files_verified": [
+          "Account/AccountView+Profile.swift (439 lines, already large: do not grow)",
+          "Account/BlockedUsersView.swift (109)",
+          "Chat/ReportUserSheet.swift (52, reuse as-is)",
+          "Chat/ContactSectionCollapse.swift (54)"
+        ],
+        "network_pattern": "Services/NetworkService+<Concern>.swift extensions; existing +Contacts.swift covers friends/requests/blocks calls. New file Services/NetworkService+Profile.swift only.",
+        "new_files": [
+          "Services/NetworkService+Profile.swift",
+          "Account or Profile/ProfileViewModel.swift",
+          "Profile/ProfileView*.swift"
+        ]
+      },
+      "web_desktop": {
+        "existing_files_verified": [
+          "frontend/src/components/ContactsPanel.jsx (412)",
+          "frontend/src/components/ChatThread.jsx (1815, already huge: add entry-point only, no logic)",
+          "frontend/src/pages/Account.jsx (1445, already huge: no growth)",
+          "frontend/src/pages/InviteFriends.jsx (82)"
+        ],
+        "routing": "HashRouter in frontend/src/App.jsx; route list lines ~131-184; FormSkin wrapper for form-like pages. Contacts are inside the Reader dockview (Reader.jsx loadContacts/openChat).",
+        "desktop": "see verified_answers.Q10_desktop: desktopScope.js allowlist must be extended if a new route is used."
+      }
+    },
+    "recommendations_for_next_steps": [
+      "Step 2 (security) must adopt B1, L1, L2, L3 into the authorization design and get Jacey's approval for: (a) add_friend requiring a pending request, (b) get_user becoming allow-list/bio-stripped plus blocked/suspended 404, (c) separate profile projection endpoint (e.g. GET /profiles/{viewer_id}/{target_id} with require_match) returning username, photo URL, bio only if friends or self, relationship state.",
+      "Q2 default (bio friends-only) is incompatible with users who have not yet friended: the profile screen for a non-friend shows username+photo only plus Add Friend and Block/Report; design must handle the 'bio hidden' state.",
+      "Step 4 should key new actions by user_id; the existing request/accept endpoints are username-keyed, so either expose username in the profile payload or add thin id-keyed routes that delegate to FriendsManager."
+    ]
+  }
+}

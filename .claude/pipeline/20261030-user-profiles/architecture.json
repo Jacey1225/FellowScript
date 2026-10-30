@@ -1,0 +1,72 @@
+{
+  "task_id": "20261030-user-profiles",
+  "clarification_needed": [
+    "Q1 Bio max length? ASSUMED DEFAULT (not decided): 160 chars, plain text, no links/markup, trimmed, value in api/config/*.json with startup validation.",
+    "Q2 Profile visibility? ASSUMED DEFAULT (not decided): deny-by-default; any signed-in user sees username + photo; bio and richer fields friends-only; no user-selectable setting. This changes who can read /user/{id}, an authorization-model change that needs Jacey's approval before implementation (hard stop, step 2).",
+    "Q3 Are DMs friends-only? ASSUMED DEFAULT (not decided): friends-only, blocks enforced both directions; backend gate verifies existing DM endpoints and does not loosen them. Authorization-model decision.",
+    "Q4 Do friend requests need acceptance? ASSUMED DEFAULT (not decided): yes, keep existing request/accept flow; backend gate verifies no auto-accept path (e.g. invite codes) is affected.",
+    "Q5 Can a user turn off incoming friend requests? ASSUMED DEFAULT (not decided): reuse existing setting if AcceptRequestsSwitch already backs one; do not add a new setting.",
+    "Q6 Bio moderation? ASSUMED DEFAULT (not decided): pre-save reject via backend/moderation/content_filter.py, plus reuse of existing report flow and admin removal; no new moderation queue.",
+    "Q7 Profile entry points? ASSUMED DEFAULT (not decided): design gate proposes (contacts row, group member list, chat header, friend request list) and waits for Jacey's approval of creative choices.",
+    "Q8 Guest/suspended users? ASSUMED DEFAULT (not decided): authenticated-only; suspended accounts return 404 on profile; blocked users (either direction) return 404; security gate confirms.",
+    "Q9 Build base branch? ASSUMED DEFAULT (not decided): checked-out admin-promo-csv is 128 commits behind origin/main; build must happen on a branch or worktree from up-to-date origin/main (local only, nothing pushed). iOS simulator tests run serialized, never concurrent.",
+    "Q10 Tauri desktop needs beyond the shared web frontend? ASSUMED DEFAULT (not decided): none; frontend gate verifies routing, DesktopRouteGuard and capabilities against desktop/PROGRESS.md and only changes them if required."
+  ],
+  "agents_required": {
+    "backend": true,
+    "frontend": true,
+    "design": true,
+    "security": true,
+    "testing": true
+  },
+  "steps": [
+    {
+      "n": 1,
+      "name": "Verify base and reuse inventory: set up a worktree/branch from up-to-date origin/main (local only), confirm existing friends/requests/DM/blocks/reports/photo/content_filter code and the iOS/web files named in the spec exist, and produce a reuse map",
+      "routed_to": "backend",
+      "checkpoint": null
+    },
+    {
+      "n": 2,
+      "name": "Up-front threat model and authorization design for profile read (visibility tiers, blocked/suspended handling, enumeration, bio UGC abuse, rate-limit scope, log redaction); HARD STOP for Jacey approval on any change to who can read /user/{id} or the DM/friend permission model before implementation",
+      "routed_to": "security",
+      "checkpoint": "backend step 1 passed and Jacey has answered or approved defaults for Q2, Q3 and Q4"
+    },
+    {
+      "n": 3,
+      "name": "Design the profile screen (view other user, self bio edit, relationship-state actions Add Friend/Message/Block/Report/Unfriend with undo grace period, entry points, empty/loading/error states, dark mode, WCAG AA, reduced motion) using the existing design-kit; present alternatives for creative choices and wait for approval",
+      "routed_to": "design",
+      "checkpoint": "security step 2 passed"
+    },
+    {
+      "n": 4,
+      "name": "Backend: bio column via a new schema_ddl module, config-driven bio length and rate limits (api/config JSON with eager validation), new focused route/manager module for profile read (bio + relationship state, visibility rules, 404 for blocked/suspended) and own-bio edit with trim, length and content_filter checks; reuse existing friend/DM/block/report endpoints; no deploy or production migration",
+      "routed_to": "backend",
+      "checkpoint": "security step 2 passed"
+    },
+    {
+      "n": 5,
+      "name": "Web and Tauri desktop: pages/Profile.jsx plus small components, bio edit with draft preserved on failed save, cached profile kept on failed refresh, entry points from ContactsPanel/ChatThread/friend lists, routing; verify desktop shell needs no extra config",
+      "routed_to": "frontend",
+      "checkpoint": "backend step 4 passed and design step 3 approved"
+    },
+    {
+      "n": 6,
+      "name": "iOS: NetworkService+Profile.swift, ProfileViewModel, ProfileView* files, bio edit, relationship-state actions reusing ReportUserSheet/BlockedUsersView/DM flows, throw-not-fabricate and preserve-cache-on-failed-refresh; no growth of NetworkService, AccountView or existing large views",
+      "routed_to": "frontend",
+      "checkpoint": "backend step 4 passed and design step 3 approved"
+    },
+    {
+      "n": 7,
+      "name": "Security self-review of the implemented diff: authorization on every new/changed route, no private-field leaks, rate limits on bio edit/friend request/profile lookup, bio moderation, block enforcement both directions, no bio text or message bodies in logs",
+      "routed_to": "security",
+      "checkpoint": "backend step 4, frontend steps 5 and 6 passed"
+    },
+    {
+      "n": 8,
+      "name": "Tests: backend pytest for new routes, authorization, rate limits and moderation; frontend vitest for profile page/components; iOS unit tests for ProfileViewModel and networking; run existing suites for regressions; iOS simulator runs strictly serialized",
+      "routed_to": "testing",
+      "checkpoint": "security step 7 passed"
+    }
+  ]
+}

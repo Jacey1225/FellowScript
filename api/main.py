@@ -18,6 +18,8 @@ from routes.monitoring import monitoring_router
 from routes.admin_users import admin_users_router
 from routes.activity_monitoring import activity_monitoring_router
 from routes.profile_photo import profile_photo_router
+from routes.profile import profile_router
+from backend.interactions.profile import legacy_user_view
 from routes.group_info import group_info_router
 from routes.group_announcements import group_announcements_router
 from routes.messages_delete import messages_delete_router
@@ -411,6 +413,7 @@ app.include_router(monitoring_router)
 app.include_router(admin_users_router)
 app.include_router(activity_monitoring_router)
 app.include_router(profile_photo_router)
+app.include_router(profile_router)
 app.include_router(group_info_router)
 app.include_router(group_announcements_router)
 app.include_router(messages_delete_router)
@@ -861,48 +864,27 @@ async def logout(request: Request, response: Response) -> None:
 
 @app.get("/user/{user_id}")
 async def get_user(user_id: str, current_user: str = Depends(get_current_user)) -> dict:
-    """Retrieve a single user's public profile.
+    """Retrieve a single user's public identity (security D2).
 
     Any authenticated caller may look up any user (used to display friends'
-    and group members' usernames) — only login is required, not ownership.
-    That stated purpose only needs a public projection, though, so fields
-    beyond it (email, mfa_enabled, friend_requests, suspended_at) are only
-    populated for the account owner looking up themselves; a lookup of
-    someone else's user_id gets those fields blanked out rather than removed
-    from the response, so callers built against the historical full-record
-    shape (e.g. iOS's FSUser, which requires an `email` key to decode) don't
-    need a parallel narrower schema.
-
-    Args:
-        user_id: UUID of the user to look up.
-
-    Returns:
-        dict: The user's data (excludes hash_pass; email/mfa_enabled/
-            friend_requests/suspended_at are only real values when
-            user_id == the caller).
+    and group members' usernames and photos). For someone else this is an
+    explicit allow-list: ``user_id``, ``username`` and ``profile_photo_url``,
+    plus the historical keys ``email`` (""), ``mfa_enabled`` (false),
+    ``friend_requests`` ([]) and ``suspended_at`` (null) as blanks so callers
+    built against the old full-record shape (iOS's FSUser requires ``email``)
+    still decode. No other column is ever returned for another user, and bio
+    is never returned here (use ``GET /profiles/{id}``). The account owner
+    looking up themselves gets their full record plus ``bio``.
 
     Raises:
         HTTPException 404: If no user with the given ID exists.
     """
-    users = load_users()
-    if user_id not in users:
+    is_self = current_user == user_id
+    users = load_users() if is_self else None
+    view = legacy_user_view(user_id, is_self, users.get(user_id) if users else None)
+    if view is None:
         raise HTTPException(status_code=404, detail="User not found")
-    data = {k: v for k, v in users[user_id].items() if k != "hash_pass"}
-    # Never hand back the raw S3 object key (task 20260905-profile-photo) --
-    # resolve it to a fresh, short-lived presigned GET at read time instead,
-    # mirroring attachments.py's own no-permanent-URL precedent. This is the
-    # canonical point group member lists / chat participants / friend lookups
-    # already resolve a user's public identity through (see groups.py's "GET
-    # /user derives each member's info" comment), so enriching it here covers
-    # every one of those surfaces without a dedicated per-surface change.
-    photo_key = data.pop("profile_photo_key", None)
-    data["profile_photo_url"] = generate_download_url(photo_key)
-    if current_user != user_id:
-        data["email"]           = ""
-        data["mfa_enabled"]     = False
-        data["friend_requests"] = []
-        data["suspended_at"]    = None
-    return {"user_id": user_id, **data}
+    return view
 
 
 @app.put("/user/{user_id}")

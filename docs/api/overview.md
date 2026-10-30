@@ -25,7 +25,7 @@ All signup paths automatically create a `plan_type='free'` subscription row for 
 
 | Method | Route | Description |
 |---|---|---|
-| GET | `/user/{user_id}` | Get user profile (excludes `hash_pass`) |
+| GET | `/user/{user_id}` | Public identity of any user: for someone else only `user_id`, `username`, `profile_photo_url` (plus blank `email`, `mfa_enabled`, `friend_requests`, `suspended_at` kept for old decoders); never `bio`. The owner gets their full record (no `hash_pass`) plus `bio`. See User profiles below. |
 | PUT | `/user/{user_id}` | Update `username`, `email`, `plain_pass`, or `timezone` (IANA name, e.g. `America/Los_Angeles`; validated, drives the nightly backup schedule) |
 | DELETE | `/user/{user_id}` | Permanently delete account and all owned data |
 
@@ -133,11 +133,11 @@ may still be populated.
 
 | Method | Route | Description |
 |---|---|---|
-| POST | `/friends/{user_id}/request` | Send a friend request |
+| POST | `/friends/{user_id}/request` | Send a friend request by username. Same response whether or not the username exists, is blocked or suspended (no enumeration); `400` for yourself, `429` over the rate limit or the pending-request cap |
 | GET | `/friends/{user_id}/requests` | Incoming friend requests |
-| POST | `/friends/{user_id}/accept/{friend_id}` | Accept a request |
+| POST | `/friends/{user_id}/add?friend_username=` | Accept a request. Requires a pending request from that user; one uniform `404` for unknown, blocked, suspended or no pending request |
 | DELETE | `/friends/{user_id}/{friend_id}` | Remove a friend |
-| GET | `/friends/{user_id}` | Friend list |
+| GET | `/friends/{user_id}` | Friend list: `user_id`, `username`, `profile_photo_url` (no email) |
 | GET | `/friends/{user_id}/activity` | Friend-activity read surface for the dashboard's Friend Activity hero card: each friend's most recent group note preview, most recent highlight preview (with real verse text), last-active timestamp + activity type (block-respecting both directions), plus a bounded "check in" nudge candidate pool (up to 5 friends gone longest without a direct message). |
 | POST | `/friends/{user_id}/{friend_id}/nudge` | Send a fixed, non-user-authored "come back and study" push notification to a friend. Gated behind `NUDGE_FEATURE_ENABLED` (404 while disabled, as if the route doesn't exist) and rate-limited per sender→recipient pair (`NUDGE_RATE_LIMIT_HOURS`, one nudge per pair per window), plus a coarse `30/minute` per-IP backstop. Triggered client-side from the Dashboard's Friend Activity hero card (one randomly-surfaced check-in candidate) and, as of task `20260922-chat-friend-nudge-button`, from a nudge control on every friend row in the Chat page's friends list (any friend, not just a surfaced candidate) — both surfaces call this same endpoint with an arbitrary `friend_id`. |
 
@@ -638,3 +638,16 @@ Owner routes (group owner only: creator, still a member, not suspended; everyone
 
 Push (flag `join_request_push`, evaluated for the owner): the owner gets at most one `join_request` push per group per 30 minutes with generic text, and the applicant gets one when approved; data `{ "action": "join_request", "group_id" }`. Notes, usernames and ids never appear in push text.
 <!-- /JRQ -->
+
+## User profiles (task 20261030-user-profiles)
+
+Config: `api/config/profile.json` (validated at startup). Column: `users.bio` (nullable text, added by `schema_ddl/user_bio.py`).
+
+| Method | Path | Notes |
+|---|---|---|
+| GET | `/profiles/{target_id}` | Tiered profile of the signed-in caller's view: `user_id`, `username`, `profile_photo_url`, `relationship.state` (`self`/`friends`/`request_sent`/`request_received`/`none`), `editable`; `bio` (string or null) only for self and friends, absent for strangers. `404` (identical body) for unknown, malformed, suspended or blocked (either direction) targets and for a suspended caller. `429` over the read limits |
+| PUT | `/profile/{user_id}/bio` | Own bio only (`403` otherwise). Body `{"bio": string or null}`, no other fields. NFC-normalised, invisible characters stripped, whitespace collapsed, max `bio_max_length` (160) characters, no links, email addresses or HTML tags, explicit-content filter. `422` with a user-facing message on rejection (never truncated), `429` over the edit limits. `null` or blank clears it |
+| POST | `/profiles/{target_id}/friend-request` | Request by user id; always `204` (same as the username route), `400` for yourself, `429` over limits |
+| POST | `/profiles/{target_id}/friend-accept` | Accept by user id; `204` or the uniform `404` |
+
+`GET /friends/{user_id}/{friend_id}` and `GET /message/messages/{host_user}/` now require an existing friendship and return `friend` as `{user_id, username, profile_photo_url, bio}` (no email); a non-friend gets the same `404` as an unknown or blocked user.
