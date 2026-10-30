@@ -9,6 +9,15 @@ final class ComposerAccessorySlotRegressionTests: XCTestCase {
         return try String(contentsOf: root.appendingPathComponent("FellowScript/\(rel)"), encoding: .utf8)
     }
 
+    func test_dmPinnedChip_ridesAttachRow_withoutChangingGroupChipsGate() throws {
+        let t = try src("Chat/ChatThreadView.swift")
+        XCTAssertTrue(t.contains("showsChips: GroupInfoCategory.rowShows(isGroup: contact.type == .group, isThreadOpen: vm.isThreadOpen)"),
+                      "the DM slot stays 0 height until attach opens; showsChips is group-only")
+        let slot = try src("Chat/ComposerAccessorySlot.swift")
+        XCTAssertTrue(slot.contains("AttachPickerRow(compact: compact, onPickPhotoVideo: onPickPhotoVideo,"))
+        XCTAssertTrue(slot.contains("pinned: pinned)"))
+    }
+
     func test_motionTokens() throws {
         let s = try src("Chat/ComposerAccessorySlot.swift")
         XCTAssertTrue(s.contains("Animation.spring(response: 0.32, dampingFraction: 0.86)"))

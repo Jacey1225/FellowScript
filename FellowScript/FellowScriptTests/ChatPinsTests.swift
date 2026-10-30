@@ -381,19 +381,42 @@ final class ChatPinsSourcePinTests: XCTestCase {
         return try String(contentsOf: file, encoding: .utf8)
     }
 
-    func test_pinButton_isDMsOnly_andIsFlagGated() throws {
+    func test_dmPinnedChip_replacesFloatingButton_isDMsOnly_andIsFlagGated() throws {
         let s = try src("Chat/ChatThreadView.swift")
-        let header = try XCTUnwrap(s.range(of: "header.modifier(pinsPresentation)")?.lowerBound)
-        let pinRow = try XCTUnwrap(s.range(of: "Color.clear.frame(height: 0)")?.lowerBound)
-        XCTAssertTrue(header < pinRow, "pin button floats over the messages after the header (zero-height layer), not in the top bar or its own row")
-        XCTAssertTrue(s.contains("if pinsAvailable && contact.type != .group {"),
-                      "20261023-group-info-row: the floating pin button is removed in group chats and kept in DMs")
+        XCTAssertFalse(s.contains("private var pinButton"), "20261029: the floating DM pin button is gone")
+        XCTAssertFalse(s.contains("pinButton"), "no orphan references (popover anchor moved to the chip)")
+        XCTAssertFalse(s.contains("Color.clear.frame(height: 0)\n                            .overlay(alignment: .topTrailing)"),
+                       "zero-height pin overlay removed")
         XCTAssertFalse(s.contains("if pinsAvailable { pinButton }"), "no longer in the header bar")
+        let chip = try XCTUnwrap(s.range(of: "private var attachPinnedChip: AttachPinnedChip? {")?.lowerBound)
+        let body = String(s[chip...].prefix(900))
+        XCTAssertTrue(body.contains("guard pinsAvailable, contact.type != .group else { return nil }"),
+                      "DM-only and flag-gated; nil hides the chip")
+        XCTAssertTrue(body.contains("setAttachMode(false); showPinned = true"), "tap closes the attach row then opens Pinned")
+        XCTAssertTrue(body.contains("popoverPresented: embedded ? $showPinned : .constant(false)"), "popover only on iPad embedded")
+        XCTAssertTrue(body.contains("PinnedMessagesSheet(vm: vm"))
+        XCTAssertTrue(s.contains("pinned: attachPinnedChip"), "passed into the composer accessory slot")
         XCTAssertTrue(s.contains("appState.capabilities.messagePinsEnabled && !vm.isThreadOpen && vm.pinsState != .unavailable"),
                       "fail closed: flag, main chat, and not turned off mid-session")
-        XCTAssertTrue(s.contains(".accessibilityLabel(\"Pinned messages\")"))
         XCTAssertFalse(s.localizedCaseInsensitiveContains("pinned banner"), "REVISION 1: no banner")
-        XCTAssertTrue(s.contains("pins: pinsAvailable"), "the Pinned chip uses the same pinsAvailable gating")
+        XCTAssertTrue(s.contains("pins: pinsAvailable"), "the group Pinned chip keeps the same pinsAvailable gating")
+    }
+
+    func test_attachPinnedChip_keepsCountAndAccessibilityCopy() throws {
+        let s = try src("Chat/AttachPinnedChip.swift")
+        XCTAssertTrue(s.contains("FSPinnedListCopy.badgeText(count: pinCount)"))
+        XCTAssertTrue(s.contains(".accessibilityLabel(\"Pinned messages\")"))
+        XCTAssertTrue(s.contains(".accessibilityValue(FSPinnedListCopy.buttonValue(count: chip.pinCount) ?? \"\")"))
+        XCTAssertTrue(s.contains(".accessibilityHint(\"Opens the list of pinned messages\")"))
+        XCTAssertTrue(s.contains("ChipButtonStyle(compact: compact, hasIcon: true)"))
+        XCTAssertTrue(s.contains("systemIcon: \"pin\""))
+        XCTAssertTrue(s.contains(".popover(isPresented: chip.popoverPresented, arrowEdge: .bottom)"))
+        let row = try src("Chat/MessageAttachments.swift")
+        XCTAssertTrue(row.contains("var pinned: AttachPinnedChip? = nil"), "optional: nil hides the chip")
+        XCTAssertTrue(row.contains("if let pinned { AttachPinnedChipButton(chip: pinned, compact: compact) }"))
+        let slot = try src("Chat/ComposerAccessorySlot.swift")
+        XCTAssertTrue(slot.contains("var pinned: AttachPinnedChip? = nil"))
+        XCTAssertTrue(slot.contains("onPickGif: onPickGif, pinned: pinned)"))
     }
 
     func test_pinUpdatedFrame_andMenuWiring() throws {

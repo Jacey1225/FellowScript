@@ -139,7 +139,8 @@ final class GroupInfoRowTests: XCTestCase {
         XCTAssertTrue(s.contains("GroupInfoCategory.rowShows(isGroup: contact.type == .group, isThreadOpen: vm.isThreadOpen)"))
         XCTAssertTrue(s.contains("GroupInfoChipRow("))
         XCTAssertFalse(s.contains("GroupAnnouncementWidgetView("), "announcement banner removed from chats")
-        XCTAssertTrue(s.contains("if pinsAvailable && contact.type != .group {"), "pin button stays in DMs only")
+        XCTAssertTrue(s.contains("guard pinsAvailable, contact.type != .group else { return nil }"), "20261029: the DM Pinned chip (attach row) stays DMs only; the floating button is gone")
+        XCTAssertFalse(s.contains("pinButton"))
         XCTAssertTrue(s.contains(".overlay { groupInfoPanelHost }"), "submenu is laid out inside the message area (pane width)")
     }
 

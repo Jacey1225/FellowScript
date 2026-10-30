@@ -1501,18 +1501,6 @@ struct ChatThreadView: View {
                     threadRootCard
                 } else {
                     header.modifier(pinsPresentation)
-                    // Zero-height layer: the pin button floats over the top-right of the
-                    // messages (which scroll up to the header divider) instead of taking a row.
-                    // DMs only: in group chats the Pinned chip replaces it (20261023-group-info-row).
-                    if pinsAvailable && contact.type != .group {
-                        Color.clear.frame(height: 0)
-                            .overlay(alignment: .topTrailing) {
-                                pinButton
-                                    .padding(.top, Theme.spacingXS)
-                                    .padding(.trailing, Theme.spacingMD)
-                            }
-                            .zIndex(1)
-                    }
                 }
 
                 // ── Reconnecting banner (dropped-socket lifecycle state) ───
@@ -2133,46 +2121,20 @@ struct ChatThreadView: View {
         }
     }
 
-    /// The pin button: right-aligned row directly under the header, below Sessions.
-    private var pinButton: some View {
-        ZStack(alignment: .topTrailing) {
-            Button { showPinned = true } label: {
-                Image(systemName: "pin")
-                    .font(.system(size: 44 * 0.4, weight: .semibold))
-                    .foregroundColor(Theme.gold)
-                    .frame(width: 44, height: 44)
-                    .background(.ultraThinMaterial, in: Circle())
-                    .background(Theme.bgPage.opacity(0.25), in: Circle())
-                    .overlay(Circle().stroke(Theme.borderGold, lineWidth: 1))
-                    .topEdgeHighlight(Circle())
-            }
-            .buttonStyle(.plain)
-            // iPad workspace: Pinned opens as a popover under the pin button.
-            .popover(isPresented: embedded ? $showPinned : .constant(false), arrowEdge: .top) {
-                PinnedMessagesSheet(vm: vm, contact: contact, service: appState.service,
-                                    userId: appState.currentUser?.user_id ?? "",
-                                    onSelect: { pin in jumpToPin(pin) })
-                    .frame(width: WorkspaceLayout.popoverWidth, height: WorkspaceLayout.pinnedPopoverHeight)
-                    .presentationCompactAdaptation(.popover)
-            }
-            if let badge = FSPinnedListCopy.badgeText(count: vm.pinCount) {
-                Text(badge)
-                    .font(.inter(Theme.fontXXS, weight: .bold))
-                    .foregroundColor(Theme.ink)
-                    .padding(.horizontal, 5)
-                    .frame(minWidth: 16, minHeight: 16)
-                    .background(Theme.gold)
-                    .clipShape(Capsule())
-                    .offset(x: 2, y: -2)
-                    .accessibilityHidden(true)
-            }
-        }
-        .accessibilityElement(children: .ignore)
-        .accessibilityAddTraits(.isButton)
-        .accessibilityLabel("Pinned messages")
-        .accessibilityValue(FSPinnedListCopy.buttonValue(count: vm.pinCount) ?? "")
-        .accessibilityHint("Opens the list of pinned messages")
-        .accessibilityAction { showPinned = true }
+    /// DMs: the Pinned chip in the "+" attach row (groups use the info-row chip). Tapping closes
+    /// the attach row, then opens the list (sheet on phone, popover on the chip when embedded).
+    private var attachPinnedChip: AttachPinnedChip? {
+        guard pinsAvailable, contact.type != .group else { return nil }
+        return AttachPinnedChip(
+            pinCount: vm.pinCount,
+            action: { setAttachMode(false); showPinned = true },
+            popoverPresented: embedded ? $showPinned : .constant(false),
+            popoverContent: {
+                AnyView(PinnedMessagesSheet(vm: vm, contact: contact, service: appState.service,
+                                            userId: appState.currentUser?.user_id ?? "",
+                                            onSelect: { pin in jumpToPin(pin) })
+                    .frame(width: WorkspaceLayout.popoverWidth, height: WorkspaceLayout.pinnedPopoverHeight))
+            })
     }
 
     private func rowActions(for message: FSMessage) -> [MessageRowAction] {
@@ -2801,7 +2763,8 @@ struct ChatThreadView: View {
                 attachMode: showAttachSheet, compact: !embedded,
                 onPickPhotoVideo: { setAttachMode(false); DispatchQueue.main.async { showPhotoVideoPicker = true } },
                 onPickFile:       { setAttachMode(false); DispatchQueue.main.async { showDocumentPicker = true } },
-                onPickGif:        { setAttachMode(false); DispatchQueue.main.async { showGifSheet = true } }
+                onPickGif:        { setAttachMode(false); DispatchQueue.main.async { showGifSheet = true } },
+                pinned: attachPinnedChip
             ) {
                 GroupInfoChipRow(categories: groupInfoCategories, selected: $infoCategory, pinCount: vm.pinCount,
                                  compact: !embedded, badges: infoBadges)
