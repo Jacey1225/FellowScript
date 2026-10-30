@@ -31,6 +31,21 @@ final class DashboardViewModel: ObservableObject {
     // had -- no special-casing needed for the 0/1-friend empty states.
     @Published var heroFriendPick: FSFriendActivityEntry?
     @Published var checkInPick:    FSCheckInCandidate?
+    // Task 20261029-home-pickup-past-note: random own past note for the
+    // "Pick up from your past note" state. Re-rolled once per load() that
+    // got fresh data; kept across fully failed refreshes.
+    @Published var pickupNote:     FSNote?
+
+    /// Own personal notes older than 48h with a parseable timestamp. Group
+    /// notes, replies, other users' notes, and unparseable timestamps are
+    /// ineligible (never treated as "old").
+    static func pickupCandidates(notes: [String: FSNote], userId: String, now: Date = Date()) -> [FSNote] {
+        notes.values.filter { n in
+            guard n.group_id.isEmpty, !n.is_reply, n.user.isEmpty || n.user == userId,
+                  let d = parseActivityDate(n.timestamp) else { return false }
+            return now.timeIntervalSince(d) > FSFriendActivityFeed.inactivityWindow
+        }
+    }
 
     // Task 20260906-friend-nudges: UI state for CheckInRow's send action,
     // driven entirely by the shared `DataServiceProtocol.sendNudge` response
@@ -85,6 +100,7 @@ final class DashboardViewModel: ObservableObject {
         // `try?`) purely to log each fetch's outcome — the resulting optional
         // value and the "only overwrite on non-nil success" splice logic
         // right below are unchanged from before this task.
+        var freshDataArrived = false
         async let notesTask: NotesPage? = {
             do {
                 let page = try await service.fetchNotes(userId: userId, cursorCreatedAt: nil, cursorId: nil)
@@ -133,9 +149,11 @@ final class DashboardViewModel: ObservableObject {
         // converges to current data the next time a fetch succeeds.
         if let freshNotes = (await notesTask)?.notes {
             notes = freshNotes
+            freshDataArrived = true
         }
         if let freshActivity = await friendActivityTask {
             friendActivity = freshActivity
+            freshDataArrived = true
         }
 
         // Task 20260902-dashboard-friend-randomization: re-roll exactly once
@@ -149,6 +167,14 @@ final class DashboardViewModel: ObservableObject {
         // existing (accepted) cache-then-fresh data transition itself.
         heroFriendPick = friendActivity.friends_active.randomElement()
         checkInPick    = friendActivity.check_in_candidates.randomElement()
+        // Pickup: re-roll only when something fresh arrived; a fully failed
+        // refresh keeps the existing pick as long as it is still eligible.
+        let candidates = Self.pickupCandidates(notes: notes, userId: userId)
+        if freshDataArrived || pickupNote == nil {
+            pickupNote = candidates.randomElement()
+        } else if let current = pickupNote, !candidates.contains(where: { $0.id == current.id }) {
+            pickupNote = nil
+        }
         // A fresh candidate (even the same friend re-picked) starts tappable
         // again -- see checkInNudgeState's own doc comment above.
         checkInNudgeState = .idle
@@ -198,6 +224,7 @@ final class DashboardViewModel: ObservableObject {
             let savedId = try await service.saveNote(note, editingId: editingId, userId: userId)
             var updated = note; updated.id = savedId
             notes[savedId] = updated
+            if pickupNote?.id == savedId { pickupNote = updated }
             return nil
         } catch {
             // Free-plan block: shared upgrade prompt, editor stays open without an alert.
@@ -255,6 +282,9 @@ struct DashboardView: View {
     @State private var friendNote:          FSNote? = nil
     @State private var isLoadingFriendNote  = false
     @State private var friendNoteLoadError: String? = nil
+    // Task 20261029-home-pickup-past-note: the user's OWN note opened from
+    // the pickup row (separate from the friend-note sheet above).
+    @State private var pickupSheetNote:     FSNote? = nil
 
     private func openFriendChat(id: String, username: String) {
         appState.pendingChatContact = FSContact(id: id, name: username, type: .friend)
@@ -313,7 +343,9 @@ struct DashboardView: View {
                         onOpenNote: { preview in
                             openFriendNote(preview)
                         },
-                        isLoadingNotePreview: isLoadingFriendNote
+                        isLoadingNotePreview: isLoadingFriendNote,
+                        pickupNote: vm.pickupNote,
+                        onOpenPickup: { pickupSheetNote = $0 }
                     )
 
                     if let checkIn = vm.checkInPick {
@@ -390,6 +422,16 @@ struct DashboardView: View {
                 } catch {
                     return error.localizedDescription
                 }
+            }
+        }
+        .sheet(item: $pickupSheetNote) { note in
+            NoteDetailView(
+                note:     note,
+                userId:   appState.currentUser?.user_id ?? "",
+                username: appState.currentUser?.username ?? "",
+                service:  appState.service
+            ) { saved in
+                await vm.saveNote(saved, editingId: note.id, userId: appState.currentUser?.user_id ?? "")
             }
         }
         .alert("Could Not Open Note", isPresented: Binding(

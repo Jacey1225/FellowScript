@@ -212,6 +212,12 @@ struct FriendActivityHeroCard: View {
     // plausible failure mode, so *some* feedback is warranted, just not
     // more than this).
     var isLoadingNotePreview: Bool = false
+    // Task 20261029-home-pickup-past-note: a random past note of the user's
+    // own, rolled once per DashboardViewModel.load(). Shown only when no
+    // friend has activity within 48h (see FSFriendActivityFeed.hasActivity).
+    // Defaulted so existing call sites/tests compile unchanged.
+    var pickupNote: FSNote? = nil
+    var onOpenPickup: (FSNote) -> Void = { _ in }
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
@@ -227,11 +233,19 @@ struct FriendActivityHeroCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
+            let showPickup = pickupNote != nil && !feed.hasActivity(within: FSFriendActivityFeed.inactivityWindow)
             if feed.friends_active.isEmpty {
-                noFriendsState
+                if showPickup, let pickupNote {
+                    pickupRow(pickupNote)
+                } else {
+                    noFriendsState
+                }
             } else {
                 avatarStackRow
-                if let resolvedPrimary, resolvedPrimary.last_active_at != nil {
+                if showPickup, let pickupNote {
+                    Divider().background(Color.white.opacity(0.08)).padding(.top, 16)
+                    pickupRow(pickupNote).padding(.top, 16)
+                } else if let resolvedPrimary, resolvedPrimary.last_active_at != nil {
                     activityRow(resolvedPrimary)
                     // Task 20260904-friend-activity-push-triggers: a
                     // verse_highlighted entry shows the new highlight_preview
@@ -260,6 +274,59 @@ struct FriendActivityHeroCard: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .glassCard(cornerRadius: 24, tint: Color(hex: "#2A1B0B").opacity(0.14), blurBoost: 6)
         .padding(.horizontal, 20)
+    }
+
+    // Task 20261029-home-pickup-past-note: "Pick up from your past note" row.
+    // Title/preview are omitted when empty (no invented placeholder); the age
+    // label always has a parseable timestamp because the VM only picks notes
+    // whose timestamp parses.
+    private func pickupRow(_ note: FSNote) -> some View {
+        let preview = String(stripHTMLTags(note.text).trimmingCharacters(in: .whitespacesAndNewlines).prefix(240))
+        let age: String? = parseActivityDate(note.timestamp).map { d in
+            let f = RelativeDateTimeFormatter()
+            f.dateTimeStyle = .named
+            f.unitsStyle = .full
+            return "Written " + f.localizedString(for: d, relativeTo: Date())
+        }
+        let isAX = dynamicTypeSize >= .accessibility1
+        return Button(action: { onOpenPickup(note) }) {
+            HStack(alignment: .top, spacing: 8) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Pick up from your past note")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(Theme.gold.opacity(0.75))
+                    if !note.title.isEmpty {
+                        Text(note.title)
+                            .font(.system(size: 20, weight: .bold))
+                            .foregroundColor(Theme.parchment)
+                            .lineLimit(isAX ? 3 : 2)
+                            .multilineTextAlignment(.leading)
+                    }
+                    if !preview.isEmpty {
+                        Text(preview)
+                            .font(.system(size: 14.5))
+                            .foregroundColor(Theme.textSecondary)
+                            .lineLimit(isAX ? 3 : 2)
+                            .multilineTextAlignment(.leading)
+                    }
+                    if let age {
+                        Text(age)
+                            .font(.system(size: 11))
+                            .foregroundColor(Theme.parchment.opacity(0.55))
+                    }
+                }
+                Spacer(minLength: 0)
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundColor(Theme.gold.opacity(0.75))
+                    .padding(.top, 2)
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Pick up from your past note: \(note.title.isEmpty ? preview : note.title). \(age ?? ""). Opens note.")
+        .accessibilityAddTraits(.isButton)
     }
 
     private var noFriendsState: some View {
@@ -694,7 +761,7 @@ struct CheckInRow: View {
 // timestamps — mirrors the parsing this file's other dashboard-only pieces
 // already do locally (e.g. CommunityActivityItem.timeLabel before it) rather
 // than reaching into DashboardViewModel's private static parseDate.
-private func parseActivityDate(_ s: String?) -> Date? {
+func parseActivityDate(_ s: String?) -> Date? {
     guard let s, !s.isEmpty else { return nil }
     let iso = ISO8601DateFormatter()
     iso.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
@@ -796,5 +863,20 @@ private struct KnockTicks: Shape {
         p.move(to: CGPoint(x: 62 * u, y: 22 * u)); p.addLine(to: CGPoint(x: 64 * u, y: 16 * u))
         p.move(to: CGPoint(x: 70 * u, y: 26 * u)); p.addLine(to: CGPoint(x: 74 * u, y: 21 * u))
         return p
+    }
+}
+
+
+// Task 20261029-home-pickup-past-note: 48h inactivity check, client-side from
+// the already-fetched last_active_at values (no backend field). A nil or
+// unparseable last_active_at counts as no activity.
+extension FSFriendActivityFeed {
+    static let inactivityWindow: TimeInterval = 48 * 60 * 60
+
+    func hasActivity(within window: TimeInterval, now: Date = Date()) -> Bool {
+        friends_active.contains { entry in
+            guard let d = parseActivityDate(entry.last_active_at) else { return false }
+            return now.timeIntervalSince(d) <= window
+        }
     }
 }
