@@ -123,6 +123,8 @@ struct AttachPickerRow: View {
     var onPickGif:        () -> Void
     /// DMs only: nil hides the Pinned chip (flag off, groups, thread view).
     var pinned: AttachPinnedChip? = nil
+    /// Groups with chat_announcements on: opens the announcement form (nil hides it).
+    var announcement: AttachAnnouncementChip? = nil
 
     var body: some View {
         ScrollView(.horizontal, showsIndicators: false) {
@@ -131,6 +133,7 @@ struct AttachPickerRow: View {
                 option(title: "File", systemIcon: "doc", action: onPickFile)
                 option(title: "GIF", systemIcon: "face.smiling", action: onPickGif)
                 if let pinned { AttachPinnedChipButton(chip: pinned, compact: compact) }
+                if let announcement { AttachAnnouncementChipButton(chip: announcement, compact: compact) }
             }
             .padding(.horizontal, Theme.spacingMD)
         }

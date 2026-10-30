@@ -102,6 +102,7 @@ DDL_MODULES = (
     "announcement_polls",
     "message_mentions",
     "user_bio",
+    "chat_announcements",
 )
 
 

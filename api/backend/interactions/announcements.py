@@ -21,7 +21,7 @@ from backend.errors import SaveFailedError
 from backend.interactions.announcement_banner import is_announcement_banner_key
 from backend.interactions import announcement_extras as extras
 from backend.interactions import announcement_repeat_rules as repeat_rules
-from backend.interactions import flags
+from backend.interactions import chat_announcements, flags
 from backend.interactions.attachments import delete_object, generate_download_url
 from backend.interactions.announcement_polls import PollNotFound, PollsMixin, normalize_poll
 from backend.interactions.groups import GroupsManager
@@ -469,7 +469,8 @@ class AnnouncementsManager(PollsMixin, GroupsManager):
                             banner_key: str | None, publish_at: datetime | None,
                             title_color: str | None = None, title_font: str | None = None,
                             bg_theme: str | None = None, extra: dict | None = None,
-                            repeat: dict | None = None, poll: dict | None = None) -> dict:
+                            repeat: dict | None = None, poll: dict | None = None,
+                            post_to_chat: bool = False) -> dict:
         """Insert an announcement. The caller must already have passed the
         free-limit gate. Raises ValueError (validation, incl. bad title_color),
         AnnouncementForbidden (foreign banner key), SaveFailedError."""
@@ -510,6 +511,8 @@ class AnnouncementsManager(PollsMixin, GroupsManager):
             new_id = self.cur.fetchone()[0]
             if poll_def:
                 self._insert_poll(str(new_id), poll_def)
+            if post_to_chat:
+                chat_announcements.mark_in_txn(self.cur, str(new_id))
             self.conn.commit()
         except Exception:
             self.conn.rollback()

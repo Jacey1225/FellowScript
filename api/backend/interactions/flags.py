@@ -109,6 +109,10 @@ register("chat_shared_objects")
 # GET /groups/{u}/{g}/media and the Media chip. Exposed in capabilities as
 # features.group_media. Ships OFF; never flipped by the pipeline.
 register("group_media")
+# Announcements as chat timeline lines (task 20261030-chat-announcements): gates the post_to_chat create
+# field, the timeline line, its payload/frames. Exposed in capabilities as features.chat_announcements.
+# Ships OFF; never flipped by the pipeline.
+register("chat_announcements")
 register("explorer_publish")
 register("explorer_browse", no_canary=True)
 register("join_requests")

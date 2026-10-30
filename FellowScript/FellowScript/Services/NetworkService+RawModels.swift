@@ -50,6 +50,8 @@ struct RawMsg: Decodable {
     // Task 20261017-chat-mentions: lenient (never throws); absent while the
     // server flag is off or the message has none. Unknown keys are ignored.
     var mentions: FSMentionList? = nil
+    // Task 20261030-chat-announcements: lenient (never throws); only on announcement lines.
+    var announcement: FSLenientAnnouncement? = nil
 
     var reply: FSReplyRef? {
         FSReplyRef(wireId: reply_to_id, text: reply_to_text, author: reply_to_author,

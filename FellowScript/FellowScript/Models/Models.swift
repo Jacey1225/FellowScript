@@ -730,6 +730,9 @@ struct FSMessage: Identifiable, Codable {
     // @Name runs rendered bold. nil when absent (old payloads, flag off, none).
     // Optional so previously cached FSMessage JSON without the key decodes.
     var mentions: [FSMention]? = nil
+    // Task 20261030-chat-announcements: the card of an announcement timeline line
+    // (system_kind "announcement"). nil for every other message and old payloads.
+    var announcement: FSMessageAnnouncement? = nil
 
     // compile-errors #3 (20260904-frontend-arch-sweep): the wire value is a
     // plain String so it round-trips through Codable/JSON unchanged, but

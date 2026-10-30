@@ -1,0 +1,58 @@
+{
+  "task_id": "20261030-chat-announcements",
+  "clarification_needed": [],
+  "notes": [
+    "Q1-Q10 answered 'defaults' by Jacey: any member may post (free-plan limit applies), groups only, in-timeline card via existing card face + 'Announcement' label + poster, no extra pinning, reuse the single existing push (no chat push from the system line), edit in place with small 'edited' marker, delete uses undo grace window, scheduled posts appear at publish time, reminders/repeats add no rows, no backfill, entry point = + chip (iOS) / composer menu item (web) opening existing form, uses existing 'announcements' limit.",
+    "Grep of this worktree finds no title_position/titlePosition fields, so 20261020-announcement-title-position-size is NOT merged here. Backend/iOS/web gates must consume the card-face API as it exists on this branch and render through the shared card face (AnnouncementCardFace.jsx, GroupAnnouncementWidgetView) with no fork, so the title styling lands automatically when that task merges.",
+    "Precedent to mirror: api/routes/message_pins.py writes a server-generated system line into messages with system_kind='pin', persisted directly (not via the websocket send path). Announcement line uses system_kind='announcement' plus announcement_id linkage. Capability flag chat_announcements defaults OFF in api/schema_ddl/flags.py.",
+    "Desktop (desktop/src-tauri) has only lib.rs/main.rs and loads the web frontend: no desktop-specific work; frontend gate confirms and notes any Tauri deep-link/notification handling is unaffected.",
+    "File-size rule: new logic in new files only; thin hook-ins at most in api/main.py, ChatThreadView.swift (3966 lines), MessageGroupRow.swift, ChatThread.jsx (1815 lines); NetworkService additions only in the existing announcements extension.",
+    "Security included because the message model and authorization surface change (new emit/post path, membership and blocked/removed-member checks, deny-by-default 403, fail closed on ambiguous lookup). Design gate omitted: the row reuses the existing card face with a label; no new screen or interaction pattern beyond a composer chip. Gates must raise any visual question to the orchestrator rather than invent a new look.",
+    "xcodebuild test runs must be serialized across tasks."
+  ],
+  "agents_required": {
+    "backend": true,
+    "frontend": true,
+    "design": false,
+    "security": true,
+    "testing": true
+  },
+  "steps": [
+    {
+      "n": 1,
+      "name": "Backend: add announcement_id linkage and system_kind='announcement' on messages (DDL via api/db.py and api/schema_ddl/), chat_announcements flag default OFF, new module that emits the timeline line on create/publish (including the publish-due scheduled path, no emit for reminders/repeats, no backfill), sync on edit (edited marker data) and delete/restore (tombstone/remove and restore within grace window), serialize the line with the announcement payload in history/pagination and the live websocket frame, decode-safe for old clients; thin hook-ins only in group_announcements.py/announcements.py/main.py; throw-not-fabricate on failure; docs (api/schema_tree.md, docs/architecture/backend.md, docs/api/overview.md); plain-script api tests",
+      "routed_to": "backend",
+      "checkpoint": null
+    },
+    {
+      "n": 2,
+      "name": "Security review of the emit/post path: membership and blocked/removed-member checks, deny-by-default 403 for non-members, fail closed on ambiguous permission lookup, edit/delete limited to poster or group creator, no cross-group announcement_id linkage, free-plan limit still enforced, flag-off path inert, no data leakage to removed members in history/websocket frames",
+      "routed_to": "security",
+      "checkpoint": "backend step 1 passed"
+    },
+    {
+      "n": 3,
+      "name": "Backend tests: plain-script tests for emit on create and on scheduled publish, no emit for reminders/repeats, edit sync, delete/restore, 403 for non-members/blocked/removed, flag OFF behavior, pagination and websocket frame shape, old-client tolerance",
+      "routed_to": "testing",
+      "checkpoint": "security step 2 passed"
+    },
+    {
+      "n": 4,
+      "name": "Frontend (iOS): decode-tolerant model fields, new small SwiftUI timeline row view file rendering the shared card face compactly with 'Announcement' label, poster and 'edited' marker, tap-through to GroupAnnouncementDetailView, 'Announcement' chip in the + attach row opening existing GroupAnnouncementFormView, NetworkService additions only in the announcements extension, error surfaced with no placeholder row, failed refresh preserves cached messages, flag-gated, thin hook-ins only in ChatThreadView.swift/MessageGroupRow.swift",
+      "routed_to": "frontend",
+      "checkpoint": "backend step 1 passed"
+    },
+    {
+      "n": 5,
+      "name": "Frontend (web + desktop): new React timeline-row component reusing AnnouncementCardFace.jsx with label/poster/edited marker, tap-through to GroupAnnouncementViewer, composer menu item opening existing GroupAnnouncementForm, API calls in lib/announcementsApi.js, error surfaced with no fabricated row, failed refresh keeps cache, flag-gated, thin hook-in only in ChatThread.jsx; confirm Tauri desktop inherits web and record 'no desktop-specific work'",
+      "routed_to": "frontend",
+      "checkpoint": "backend step 1 passed"
+    },
+    {
+      "n": 6,
+      "name": "Client tests: iOS unit tests for decoding and row view model (xcodebuild run serialized, never concurrent with other simulator runs), vitest for web row/composer entry/api helper including error and cache-preserved paths, then full api + iOS + vitest regression and file-size check on touched oversized files",
+      "routed_to": "testing",
+      "checkpoint": "frontend steps 4 and 5 passed"
+    }
+  ]
+}

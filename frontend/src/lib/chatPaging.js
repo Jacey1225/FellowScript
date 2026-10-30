@@ -15,6 +15,7 @@
 import { parseReactions } from './reactions.js';
 import { replyFromWire } from './replies.js';
 import { pinFields } from './pins.js';
+import { announcementFields } from './chatAnnouncements.js';
 import { mentionFields, mentionsFromWire } from './mentions.js';
 
 export const INITIAL_PAGE_LIMIT = 30;
@@ -58,6 +59,8 @@ export function toMessage(row, mine) {
   if (reply) msg.reply = reply;
   // Task 20261012-message-pins: `pinned` / `system_kind` only while the flag is on.
   Object.assign(msg, pinFields(row));
+  // Task 20261030-chat-announcements: announcement lines carry their card.
+  Object.assign(msg, announcementFields(row));
   // Task 20261017-chat-mentions: `mentions` only while the flag is on for the
   // viewer; an invalid range set is dropped (message renders plain).
   Object.assign(msg, mentionFields(row, row.text));
