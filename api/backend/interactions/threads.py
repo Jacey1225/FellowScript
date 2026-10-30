@@ -29,6 +29,7 @@ from backend import content_store
 from backend.interactions import paging
 from backend.interactions.attachments import generate_download_url
 from backend.interactions.groups import author_set
+from backend.interactions.html_text import clean_shared_note_meta
 from backend.interactions.message_mentions import attach_mentions
 from backend.interactions.send_guard import is_current_member
 from backend.interactions.threads_config import get_threads_config
@@ -349,7 +350,7 @@ class ThreadsManager(DBManager):
                 "text": content_store.open_(_id, content_store.F_THREAD_MESSAGE_TEXT, text),
                 "timestamp": paging.format_timestamp(ts),
                 "attachment_kind": kind,
-                "attachment_meta": meta,
+                "attachment_meta": clean_shared_note_meta(kind, meta),
                 "attachment_url": generate_download_url(key) if key else None,
             })
         attach_mentions(self, messages, self.user_id, table="thread_messages")

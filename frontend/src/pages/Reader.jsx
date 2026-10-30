@@ -27,6 +27,8 @@ import {
 import { useAuth }        from '../context/AuthContext.jsx';
 import { useCapabilities } from '../hooks/useCapabilities.js';
 import ShareToChatModal from '../components/ShareToChatModal.jsx';
+import { useChatShare } from '../hooks/useChatShare.js';
+import { canShareToThreads } from '../lib/threadShare.js';
 import { SharedVerseWidget, SharedNoteCard } from '../components/SharedObjects.jsx';
 import { SHARED_FEATURE, verseAttachment, noteAttachment } from '../lib/sharedObjects.js';
 import { stripHtml } from '../components/RichText.jsx';
@@ -386,8 +388,6 @@ export default function Reader() {
   const caps = useCapabilities();
   const shareEnabled = !!user && ((caps && caps.features) || {})[SHARED_FEATURE] === true;
   const [shareReq, setShareReq] = useState(null); // { attachment, preview }
-  const [shareTick, setShareTick] = useState(0);
-  const pendingShareRef = useRef(null);
 
   const requestVerseShare = useCallback((book, chapter, verse) => {
     if (!contactsLoaded) handleLoadContacts();
@@ -421,21 +421,10 @@ export default function Reader() {
     });
   }, [contactsLoaded, handleLoadContacts, currentGroupId]);
 
-  const performShare = useCallback(async (contact) => {
-    if (!shareReq) return;
-    pendingShareRef.current = { contactId: contact.id, attachment: shareReq.attachment };
-    setShareReq(null);
-    handleRailSelect(PANEL_IDS.MESSAGING);
-    await handleOpenChat(contact);
-    setShareTick(t => t + 1);
-  }, [shareReq, handleOpenChat, handleRailSelect]);
-
-  useEffect(() => {
-    const p = pendingShareRef.current;
-    if (!p || !currentContact || currentContact.id !== p.contactId) return;
-    pendingShareRef.current = null;
-    sendMessage('', p.attachment);
-  }, [shareTick, currentContact, sendMessage]);
+  const performShare = useChatShare({
+    shareReq, setShareReq, onOpenChat: handleOpenChat, onShowMessaging: () => handleRailSelect(PANEL_IDS.MESSAGING),
+    currentContact, sendMessage, openThread, threadView, threadLoad, sendThreadMessage,
+  });
 
   // ── Derived ─────────────────────────────────────────────────────────────────
   const preamble = getPreamble(curBook, null);
@@ -577,6 +566,8 @@ export default function Reader() {
             groups={msgGroups}
             loaded={contactsLoaded}
             onSend={performShare}
+            userId={user?.user_id}
+            threadsEnabled={canShareToThreads(caps)}
           />
         )}
 

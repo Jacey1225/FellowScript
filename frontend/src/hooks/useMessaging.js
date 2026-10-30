@@ -604,12 +604,11 @@ export function useMessaging({ user }) {
   // server derives the group and recipients from thread_id.
   const sendThreadMessage = useCallback((text, attachment = null, _reply = null, mentionsArg = null) => {
     const tv = threadViewRef.current;
-    if (!user || !tv || !wsRef.current || wsRef.current.readyState !== 1) return;
+    if (!user || !tv || !wsRef.current || wsRef.current.readyState !== 1) return false;
     const mentions = outgoingMentions(text, mentionsArg);
     const clientRef = newClientRef();
     const payload = {
-      type: 'thread_message',
-      from_user: user.user_id,
+      type: 'thread_message', from_user: user.user_id,
       thread_id: tv.thread.id,
       text,
       client_ref: clientRef,
@@ -629,6 +628,7 @@ export function useMessaging({ user }) {
       attachmentUrl: (attachment && attachment.kind === 'gif') ? null : (attachment?.localUrl || null),
       ...(mentions ? { mentions } : {}),
     }]);
+    return true;
   }, [user, outgoingMentions]);
 
   // Delete (author only, group chat) with the server's undo window. The row
