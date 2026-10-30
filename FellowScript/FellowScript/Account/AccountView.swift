@@ -162,6 +162,9 @@ struct AccountView: View {
                         // ── Plan usage ─────────────────────────────────────────
                         usageSection
 
+                        // ── My profile (task 20261030-user-profiles) ───────────
+                        MyProfileRow()
+
                         // ── Edit profile ───────────────────────────────────────
                         editProfileSection
 

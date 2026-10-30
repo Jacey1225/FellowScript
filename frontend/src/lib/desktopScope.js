@@ -29,6 +29,8 @@ export const DESKTOP_ALLOWED_ROUTES = [
 // paths, or a malformed token all stay denied.
 export const DESKTOP_ALLOWED_ROUTE_PATTERNS = [
   /^\/join\/[A-Za-z0-9_-]{43}$/,
+  // Task 20261030-user-profiles: /profile/<user id> (a UUID, one segment).
+  /^\/profile\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i,
 ];
 
 // Where a disallowed in-app navigation lands. /reader rather than /account

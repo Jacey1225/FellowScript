@@ -1,0 +1,17 @@
+{
+  "profile": {
+    "bio_max_length": 160,
+    "distinct_profile_cap": 60,
+    "distinct_profile_window_seconds": 600,
+    "max_outstanding_friend_requests": 200,
+    "rate_limits": {
+      "profile_read_user": "120/minute",
+      "profile_read_ip": "300/minute",
+      "bio_edit_hour": "10/hour",
+      "bio_edit_burst": "3/minute",
+      "friend_request_hour": "20/hour",
+      "friend_request_day": "100/day",
+      "friend_accept_hour": "60/hour"
+    }
+  }
+}

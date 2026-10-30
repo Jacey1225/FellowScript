@@ -258,3 +258,9 @@ has one call point instead of a per-screen copy; `detailsScreen` moved off `Form
 the `ScrollView` + `VStack` + `widgetCard()` shell its sibling steps already used, same section
 order and headers. Appearance-only — the group-picker `Menu` added by the group-tagging feature
 above, `onSave`/`onCreate`, `prefill(from:)`, and all existing accessibility labels are unchanged.
+
+## User profiles (iOS)
+
+A profile sheet shows a user's avatar, username, relationship chip and bio. Open it by tapping a friend's avatar in the Chat list (or swipe a friend row, or use the iPad row menu, then "Profile"), by tapping a requester's avatar under Friend Requests, or from the "View my profile" row in Account. Bios are shown to the owner and to friends only; strangers see "Bio is shared with friends." The primary action follows the relationship (Add friend, Request sent, Accept, Message); Unfriend (with a 6 second undo), Block and Report sit in the "More options" menu and reuse the existing report and block flows.
+
+Own bio is edited inline (160 characters, plain text, no links; newlines collapse to spaces). A failed save keeps the draft and shows the reason. A profile that is unknown, blocked or suspended shows "This profile isn't available." and any cached copy is dropped; a network failure keeps the cached copy and shows "Couldn't refresh. Showing what we had." The cache is memory-only and cleared on sign-out. Code: `FellowScript/Profile/`, `NetworkService+Profile.swift`.

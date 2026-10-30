@@ -1,0 +1,225 @@
+{
+ "task_id": "20261030-user-profiles",
+ "step": 3,
+ "gate": "design",
+ "result": "pass",
+ "summary": "Spec-only design note written to design-notes.md (anatomy, visibility tiers, relationship-state/action matrix, own-bio inline editing, loading/error/404/preserve-cache states, a11y/reduced-motion, per-platform notes incl. desktopScope allowlist). Uses existing Theme.swift / theme.js / forms.css conventions; no new tokens. Note: no design-kit/ directory exists in the repo; docs/design/overview.md and the Theme files were used. Five creative decisions below each have 2-3 alternatives with a recommendation and need Jacey's approval before iOS/web implementation steps; the design note assumes the recommended option for each.",
+ "design_notes_path": "/Users/jaceysimpson/Vscode/FellowScript-profiles/.claude/pipeline/20261030-user-profiles/design-notes.md",
+ "awaiting_jacey_approval": true,
+ "decisions": [
+  {
+   "id": "A",
+   "title": "Entry points to a profile",
+   "requires_jacey_approval": true,
+   "options": [
+    {
+     "key": "A1",
+     "name": "Tap the avatar/name everywhere; row tap unchanged",
+     "detail": "Avatar (and name) is the profile link in: contacts rows, DM thread header, group member lists in Group Info, friend-request rows, message sender avatars in group chat; plus a 'View my profile' row in Account. Tapping the row body still opens the chat, so the common path is not slowed.",
+     "pros": [
+      "No extra step to chat",
+      "One consistent rule",
+      "Low discoverability risk because avatars already look tappable"
+     ],
+     "cons": [
+      "Avatar tap targets must be >=44pt, tight in dense lists"
+     ]
+    },
+    {
+     "key": "A2",
+     "name": "Row tap opens profile; Message is a button on it",
+     "detail": "Contacts row opens profile first, then Message.",
+     "pros": [
+      "Very discoverable"
+     ],
+     "cons": [
+      "Adds a step to the most frequent action (chatting); changes existing muscle memory"
+     ]
+    },
+    {
+     "key": "A3",
+     "name": "Context menu / long-press 'View profile' only",
+     "detail": "Add item to existing row menu (web Dropdown, iOS context menu).",
+     "pros": [
+      "Minimal change to rows"
+     ],
+     "cons": [
+      "Poor discoverability; unusable for group-chat sender avatars and request rows"
+     ]
+    }
+   ],
+   "recommendation": "A1"
+  },
+  {
+   "id": "B",
+   "title": "How the profile is presented",
+   "requires_jacey_approval": true,
+   "options": [
+    {
+     "key": "B1",
+     "name": "iOS sheet (medium/large detents); web route /profile/:userId in FormSkin with Back control",
+     "detail": "Matches AddFriendSheet/ReportUserSheet on iOS and the Account page pattern on web; deep-linkable (e.g. from a friend-request push). Requires a desktopScope.js route pattern and test so Tauri does not redirect it.",
+     "pros": [
+      "Follows established patterns",
+      "Matches architecture (pages/Profile.jsx)",
+      "Linkable"
+     ],
+     "cons": [
+      "Web leaves the Reader dock, losing scripture position/open panels on return"
+     ]
+    },
+    {
+     "key": "B2",
+     "name": "iOS push; web right-side drawer over the Reader",
+     "detail": "Web drawer hosts the same Profile components with no route change (no desktopScope change).",
+     "pros": [
+      "Keeps reading context on web",
+      "No desktop allowlist change"
+     ],
+     "cons": [
+      "Not linkable; two host shells to test; Profile.jsx becomes a component not a page"
+     ]
+    },
+    {
+     "key": "B3",
+     "name": "Web in-dock panel (dockview)",
+     "detail": "Profile as a dock panel next to messages.",
+     "pros": [
+      "Most integrated"
+     ],
+     "cons": [
+      "Touches Reader/dockview internals; heaviest, riskiest, hardest on small viewports"
+     ]
+    }
+   ],
+   "recommendation": "B1"
+  },
+  {
+   "id": "C",
+   "title": "Relationship-action placement",
+   "requires_jacey_approval": true,
+   "options": [
+    {
+     "key": "C1",
+     "name": "Primary action under identity; Block/Report/Unfriend in a labelled overflow menu",
+     "detail": "One full-width state-driven primary button (Add friend / Request sent / Accept+Decline / Message), overflow 'More options' top right. Mirrors existing ContactRow menu.",
+     "pros": [
+      "Clean, one obvious next step",
+      "Consistent with current Report/Block placement",
+      "Destructive actions kept away from primary"
+     ],
+     "cons": [
+      "Report is one tap deeper; must stay clearly labelled for App Store 1.2 review"
+     ]
+    },
+    {
+     "key": "C2",
+     "name": "Vertical list of action rows below the bio",
+     "detail": "Add friend, Message, Block, Report as full rows with icons.",
+     "pros": [
+      "Report/Block fully visible"
+     ],
+     "cons": [
+      "Heavier, less warm; visual weight on destructive items; long on small screens"
+     ]
+    },
+    {
+     "key": "C3",
+     "name": "Sticky bottom action bar (primary) + overflow in header",
+     "detail": "Primary pinned to thumb zone on mobile.",
+     "pros": [
+      "Thumb-reachable"
+     ],
+     "cons": [
+      "Collides with iOS sheet detents/keyboard and web drawers; sticky bars complicate the small-viewport case"
+     ]
+    }
+   ],
+   "recommendation": "C1"
+  },
+  {
+   "id": "D",
+   "title": "What a stranger sees where the bio would be",
+   "requires_jacey_approval": true,
+   "options": [
+    {
+     "key": "D1",
+     "name": "Quiet line 'Bio is shared with friends.'",
+     "pros": [
+      "Explains the gap; leaks nothing (tier rule is public policy)"
+     ],
+     "cons": [
+      "Slight clutter"
+     ]
+    },
+    {
+     "key": "D2",
+     "name": "Omit the bio block entirely",
+     "pros": [
+      "Cleanest"
+     ],
+     "cons": [
+      "User may think the person has no bio or the app is broken"
+     ]
+    },
+    {
+     "key": "D3",
+     "name": "Blurred placeholder lines",
+     "pros": [
+      "Teases content"
+     ],
+     "cons": [
+      "Implies content exists (oracle for empty vs filled bio); poor a11y"
+     ]
+    }
+   ],
+   "recommendation": "D1"
+  },
+  {
+   "id": "E",
+   "title": "Where the user edits their own bio",
+   "requires_jacey_approval": true,
+   "options": [
+    {
+     "key": "E1",
+     "name": "Inline on own profile (Edit bio in place, n/160 counter, draft preserved on error)",
+     "pros": [
+      "Edit what you see; small new surface; keeps Account.jsx/AccountView+Profile.swift from growing"
+     ],
+     "cons": [
+      "Own profile screen needs its own entry (Account row)"
+     ]
+    },
+    {
+     "key": "E2",
+     "name": "Dedicated edit sheet/modal from own profile",
+     "pros": [
+      "Clear focused task; reuses FSFormScaffold dirty-discard"
+     ],
+     "cons": [
+      "Extra layer for a 160-char field"
+     ]
+    },
+    {
+     "key": "E3",
+     "name": "Field in Account page profile form",
+     "pros": [
+      "Single place for profile settings"
+     ],
+     "cons": [
+      "Grows two already-oversized files, against the 2026-09-05 restructure principles"
+     ]
+    }
+   ],
+   "recommendation": "E1"
+  }
+ ],
+ "implementation_flags": [
+  "Unfriend undo is a client-side 6s deferred commit (server cannot restore a friendship); Block 'Unblock' toast does not retract the auto-filed report and must be labelled Unblock, not Undo.",
+  "Add-friend/accept errors use uniform copy per security D5; no 'not found' or 'blocked' wording anywhere.",
+  "If B1 is chosen, lib/desktopScope.js needs a UUID-tail route pattern + test or Tauri redirects to /reader.",
+  "Profile payload must include username (existing request/accept endpoints are username-keyed) and relationship enum none|request_sent|request_received|friends|self.",
+  "Cache must be dropped on 404, local block/unfriend, and sign-out (security D10), while kept on other failed refreshes.",
+  "textMuted (@0.28) fails AA; use textSecondary or stronger for all meaningful text."
+ ]
+}

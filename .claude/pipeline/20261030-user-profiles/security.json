@@ -1,0 +1,211 @@
+{
+  "task_id": "20261030-user-profiles",
+  "step": 2,
+  "gate": "security",
+  "result": "pass",
+  "design_only": true,
+  "awaiting_jacey_approval": true,
+  "summary": "Threat model and authorization design complete. No code changed. The step passes as a design deliverable, but implementation (step 4) must not start until Jacey signs off on every item marked requires_jacey_approval. Jacey's 'defaults' answers to Q1-Q10 are adopted as the policy baseline. Verified against code: B1 is real and must be IN SCOPE (add_friend inserts both user_friends rows with no pending friend_requests check, so the friends-only DM and acceptance defaults are false for a hostile client). GET /user/{id} returns every users column except hash_pass (blanking only email/mfa/friend_requests/suspended_at for others), so a new users.bio column would leak to every signed-in user unless /user/{id} becomes an allow-list. The profile feature cannot meet Q2/Q3/Q4 without fixing B1 and L2.",
+
+  "policy_baseline_from_jacey_defaults": {
+    "bio_max_chars": 160,
+    "bio_visibility": "self and friends only",
+    "username_photo_visibility": "any signed-in, non-blocked, non-suspended user",
+    "dm": "friends only, blocks both directions",
+    "friend_requests": "require acceptance by target; no auto-accept",
+    "suspended_or_blocked_profile": "404, indistinguishable from nonexistent user",
+    "unauthenticated_access": "none"
+  },
+
+  "assets_and_trust_boundaries": [
+    "users row (email, mfa, hash_pass, terms, suspended_at, photo key, new bio): private except username/photo URL",
+    "bio text: new user-generated content, shown to friends",
+    "friendship graph (user_friends, friend_requests, blocked_users): relationship state must not be probe-able by strangers or blocked parties",
+    "DM channel: gated by user_friends row at send_guard._authorize_dm",
+    "Trust boundary: any authenticated client is attacker-controlled; all authorization must be server-side with the caller id taken from the session (get_current_user), never from the path or body"
+  ],
+
+  "threat_model": [
+    {"id": "T1", "threat": "Forced friendship / unsolicited DM via /friends/{id}/add or /add-friend (B1)", "stride": "Elevation of privilege", "likelihood": "high", "impact": "high", "mitigation": "D1"},
+    {"id": "T2", "threat": "Bio or other columns leak to all signed-in users through GET /user/{id} (L2)", "stride": "Information disclosure", "likelihood": "high (certain once bio exists)", "impact": "medium", "mitigation": "D2"},
+    {"id": "T3", "threat": "Email disclosure of arbitrary friends via GET /friends/{id} and read_friend (L1); email of non-friends via read_friend/messages route for any non-blocked id", "stride": "Information disclosure", "likelihood": "high", "impact": "medium-high (PII, phishing, doxxing)", "mitigation": "D4"},
+    {"id": "T4", "threat": "Blocked or suspended user still readable / contactable (no block or suspend check on /user/{id})", "stride": "Information disclosure / harassment", "likelihood": "high", "impact": "medium (App Store 1.2 expectation)", "mitigation": "D3"},
+    {"id": "T5", "threat": "Username and user-id enumeration: differing responses for not-found vs blocked vs success on friend request (L3); uncapped sweeping of /user/{uuid}", "stride": "Information disclosure", "likelihood": "medium (UUIDs are unguessable, usernames are not)", "impact": "medium", "mitigation": "D5, D6"},
+    {"id": "T6", "threat": "Friend-request spam / harassment (no rate limit on request routes)", "stride": "Denial of service / abuse", "likelihood": "high", "impact": "medium", "mitigation": "D6"},
+    {"id": "T7", "threat": "Bio abuse: slurs, sexual content, harassment, links/phishing, impersonation, markup/script injection rendered on 3 clients", "stride": "Tampering / abuse", "likelihood": "high", "impact": "medium-high", "mitigation": "D7"},
+    {"id": "T8", "threat": "IDOR on bio write: editing another user's bio", "stride": "Tampering", "likelihood": "low if require_match used", "impact": "high", "mitigation": "D8"},
+    {"id": "T9", "threat": "Mass-assignment: client sends extra fields to profile/update routes (e.g. suspended_at, email, photo key)", "stride": "Elevation of privilege", "likelihood": "low", "impact": "high", "mitigation": "D8 (strict pydantic model, extra=forbid)"},
+    {"id": "T10", "threat": "Bio text or message bodies leak into logs/analytics/crash reports", "stride": "Information disclosure", "likelihood": "medium", "impact": "medium", "mitigation": "D9"},
+    {"id": "T11", "threat": "Race / TOCTOU: block lands between permission check and action; double-accept; stale friendship after block", "stride": "Tampering", "likelihood": "low", "impact": "medium", "mitigation": "D1 (single transaction), D3 (re-check at write)"},
+    {"id": "T12", "threat": "Relationship-state oracle: profile payload reveals 'blocked me' vs 'does not exist'", "stride": "Information disclosure", "likelihood": "medium", "impact": "medium", "mitigation": "D3 uniform 404"},
+    {"id": "T13", "threat": "Cache/stale-profile exposure after block/unfriend/suspend (client cache preserved on failed refresh shows bio of former friend)", "stride": "Information disclosure", "likelihood": "medium", "impact": "low-medium", "mitigation": "D10"},
+    {"id": "T14", "threat": "Unvalidated user-id path params / injection", "stride": "Injection", "likelihood": "low (parameterized queries via DBManager)", "impact": "high", "mitigation": "D8 (UUID format validation, 404 on malformed)"}
+  ],
+
+  "authorization_design": [
+    {
+      "id": "D1",
+      "title": "Fix B1: add_friend (accept) must require a pending incoming request, atomically",
+      "in_scope": true,
+      "rationale": "Without this, Q3 (friends-only DMs) and Q4 (acceptance required) are decorative. The profile Add Friend / Accept button depends on it. Verified in friends.py: add_friend only checks user exists and not blocked, then inserts both user_friends rows.",
+      "design": [
+        "FriendsManager.add_friend(friend_username) must, inside ONE transaction: (a) resolve target; (b) check not blocked either direction (BlockManager.is_blocked); (c) verify friend_requests row (from_user_id=target, to_user_id=caller) exists, locking it (SELECT ... FOR UPDATE) or using DELETE ... RETURNING as the gate; (d) delete that row and insert both user_friends rows with ON CONFLICT DO NOTHING; commit. Any failure rolls back; no best-effort cleanup.",
+        "Uniform error for every refusal (unknown user, no pending request, blocked, already friends handled idempotently as success only if the friendship row already exists): same status and body, so accept cannot be used as an existence or block oracle.",
+        "Also delete the reverse request row (caller -> target) on accept so mutual requests do not leave orphans.",
+        "Applies to both entry points: POST /friends/{user_id}/add (community.py:645) and POST /add-friend (messaging.py:373); they delegate to the same manager method so one fix covers both.",
+        "Back-compat check required before ship: confirm iOS and web only call add after a request exists (they do via the requests list). Scripts/migrate_json_to_postgres.py is a one-off and unaffected.",
+        "Mutual requests (A->B and B->A both pending): keep existing behavior, no auto-friend; each side accepts explicitly. Optional UX convenience (not approved here): none."
+      ],
+      "requires_jacey_approval": true,
+      "approval_reason": "Changes the friend permission model: a previously-working (exploitable) direct add stops working. Jacey's 'friend requests need acceptance' default implies this is intended, but it is a behavior change on a pre-existing endpoint."
+    },
+    {
+      "id": "D2",
+      "title": "Convert GET /user/{id} from deny-list (everything except hash_pass) to an explicit allow-list; bio never returned from it",
+      "design": [
+        "Allow-list for non-self callers: user_id, username, profile_photo_url. Keep legacy keys email='', mfa_enabled=false, friend_requests=[], suspended_at=null as blanks ONLY to preserve the iOS FSUser decode shape (documented in the existing docstring).",
+        "Self (current_user == user_id): may additionally receive the existing owner fields and bio.",
+        "Every other users column (anything not on the allow-list) is dropped for non-self. This closes the class of leak for all future columns, not just bio.",
+        "Before changing, grep iOS (FSUser and callers) and web for fields read from /user/{id} on other users (group member lists, chat participants) to confirm none beyond username/photo are used; if one is, bounce to design/frontend to remove the dependency rather than widen the allow-list."
+      ],
+      "requires_jacey_approval": true,
+      "approval_reason": "Changes who can read what from /user/{id}."
+    },
+    {
+      "id": "D3",
+      "title": "Blocked and suspended targets return 404 on every profile and user-lookup read (uniform, indistinguishable from nonexistent)",
+      "design": [
+        "New read path: GET /profiles/{target_id} (viewer = session user, no viewer_id in path, so nothing to spoof; if the codebase convention requires require_match on a path user_id, use GET /profiles/{viewer_id}/{target_id} with require_match('viewer_id')).",
+        "Check order (all before any data fetch): authenticated -> target id is UUID shaped -> target exists -> target not suspended (suspended_at IS NULL) -> not blocked either direction (BlockManager.is_blocked) -> else 404 {detail: 'User not found'} with identical body and timing class. Self lookup always allowed.",
+        "Apply the same suspended/blocked 404 to legacy GET /user/{id} for non-self callers (subject to the group-member-list compatibility check in D2; if group rendering of a blocked/suspended member breaks, keep the legacy route at allow-list-only with no 404 and record that residual in the final review; the new profile route still 404s).",
+        "Suspended viewer: a suspended caller cannot read other profiles (matches send_guard 'sender_unavailable').",
+        "Response by tier: stranger (signed-in, not blocked, not suspended): user_id, username, photo URL, relationship {state: none|request_sent|request_received}. Friend: plus bio. Self: plus bio and editable flag. Never email, mfa, terms, suspended_at, photo key, created/last-seen fields, group memberships, or friend list.",
+        "Relationship states exposed: none | request_sent | request_received | friends | self. No 'blocked' state is ever exposed to the viewer (blocked collapses to 404). Add the viewer's own outgoing block of the target is handled by 404 too; the unblock path stays in the existing Blocked Users list."
+      ],
+      "requires_jacey_approval": true,
+      "approval_reason": "New profile read model and changes to who can read a user's data; also changes legacy /user/{id} behavior for blocked and suspended targets."
+    },
+    {
+      "id": "D4",
+      "title": "Narrow friend-route email exposure (L1)",
+      "design": [
+        "GET /friends/{user_id} (get_friends): return each friend as id, username, photo URL (no email). Friends are mutual and approved, but email is not needed for display; confirm clients do not use it.",
+        "GET /friends/{user_id}/{friend_id} (read_friend) and GET /messages/{host_user}/: require an existing user_friends row (else 404 uniform), and project through the same allow-list as D2 plus bio; never email. Today a stranger id returns the full users row (minus hash_pass) including email.",
+        "Check each of the three clients for use of friend.email before removal; if a client depends on it, bounce interface to that client's step instead of keeping the leak.",
+        "Reads of a DM thread by non-friends currently return an empty thread plus user data; after change it is 404."
+      ],
+      "requires_jacey_approval": true,
+      "approval_reason": "Changes who can read a user's data and what friends can see of each other; also tightens DM thread reads to friends."
+    },
+    {
+      "id": "D5",
+      "title": "Close username enumeration on friend request / accept (L3)",
+      "design": [
+        "send_add_request and add_friend return one uniform response (HTTP 200/204 for request regardless of whether the username exists or is blocked; 'request sent if the user exists' wording). Success, unknown user, and blocked all look identical to the caller. Self-request returns a distinct 400 (no information leak, caller already knows their own name).",
+        "Server still no-ops internally for unknown or blocked. The push notification fires only for a real new row (already the case via new_request_recipient_id).",
+        "Profile-initiated actions use user_id (new thin id-keyed wrapper that resolves id -> username inside the manager, or a manager overload by id) so the profile screen does not need to expose or round-trip usernames. Existing username routes stay for back-compat."
+      ],
+      "requires_jacey_approval": true,
+      "approval_reason": "Changes friend request response semantics (permission-model adjacent)."
+    },
+    {
+      "id": "D6",
+      "title": "Rate limits (config-driven in api/config/profile.json, validated eagerly at startup)",
+      "design": [
+        "Pattern: per-user key via limiter.limiter.hit(rate, key, user_id) (as in reports.py _listing_report_limited) because slowapi's default key is client IP and weak for authenticated abuse; keep the existing coarse per-IP @limiter.limit as a backstop.",
+        "Proposed defaults (all tunable): profile reads: 120/minute per user and 300/minute per IP; distinct-target reads: soft cap 60 distinct profile ids per 10 minutes per user (enumeration sweep guard) returning 429; bio edit: 10/hour per user (plus 3/minute burst); friend requests: 20/hour and 100/day per user, plus max 200 outstanding sent requests per user, plus the existing one-row-per-pair idempotency; friend accept: 60/hour; per-target repeat: after a request to a target is declined/removed, block re-requesting that target for 24h (anti-harassment).",
+        "429 body is the generic warm message, no counters.",
+        "Scope stays limited to the three named threats (spam requests, bio abuse, enumeration) per the Security Posture preference; no rate limits added on unrelated routes."
+      ],
+      "requires_jacey_approval": false,
+      "approval_note": "Does not change who can read or the friend/DM permission model. Numbers are proposals; Jacey may adjust."
+    },
+    {
+      "id": "D7",
+      "title": "Bio moderation and handling",
+      "design": [
+        "Storage: users.bio TEXT NULL via new schema_ddl/user_bio.py (ADD COLUMN IF NOT EXISTS). Empty string normalizes to NULL (clear).",
+        "Validation in order, server-side only trusted: unicode NFC normalize; strip control chars (Cc/Cf, including zero-width and bidi override U+202A-202E, U+2066-2069), collapse runs of whitespace/newlines (bio is single-paragraph, max 2 newlines or none), trim; length counted in Unicode characters after normalization, max 160 from config; reject, do not silently truncate (throw-not-fabricate).",
+        "Plain text only: reject strings that look like links (http(s)://, www., bare domain patterns, mailto:, javascript:) and HTML angle-bracket tags. Clients render with text nodes only (React escapes by default; no dangerouslySetInnerHTML, no markdown, no auto-link detection on iOS Text or UITextView data detectors off).",
+        "Content filter: call check_clean(bio=...) from backend/moderation/content_filter.py before save; on ContentRejected return 422 with rejection_message(e). Reuse, no new queue.",
+        "Reactive: reporting a bio uses existing POST /reports/ content_type 'user' with reported_user_id; report reason text may name 'bio'. Admin removal: add a bio remover alongside backend/moderation/removers.py so admins can clear a bio on report; suspension (admin_actions) already hides the profile via D3.",
+        "Bio edit is allowed only for non-suspended users and requires accepted current terms (existing terms gate).",
+        "Last-write-wins; no edit history stored. Store updated_at only if needed for audit; do not log the text."
+      ],
+      "requires_jacey_approval": false,
+      "approval_note": "Follows Q6 default (pre-save reject + existing report flow + admin removal). The 'no links' rule follows Q1 default text."
+    },
+    {
+      "id": "D8",
+      "title": "Write authorization and input handling",
+      "design": [
+        "Bio edit route: PUT /profile/{user_id}/bio guarded by Depends(require_match('user_id')) (caller can only edit own); body is a strict pydantic model {bio: str | None} with extra='forbid' and max_length set above the config limit (hard ceiling e.g. 1000 bytes to bound parsing; real limit enforced from config).",
+        "All ids from path are validated as UUID shape; malformed -> 404 not 422 on read routes (no oracle).",
+        "All SQL via the existing parameterized DBManager helpers; no string interpolation.",
+        "Profile route handlers go in new api/routes/profile.py with logic in api/backend/interactions/profile.py (reuse map). Router registered deny-by-default: every route has an explicit auth dependency; a test asserts every route in the profile router has get_current_user or require_match in its dependencies.",
+        "DM: no change to send_guard other than B1 fix upstream. 'Message' button shows only for relationship friends; server remains the real gate."
+      ],
+      "requires_jacey_approval": false
+    },
+    {
+      "id": "D9",
+      "title": "Logging and privacy",
+      "design": [
+        "Never log bio text, message bodies, or request bodies for profile routes. Log only: event name, actor id, target id, outcome code, rate-limit hits.",
+        "Security events to log (ASVS V16, L2): blocked/suspended profile access attempts (aggregate counter, not per-event PII dump), content_filter rejections (reason code only, no text), rate-limit trips, B1-path refusals (accept without pending request).",
+        "Verify slowapi and any request-logging middleware do not record bodies for PUT /profile/*; add a test asserting a bio value never appears in captured logs.",
+        "iOS/web: bio is not written to analytics or crash breadcrumbs; keychain/disk cache of other users' profiles lives in the existing per-account cache and is cleared on logout."
+      ],
+      "requires_jacey_approval": false
+    },
+    {
+      "id": "D10",
+      "title": "Client cache behavior vs revocation",
+      "design": [
+        "preserve-cache-on-failed-refresh applies to network/5xx failures only. A 404 from the profile read (blocked, unfriended-and-bio-hidden, suspended, deleted) MUST evict the cached profile and show the 'not available' state. A 401 evicts all caches (session end).",
+        "On unfriend or block initiated locally, evict the cached bio immediately.",
+        "A viewer who loses friend status must not keep seeing the cached bio: on next successful read without bio, the cached bio is cleared (server returns bio absent, not stale)."
+      ],
+      "requires_jacey_approval": false
+    }
+  ],
+
+  "requires_jacey_approval_summary": [
+    {"item": "D1", "what": "Fix B1: accepting a friend requires a pending request from the target (atomic), uniform refusal", "change": "friend permission model"},
+    {"item": "D2", "what": "GET /user/{id} becomes allow-list (username, photo URL, plus legacy blank shape); bio never returned there", "change": "who can read /user/{id}"},
+    {"item": "D3", "what": "New profile read tiers (stranger: username+photo+relationship; friend: +bio; self: +bio+edit); 404 for blocked either direction and suspended; same 404 applied to legacy /user/{id} for non-self", "change": "who can read /user/{id} and profile data"},
+    {"item": "D4", "what": "Remove email from /friends/{id} and read_friend; read_friend and DM thread reads require existing friendship", "change": "friend/DM read permission model"},
+    {"item": "D5", "what": "Uniform response for friend request/accept so usernames cannot be enumerated", "change": "friend request semantics"}
+  ],
+
+  "decisions_for_jacey_beyond_the_defaults": [
+    "Scope of B1: recommended IN SCOPE for this feature (profile Add Friend/Accept depends on it, and without it Q3/Q4 are not true). Alternative is a separate hardening task first; recommend not shipping profiles without it.",
+    "D4 email removal needs a client-usage check first; if iOS/web currently show a friend's email somewhere, do we drop that? Recommended yes (email is private PII).",
+    "D3 legacy /user/{id} 404 for blocked/suspended could affect group member rendering; recommended approach is allow-list now, 404 on legacy route only if the client check shows no regression.",
+    "Optional, not recommended without a stated need: a user-level 'do not accept friend requests' switch (Q5 default says do not add one)."
+  ],
+
+  "residual_risks_after_design": [
+    "Friends (or ex-friends before the block) can screenshot or copy a bio; unavoidable.",
+    "Bio abuse not caught by the word filter (leetspeak, coded language) is handled reactively via reports and admin removal; the content filter is best-effort.",
+    "Username search by strangers is still possible via the friend-request endpoint but returns no oracle after D5; profile pages need a user_id the viewer already obtained from a shared group/friend list.",
+    "Group co-members can see each other's username+photo (existing behavior, accepted by Q2 default).",
+    "Rate limits via in-memory slowapi storage reset on restart and are per-process; if the API runs multiple workers, per-user limits are approximate (check storage backend in rate_limiting.py at step 4)."
+  ],
+
+  "step_7_review_checklist": [
+    "Every profile route has an auth dependency; test enforces it",
+    "Blocked in either direction -> 404 on /profiles and legacy /user/{id} for non-self",
+    "Suspended target and suspended viewer -> 404",
+    "Stranger never receives bio; friend receives bio; self receives bio",
+    "No email in any friend/user/profile response for non-self (assert in tests across /user, /friends, read_friend, /messages)",
+    "add_friend without a pending request fails uniformly; with one, creates two rows and deletes the request in one transaction; both /add routes covered",
+    "Friend request response identical for unknown, blocked, and real username",
+    "Rate-limit tests for bio edit, friend request, profile read, and distinct-target sweep",
+    "Bio validation: length counted post-normalization, bidi/zero-width stripped, links rejected, content_filter rejection returns 422 with warm message, no truncation",
+    "PUT bio by another user's id -> 403; extra fields -> 422",
+    "Bio and message bodies absent from logs"
+  ],
+
+  "next": "Stop. Surface requires_jacey_approval_summary (D1-D5) to Jacey via the orchestrator. Steps 3 and 4 are blocked on his sign-off."
+}

@@ -49,6 +49,8 @@ struct ChatRootView: View {
     @State private var newAgentRole    = ""
     @State private var activeContact:  FSContact? = nil
     @State private var activeAgent:    FSAgent?   = nil
+    // Task 20261030-user-profiles: friend whose profile sheet is open
+    @State private var profileContact: FSContact? = nil
     // Guideline 1.2 report/block
     @State private var reportTarget:      FSContact? = nil
     @State private var blockConfirmTarget: FSContact? = nil
@@ -176,6 +178,10 @@ struct ChatRootView: View {
                     try? await appState.service.sendFriendRequest(userId: uid, username: username)
                 }
             }
+        }
+        .sheet(item: $profileContact) { contact in
+            ProfileView(viewerId: appState.currentUser?.user_id ?? "", targetId: contact.id,
+                        service: appState.service)
         }
         .sheet(isPresented: $showAddGroup) {
             AddGroupSheet(friends: vm.friends) { title, memberIds in
@@ -406,13 +412,14 @@ struct ChatRootView: View {
     private func embeddedRow(_ contact: FSContact) -> some View {
         HStack(spacing: 0) {
             Button { activeContact = contact } label: {
-                ContactRow(contact: contact, compact: true)
+                ContactRow(contact: contact, compact: true, onViewProfile: { profileContact = contact })
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .accessibilityLabel(appState.rowAccessibilityLabel("Chat with \(contact.name)", contact: contact))
             Menu {
                 if contact.type == .friend {
+                    Button("View profile", systemImage: "person.crop.circle") { profileContact = contact }
                     Button("Remove", systemImage: "person.badge.minus", role: .destructive) {
                         vm.removeFriend(id: contact.id, userId: appState.currentUser?.user_id ?? "")
                     }
@@ -554,7 +561,8 @@ struct ChatRootView: View {
                             Task {
                                 await vm.sendNudge(userId: appState.currentUser?.user_id ?? "", friendId: contact.id)
                             }
-                        }
+                        },
+                        onViewProfile: { profileContact = contact }
                     )
                         .listRowBackground(Color.clear)
                         .listRowSeparator(.hidden)
@@ -568,6 +576,10 @@ struct ChatRootView: View {
                             }
                         }
                         .swipeActions(edge: .leading) {
+                            Button { profileContact = contact } label: {
+                                Label("Profile", systemImage: "person.crop.circle")
+                            }
+                            .tint(Theme.gold)
                             Button { blockConfirmTarget = contact } label: {
                                 Label("Block", systemImage: "hand.raised.fill")
                             }
@@ -1194,6 +1206,9 @@ struct ContactRow: View {
     var onNudge: (() -> Void)? = nil
     /// iPad workspace list row: 32pt avatar + name only, no card (screenshot 3).
     var compact: Bool = false
+    /// Task 20261030-user-profiles: tapping a friend's avatar opens their
+    /// profile (the row body still opens the chat). nil for groups/agents.
+    var onViewProfile: (() -> Void)? = nil
     @EnvironmentObject var appState: AppState
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -1201,15 +1216,20 @@ struct ContactRow: View {
         if compact { compactBody } else { fullBody }
     }
 
+    /// Avatar tap target; a no-op unless this is a friend row with a handler.
+    private func profileTap<V: View>(_ avatar: V) -> some View {
+        avatar.onTapGesture { if contact.type == .friend { onViewProfile?() } }
+    }
+
     private var compactBody: some View {
         HStack(spacing: 10) {
-            AvatarView(
+            profileTap(AvatarView(
                 initial: String(contact.name.prefix(1)).uppercased(),
                 photoURL: contact.photoUrl,
                 diameter: WorkspaceLayout.compactRowAvatar,
                 fillColor: Theme.gold.opacity(0.2),
                 textColor: Theme.goldLight
-            )
+            ))
             .overlay(alignment: .topLeading) {
                 if appState.hasUnread(contact) {
                     Circle().fill(Theme.error).frame(width: 10, height: 10)
@@ -1238,13 +1258,13 @@ struct ContactRow: View {
             // fillColor: .clear -- AvatarView only takes a flat Color, so the
             // original gradient backdrop lives in `.background` below instead
             // and shows through underneath the initial/photo exactly as before.
-            AvatarView(
+            profileTap(AvatarView(
                 initial: String(contact.name.prefix(1)).uppercased(),
                 photoURL: contact.photoUrl,
                 diameter: 48,
                 fillColor: .clear,
                 textColor: Theme.goldLight
-            )
+            ))
             .background(
                 Circle().fill(LinearGradient(colors: [Color(hex: "#EDAB3C").opacity(0.32), Color(hex: "#B8761D").opacity(0.2)],
                                              startPoint: .topLeading, endPoint: .bottomTrailing))
@@ -1451,6 +1471,9 @@ struct AddFriendSheet: View {
             content: {
                 FSFormCard(title: "Search by username") {
                     FSField(label: "Username", required: true, text: $username,
+                            // Task 20261030-user-profiles: the server answers identically for any
+                            // username, so the sheet never claims the person exists.
+                            helper: "If that username exists, a friend request is sent.",
                             accessibilityName: "Enter username to add as friend",
                             contentType: .username, capitalization: .never, autocorrect: false,
                             submitLabel: .send,

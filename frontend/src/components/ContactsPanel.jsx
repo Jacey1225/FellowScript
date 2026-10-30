@@ -81,7 +81,7 @@ function AgentRow({ agent, active, onOpen }) {
 
 // ── Contact row ───────────────────────────────────────────────────────────────
 
-function ContactRow({ contact, active, onOpen, onRemove, onEdit, onReport, onBlock }) {
+function ContactRow({ contact, active, onOpen, onRemove, onEdit, onReport, onBlock, onViewProfile }) {
   const isFriend = contact.type === 'friend';
   const menuItems = isFriend ? [
     { key: 'report', icon: <FlagOutlined />, label: 'Report User' },
@@ -114,6 +114,11 @@ function ContactRow({ contact, active, onOpen, onRemove, onEdit, onReport, onBlo
       <Avatar
         size={30}
         src={contact.photoUrl}
+        {...(isFriend && onViewProfile ? {
+          role: 'button', tabIndex: 0, 'aria-label': `View ${contact.name}'s profile`,
+          onClick: (e) => { e.stopPropagation(); onViewProfile(contact.id); },
+          onKeyDown: (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); onViewProfile(contact.id); } },
+        } : {})}
         style={{ background: 'rgba(255,198,26,0.15)', border: 'none', color: 'var(--gold)', fontSize: '0.72rem', flexShrink: 0, fontFamily: "'Space Grotesk', sans-serif" }}
       >
         {contact.name[0].toUpperCase()}
@@ -144,7 +149,7 @@ const REPORT_REASONS = [
   { value: 'other', label: 'Other' },
 ];
 
-function ReportUserModal({ target, onSubmit, onClose }) {
+export function ReportUserModal({ target, onSubmit, onClose }) {
   const [reason, setReason] = useState('harassment');
   const [detail, setDetail] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -185,7 +190,7 @@ function ReportUserModal({ target, onSubmit, onClose }) {
 
 export default function ContactsPanel({
   user, friends, groups, currentContact,
-  onOpen, onAddFriend, onRemoveFriend, onReportUser, onBlockUser, onCreateGroup, onUpdateGroup, onLeaveGroup,
+  onOpen, onViewProfile, onAddFriend, onRemoveFriend, onReportUser, onBlockUser, onCreateGroup, onUpdateGroup, onLeaveGroup,
   loaded, onLoad,
   agents, activeAgent, onOpenAgent, onNewAgent,
   showAgents = true,
@@ -225,7 +230,7 @@ export default function ContactsPanel({
     const result = await onAddFriend(friendInput.trim());
     if (result.ok) {
       setFriendInput('');
-      setFriendMsg({ type: 'success', text: 'Friend request sent!' });
+      setFriendMsg({ type: 'success', text: 'If that username exists, a request was sent.' });
       await onLoad();
       setTimeout(() => { setShowAddFriend(false); setFriendMsg(null); }, 1800);
     } else {
@@ -310,7 +315,7 @@ export default function ContactsPanel({
             : friends.map(f => (
                 <ContactRow key={f.id} contact={f} active={currentContact?.id === f.id} onOpen={onOpen}
                   onRemove={() => { onRemoveFriend(f.id); onLoad(); }}
-                  onReport={setReportTarget} onBlock={handleBlock} />
+                  onReport={setReportTarget} onBlock={handleBlock} onViewProfile={onViewProfile} />
               ))
         }
 

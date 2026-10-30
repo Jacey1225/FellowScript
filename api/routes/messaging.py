@@ -2,6 +2,7 @@ from fastapi import APIRouter, BackgroundTasks, HTTPException, Request, WebSocke
 from backend.interactions.websockets import ConnectionManager
 from backend.interactions.thread_send import send_thread_message
 from backend.interactions.friends import FriendsManager
+from backend.interactions.profile_limits import friend_accept_dependency, friend_request_dependency
 from backend.interactions import flags, friend_request_notifier
 from backend.interactions.chat_config import get_pagination_config
 from backend.interactions.devotion import DevotionManager, is_legacy_dm_session
@@ -355,14 +356,16 @@ async def gif_search(
         raise HTTPException(status_code=502, detail="Couldn't reach the GIF search provider — please try again.")
 
 
-@ws_router.post("/friend-request")
+@ws_router.post("/friend-request", dependencies=[friend_request_dependency])
 async def send_request(
     user_id: str, friend_user: str, background: BackgroundTasks,
     _: str = Depends(require_match("user_id")),
 ) -> None:
     friend_manager = FriendsManager(user_id)
     try:
-        friend_manager.send_add_request(friend_user)
+        result = friend_manager.send_add_request(friend_user)
+        if result and "error" in result:
+            raise HTTPException(status_code=result.get("status", 400), detail=result["error"])
         if friend_manager.new_request_recipient_id:  # essential push, never fails the request
             background.add_task(friend_request_notifier.notify_friend_request,
                                 friend_manager.new_request_recipient_id, user_id)
@@ -370,11 +373,13 @@ async def send_request(
         friend_manager.close()
 
 
-@ws_router.post("/add-friend", status_code=204)
+@ws_router.post("/add-friend", status_code=204, dependencies=[friend_accept_dependency])
 async def add_friend(host_user: str, user_to_add: str, _: str = Depends(require_match("host_user"))) -> None:
     friend_manager = FriendsManager(host_user)
     try:
-        friend_manager.add_friend(user_to_add)
+        result = friend_manager.add_friend(user_to_add)
+        if result and "error" in result:  # uniform refusal, same as POST /friends/{id}/add
+            raise HTTPException(status_code=404, detail=result["error"])
     finally:
         friend_manager.close()
 

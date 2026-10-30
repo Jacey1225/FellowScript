@@ -1,0 +1,30 @@
+{
+  "task_id": "20261030-user-profiles",
+  "step": 7,
+  "gate": "security",
+  "result": "pass",
+  "summary": "Reviewed the uncommitted diff and new files (api routes/interactions, web profile files and edits, iOS Profile/ and edits) against security.json D1-D10. No implementation defects found; no bounce.",
+  "verified": {
+    "authorization": "Every route in routes/profile.py has get_current_user or require_match (GET /profiles/{id}, PUT /profile/{id}/bio, POST friend-request/friend-accept). Caller id always from session. PUT /user/{id} uses a fixed model and load_users has no bio, so bio cannot be mass-assigned past validate_bio. Bio body is extra=forbid with a 1000 ceiling.",
+    "no_private_leaks": "GET /user/{id} for non-self is an allow-list (user_id, username, photo url plus blank email/mfa/friend_requests/suspended_at). Bio only for self there. Email removed from get_friends; read_friend and dm_page use friend_view allow-list (user_id, username, photo url, bio). Raw photo key and hash_pass never returned. GET /profiles returns bio key only for self or friends.",
+    "D1_atomic_accept": "accept_pending_request does DELETE ... RETURNING on the pending request, re-checks target suspended and blocked either way, inserts both friend rows ON CONFLICT DO NOTHING, deletes the reverse request, one commit; any refusal rolls back. Both legacy routes and the id route use it. Idempotent success only if the friendship already exists and the pair is unblocked.",
+    "D5_uniform": "send_add_request/_by_id return the same no-op for unknown, blocked, suspended and already-friend targets (self 400 and pending-cap 429 only). Accept refusals are one 404 body. Web ContactsPanel says 'If that username exists, a request was sent.' and iOS AddFriendSheet says 'If that username exists, a friend request is sent.'",
+    "rate_limits": "Per-user hits (limiter.limiter.hit) plus per-IP slowapi on profile read; distinct-profile sweep cap; bio 3/min and 10/hour; friend request 20/hour, 100/day and 200 outstanding; accept 60/hour. Dependencies attached to all request/accept entry points. Config validated at startup.",
+    "bio_moderation": "NFC, strips Cc/Cf/Cs/Co/Cn (zero-width, bidi), rejects over-length (no truncation), combining-mark stacks, links, emails, HTML tags (also on NFKC fold), runs check_clean on both forms, 422 with warm message. Terms and suspension gate on write. Admin clear via bio_admin CLI. Clients render as text nodes (React escaped; no dangerouslySetInnerHTML, no linkify).",
+    "block_enforcement": "GET /profiles uses a single query: 404 for unknown, suspended target, blocked either direction, suspended viewer. dm_peer requires friendship and unblocked pair. Request/accept refuse blocked pairs.",
+    "logging": "Only PROFILE_AUDIT lines with actor id and reason codes; no bio text, message bodies or request bodies in new code. Web profile code has no console output.",
+    "client_cache": "Web useProfile evicts on 404 and keeps cache only on network/5xx; local unfriend/block evict; cache is memory-only, keyed viewer:target, cleared on sign-out (AuthContext). iOS ProfileCache is memory-only, evicts on 404, on unfriend and on block, and is cleared in AppState sign-out."
+  },
+  "residual_risks_accepted": [
+    "Legacy GET /user/{id} does not 404 for blocked or suspended users (approved fallback in design D3, because group member and request-name rendering depend on it); it exposes only username and photo URL. Record in final report.",
+    "Accept/block race can leave a friend row for a blocked pair; all read and send paths re-check blocks so it is not exploitable.",
+    "Rate limits use in-memory storage: per process, reset on restart.",
+    "24h re-request cooldown (D6) not implemented; outstanding cap and hourly/daily limits cover the spam threat.",
+    "bio is plaintext at rest, same as username."
+  ],
+  "notes_for_testing_gate": [
+    "Make the 'every profile route has an auth dependency' check a real test, plus log-capture test that a bio never appears in logs.",
+    "Update test_chat_pagination.py and test_chat_pagination_endpoints.py fixtures to add user_friends rows (D4 now 404s non-friend DM reads).",
+    "Add tests for D1 accept without pending request (both /add routes), D5 identical responses, and email absent from /user, /friends, read_friend and /messages responses."
+  ]
+}

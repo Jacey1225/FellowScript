@@ -101,6 +101,7 @@ DDL_MODULES = (
     "announcement_repeat",
     "announcement_polls",
     "message_mentions",
+    "user_bio",
 )
 
 
