@@ -218,6 +218,45 @@ describe('Profile page friend actions', () => {
   });
 });
 
+describe('Profile page Decline (task 20261030-profile-everywhere)', () => {
+  test('Decline POSTs the recipient-only route with the session user and the target, then refetches to the no-relationship state', async () => {
+    let declined = false;
+    fetchMock.mockImplementation(async (u, o) => {
+      if (/\/decline$/.test(u)) { declined = true; return { ok: true, status: 204, json: async () => ({}) }; }
+      return res(declined ? prof('none') : prof('request_received'));
+    });
+    renderPage();
+    fireEvent.click(await screen.findByRole('button', { name: /decline friend request from ann/i }));
+    expect(await screen.findByRole('button', { name: /add ann as a friend/i })).toBeInTheDocument();
+    const c = calls(/\/friends\/me-1\/requests\/t-1\/decline$/, 'POST');
+    expect(c).toHaveLength(1);
+    expect(calls(/friend-accept$/)).toHaveLength(0);
+  });
+
+  test('a failed Decline keeps the request, shows the decline-specific warm copy and never fabricates a state', async () => {
+    fetchMock.mockImplementation(async (u) => {
+      if (/\/decline$/.test(u)) return res({}, 500);
+      return res(prof('request_received'));
+    });
+    renderPage();
+    fireEvent.click(await screen.findByRole('button', { name: /decline friend request from ann/i }));
+    expect(await screen.findByText(/couldn't decline that right now/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /accept friend request from ann/i })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /add ann as a friend/i })).toBeNull();
+  });
+
+  test('429 on Decline shows the slow-down copy', async () => {
+    fetchMock.mockImplementation(async (u) => {
+      if (/\/decline$/.test(u)) return res({ detail: 'Too many requests' }, 429);
+      return res(prof('request_received'));
+    });
+    renderPage();
+    fireEvent.click(await screen.findByRole('button', { name: /decline friend request from ann/i }));
+    expect(await screen.findByText(/slow down|try again in a/i)).toBeInTheDocument();
+    expect(screen.queryByText(/couldn't decline/i)).toBeNull();
+  });
+});
+
 describe('Profile page deferred unfriend', () => {
   const openMenuAndUnfriend = async () => {
     fireEvent.click(await screen.findByRole('button', { name: /more options for ann/i }));

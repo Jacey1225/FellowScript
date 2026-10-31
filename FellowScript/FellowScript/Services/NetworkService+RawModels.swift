@@ -52,6 +52,9 @@ struct RawMsg: Decodable {
     var mentions: FSMentionList? = nil
     // Task 20261030-chat-announcements: lenient (never throws); only on announcement lines.
     var announcement: FSLenientAnnouncement? = nil
+    // Task 20261030-profile-everywhere: author's user id on paged group / DM /
+    // thread rows (absent for deleted or system authors and on older servers).
+    var from_user_id: String? = nil
 
     var reply: FSReplyRef? {
         FSReplyRef(wireId: reply_to_id, text: reply_to_text, author: reply_to_author,

@@ -194,10 +194,13 @@ struct PinnedMessagesSheet: View {
         let when = FSMessageActionPolicy.relativeTime(pin.message.timestamp)
         let by = FSPinnedListCopy.pinnedByLine(pin, viewerId: userId)
         return HStack(alignment: .top, spacing: 12) {
+            // Task 20261030-profile-everywhere: avatar-only profile target, outside the
+            // jump button. Untappable when the pin carries no author id.
+            AvatarView(initial: String(author.prefix(1)).uppercased(), diameter: 28,
+                       fillColor: Theme.gold.opacity(0.18), textColor: Theme.gold)
+                .profileTapAvatar(userId: pin.message.fromUserId, username: pin.message.fromUser, diameter: 28)
             Button { onSelect(pin) } label: {
                 HStack(alignment: .top, spacing: 12) {
-                    AvatarView(initial: String(author.prefix(1)).uppercased(), diameter: 28,
-                               fillColor: Theme.gold.opacity(0.18), textColor: Theme.gold)
                     VStack(alignment: .leading, spacing: 3) {
                         HStack(spacing: 8) {
                             Text(author)

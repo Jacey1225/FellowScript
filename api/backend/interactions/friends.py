@@ -11,6 +11,7 @@ from backend.interactions.friend_peer import dm_peer, friend_view
 from backend.interactions.html_text import clean_shared_note_meta
 from backend.interactions import paging
 from backend.interactions.message_pins import attach_pins
+from backend.interactions.message_sender_id import dm_sender_id_entry
 from backend.interactions.message_reactions import attach_reactions
 from backend.interactions.message_mentions import attach_mentions
 from backend.interactions.message_replies import attach_replies
@@ -192,6 +193,11 @@ class FriendsManager(DBManager):
             return {"error": REFUSED_DETAIL}
         return None
 
+    def decline_request_by_id(self, sender_id: str) -> None:
+        """Recipient-only decline; see ``friend_decline`` (no existence signal)."""
+        from backend.interactions.friend_decline import decline_pending_request
+        decline_pending_request(self.conn, self.cur, self.user_id, sender_id)
+
     def get_requests(self) -> list[dict]:
         """Return pending *incoming* friend requests for the acting user.
 
@@ -337,6 +343,7 @@ class FriendsManager(DBManager):
             messages.append({
                 "id": str(_id),
                 "from_user": self.user.username if mine else friend_username,
+                **dm_sender_id_entry(mine, self.user_id, friend_id),
                 "mine": mine,
                 "text": content_store.open_(_id, content_store.F_MESSAGE_TEXT, text),
                 "timestamp": paging.format_timestamp(ts),

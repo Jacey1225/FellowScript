@@ -2,6 +2,7 @@ import React, { useEffect, useLayoutEffect, useRef, useState, useCallback } from
 import { createPortal } from 'react-dom';
 import { PushpinOutlined, PushpinFilled } from '@ant-design/icons';
 import { Avatar, Spin } from 'antd';
+import ProfileLink from './profile/ProfileLink.jsx';
 import { pinPreview, pinnedByLabel, PIN_LIST_ERROR } from '../lib/pins.js';
 
 // Task 20261012-message-pins. The Pinned list, opened from the pin icon in the
@@ -74,10 +75,14 @@ export function PinnedListBody({ list, viewerId, onJump, onUnpin, onLoadMore, on
             const who = p.message.from || 'Someone';
             return (
               <li key={p.messageId} className="pins-row">
-                <button type="button" className="pins-row-main" onClick={() => onJump(p)}>
-                  <Avatar size={24} style={{ background: 'rgba(255,198,26,0.12)', color: 'var(--gold)', flexShrink: 0 }}>
-                    {who[0].toUpperCase()}
-                  </Avatar>
+                <div style={{ display: 'flex', alignItems: 'center', padding: '0 0 0 0.5rem' }}>
+                  <ProfileLink userId={p.message.fromUserId} username={p.message.from}>
+                    <Avatar size={24} style={{ background: 'rgba(255,198,26,0.12)', color: 'var(--gold)', flexShrink: 0 }}>
+                      {who[0].toUpperCase()}
+                    </Avatar>
+                  </ProfileLink>
+                </div>
+                <button type="button" className="pins-row-main" style={{ paddingLeft: '0.4rem' }} onClick={() => onJump(p)}>
                   <span className="pins-row-text">
                     <span className="pins-row-top">
                       <span className="pins-row-name">{who}</span>

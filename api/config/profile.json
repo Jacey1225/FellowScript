@@ -11,7 +11,8 @@
       "bio_edit_burst": "3/minute",
       "friend_request_hour": "20/hour",
       "friend_request_day": "100/day",
-      "friend_accept_hour": "60/hour"
+      "friend_accept_hour": "60/hour",
+      "friend_decline_hour": "60/hour"
     }
   }
 }

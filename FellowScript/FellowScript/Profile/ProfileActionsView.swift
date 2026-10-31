@@ -1,8 +1,7 @@
 // ProfileActionsView.swift (task 20261030-user-profiles)
 // One state-driven primary action under the identity card (design C1).
 // Destructive actions (Unfriend / Block / Report) live in ProfileView's
-// overflow menu, not here. There is no "Decline" because the API has no
-// decline endpoint yet.
+// overflow menu, not here. An incoming request offers Accept and Decline.
 
 import SwiftUI
 
@@ -26,8 +25,20 @@ struct ProfileActionsView: View {
             primary("Request sent", a11y: "Friend request sent to \(profile.username)", dimmed: true) {}
                 .disabled(true)
         case .requestReceived:
-            primary("Accept", a11y: "Accept friend request from \(profile.username)", busy: vm.busy) {
-                Task { await vm.acceptRequest() }
+            VStack(spacing: Theme.spacingSM) {
+                primary("Accept", a11y: "Accept friend request from \(profile.username)", busy: vm.busy) {
+                    Task { await vm.acceptRequest() }
+                }
+                Button(action: { if !vm.busy { Task { await vm.declineRequest() } } }) {
+                    Text("Decline")
+                        .font(.inter(Theme.fontBody, weight: .semibold))
+                        .foregroundColor(Theme.textSecondary)
+                        .frame(maxWidth: .infinity, minHeight: 44)
+                        .overlay(Capsule().stroke(Theme.parchment.opacity(0.14), lineWidth: 1))
+                }
+                .buttonStyle(.plain)
+                .opacity(vm.busy ? 0.45 : 1)
+                .accessibilityLabel("Decline friend request from \(profile.username)")
             }
         case .friends:
             if canMessage {

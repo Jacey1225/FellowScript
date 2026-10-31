@@ -5,7 +5,7 @@ import { EditOutlined } from '@ant-design/icons';
 // Task 20261030-user-profiles: bio display by visibility tier. `bio` key is
 // absent for strangers (hidden) and present (maybe null) for self/friends.
 // Plain text only: React escapes it, no linkification.
-const MUTED = { color: 'rgba(242,242,242,0.55)', margin: 0 };
+const MUTED = { color: 'var(--ff-text-2)', margin: 0 };
 
 export default function ProfileBio({ profile, onEdit }) {
   const state = profile.relationship?.state;

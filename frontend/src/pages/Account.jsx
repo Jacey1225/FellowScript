@@ -20,6 +20,7 @@ import AppBloom from '../components/AppBloom.jsx';
 import SubscriptionCard from '../components/SubscriptionCard.jsx';
 import { FormSkin, FORM_CARD_STYLE, useUndoDelete, DeleteAccountDialog } from '../components/forms/index.js';
 import ViewMyProfileRow from '../components/profile/ViewMyProfileRow.jsx';
+import ProfileLink from '../components/profile/ProfileLink.jsx';
 import RewardNotice from '../components/RewardNotice.jsx';
 import EmailVerifyNotice from '../components/EmailVerifyNotice.jsx';
 import DonationButton from '../components/DonationButton.jsx';
@@ -27,6 +28,7 @@ import Seo from '../components/Seo.jsx';
 import { useAuth } from '../context/AuthContext.jsx';
 import { isDesktopApp } from '../lib/desktopScope.js';
 import { API } from '../config.js';
+import { useDeclineFriendRequest } from '../hooks/useDeclineFriendRequest.js';
 import { handleBlockedResponse } from '../lib/upgradePrompt.js';
 
 dayjs.extend(utc);
@@ -184,6 +186,7 @@ export default function Account() {
 
   const [requests,        setRequests]        = useState([]);
   const [requestsLoading, setRequestsLoading] = useState({});
+  const { decline: handleDecline, declining } = useDeclineFriendRequest(user?.user_id, setRequests);
 
   // Profile photo (task 20260905-profile-photo)
   const [photoUploading,   setPhotoUploading]   = useState(false);
@@ -1187,6 +1190,7 @@ export default function Account() {
               ? <Text style={{ fontFamily: "inherit", fontSize: '0.8rem', color: 'rgba(244,228,193,0.28)' }}>No pending friend requests.</Text>
               : requests.map(({ uid, username, photoUrl }) => (
                   <div key={uid} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.6rem 0', borderBottom: '1px solid rgba(200,134,26,0.08)' }}>
+                    <ProfileLink userId={uid} username={username} style={{ flex: 1, gap: '0.75rem', minWidth: 0 }}>
                     <Avatar src={photoUrl} style={{ background: 'rgba(200,134,26,0.15)', border: '1px solid rgba(200,134,26,0.3)', color: 'var(--gold)', fontFamily: 'inherit' }}>
                       {username[0].toUpperCase()}
                     </Avatar>
@@ -1194,10 +1198,17 @@ export default function Account() {
                       <Text style={{ fontFamily: "inherit", fontSize: '0.84rem', color: 'var(--parchment)', display: 'block' }}>{username}</Text>
                       <Text style={{ fontSize: '0.68rem', color: 'rgba(244,228,193,0.35)' }}>Wants to be your friend</Text>
                     </div>
-                    <Button size="small" type="primary" loading={requestsLoading[uid]}
+                    </ProfileLink>
+                    <Button size="small" type="primary" loading={requestsLoading[uid]} disabled={!!declining[uid]}
                       onClick={() => handleAccept(uid, username)}
                       style={{ borderRadius: 8, fontFamily: "inherit" }}>
                       Accept
+                    </Button>
+                    <Button size="small" type="text" loading={!!declining[uid]} disabled={!!requestsLoading[uid]}
+                      aria-label={`Decline friend request from ${username}`}
+                      onClick={() => handleDecline(uid)}
+                      style={{ borderRadius: 8, fontFamily: "inherit", minHeight: 32 }}>
+                      Decline
                     </Button>
                   </div>
                 ))

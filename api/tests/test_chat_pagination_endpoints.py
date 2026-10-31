@@ -96,7 +96,15 @@ def walk(client, url, headers, first_body, limit):
 
 
 def row_shape_ok(rows):
-    return all(list(r) == ROW_KEYS and "attachment_key" not in r for r in rows)
+    # Task 20261030-profile-everywhere: paged rows gain ONE additive key,
+    # from_user_id, right after from_user. Every pre-existing key keeps its name and order.
+    def ok(r):
+        keys = list(r)
+        with_id = ROW_KEYS[:2] + ["from_user_id"] + ROW_KEYS[2:]
+        id_ok = "from_user_id" not in r or r["from_user_id"] == str(uuid.UUID(r["from_user_id"]))
+        return keys in (ROW_KEYS, with_id) and [k for k in keys if k != "from_user_id"] == ROW_KEYS \
+            and id_ok and "attachment_key" not in r
+    return all(ok(r) for r in rows)
 
 
 # ------------------------------------------------------------------ groups

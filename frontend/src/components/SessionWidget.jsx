@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
+import ProfileLink from './profile/ProfileLink.jsx';
 import { Avatar, Button, Modal, Typography, ConfigProvider } from 'antd';
 import { formTheme } from '../lib/formTokens.js';
 import { AudioOutlined, AudioMutedOutlined, PhoneOutlined, EditOutlined, DeleteOutlined, CloseOutlined } from '@ant-design/icons';
@@ -322,6 +323,7 @@ export function ActiveCard({ session, user, ringCandidates, friends, muted = fal
               const isTalking = talkingUserId === uid;
               return (
                 <div key={uid} title={name} style={{ position: 'relative' }}>
+                  <ProfileLink userId={uid} username={nameOf(uid)} style={{ minWidth: 0, minHeight: 0, display: 'inline-flex' }}>
                   <Avatar
                     size={20}
                     style={{
@@ -333,6 +335,7 @@ export function ActiveCard({ session, user, ringCandidates, friends, muted = fal
                   >
                     {name[0]?.toUpperCase()}
                   </Avatar>
+                  </ProfileLink>
                   {isTalking && (
                     <span style={{
                       position: 'absolute', bottom: -1, right: -1,

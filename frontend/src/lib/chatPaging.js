@@ -17,6 +17,7 @@ import { replyFromWire } from './replies.js';
 import { pinFields } from './pins.js';
 import { announcementFields } from './chatAnnouncements.js';
 import { mentionFields, mentionsFromWire } from './mentions.js';
+import { isProfileId } from './profileId.js';
 
 export const INITIAL_PAGE_LIMIT = 30;
 export const OLDER_PAGE_LIMIT = 30;
@@ -51,6 +52,9 @@ export function toMessage(row, mine) {
     attachmentUrl: row.attachment_url || null,
   };
   if (id) { msg.id = id; msg.key = id; }
+  // Task 20261030-profile-everywhere: paged rows carry the author's id as
+  // `from_user_id` (absent for deleted/system authors); a profile-tap target only.
+  if (!isMine && isProfileId(row.from_user_id)) msg.senderId = row.from_user_id;
   // Task 20261011-desktop-chat-replies-reactions: only present while the
   // server flags are on for the viewer (absent keys leave the shape unchanged).
   const reactions = parseReactions(row.reactions);

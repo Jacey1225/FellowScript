@@ -259,6 +259,8 @@ protocol DataServiceProtocol {
     func updateBio(userId: String, bio: String?) async throws -> String?
     func sendProfileFriendRequest(targetId: String) async throws
     func acceptProfileFriendRequest(targetId: String) async throws
+    // Task 20261030-profile-everywhere: recipient declines an incoming request (204 always).
+    func declineFriendRequest(userId: String, senderId: String) async throws
     // Dashboard's Friend Activity hero card -- friend-only, block-respecting
     // read of each friend's most recent public note + a "check in" nudge
     // candidate. See FSFriendActivityFeed for the response shape.

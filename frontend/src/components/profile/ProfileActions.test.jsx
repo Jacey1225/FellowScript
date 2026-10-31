@@ -68,3 +68,29 @@ describe('ProfileHeader', () => {
     expect(container.textContent).not.toContain('ann@x.com');
   });
 });
+
+// Task 20261030-profile-everywhere (step 14): Decline beside Accept.
+describe('ProfileActions Decline', () => {
+  test('request_received with onDecline: Decline calls onDecline, not onAccept', () => {
+    const onAccept = vi.fn(); const onDecline = vi.fn();
+    render(<ProfileActions profile={prof('request_received')} onAccept={onAccept} onDecline={onDecline} />);
+    fireEvent.click(screen.getByRole('button', { name: /decline friend request from ann/i }));
+    expect(onDecline).toHaveBeenCalledTimes(1);
+    expect(onAccept).not.toHaveBeenCalled();
+  });
+
+  test('Decline is only offered for request_received', () => {
+    for (const s of ['none', 'request_sent', 'friends', 'self']) {
+      const { unmount } = render(<ProfileActions profile={prof(s, { editable: s === 'self' })} onDecline={vi.fn()} />);
+      expect(screen.queryByRole('button', { name: /decline/i })).toBeNull();
+      unmount();
+    }
+  });
+
+  test('busy decline ignores a second tap', () => {
+    const onDecline = vi.fn();
+    render(<ProfileActions profile={prof('request_received')} busy="decline" onDecline={onDecline} />);
+    fireEvent.click(screen.getByRole('button', { name: /decline friend request from ann/i }));
+    expect(onDecline).not.toHaveBeenCalled();
+  });
+});

@@ -54,6 +54,13 @@ export const sendFriendRequest = (targetId) =>
 export const acceptFriendRequest = (targetId) =>
   request(`/profiles/${enc(targetId)}/friend-accept`, { method: 'POST' }, "Couldn't accept that right now. Please try again.");
 
+export const DECLINE_FAILURE = "Couldn't decline that right now. Please try again.";
+
+// Task 20261030-profile-everywhere: recipient declines an incoming request.
+// The server answers 204 whether or not a request existed (no probing).
+export const declineFriendRequest = (userId, senderId) =>
+  request(`/friends/${enc(userId)}/requests/${enc(senderId)}/decline`, { method: 'POST' }, DECLINE_FAILURE);
+
 export const unfriend = (userId, friendId) =>
   request(`/friends/${enc(userId)}/${enc(friendId)}`, { method: 'DELETE' }, "Couldn't remove that friend. Please try again.");
 

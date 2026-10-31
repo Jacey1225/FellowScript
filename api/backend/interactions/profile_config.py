@@ -26,7 +26,7 @@ RATE_KEYS = (
     "profile_read_user", "profile_read_ip",
     "bio_edit_hour", "bio_edit_burst",
     "friend_request_hour", "friend_request_day",
-    "friend_accept_hour",
+    "friend_accept_hour", "friend_decline_hour",
 )
 
 

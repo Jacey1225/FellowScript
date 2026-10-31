@@ -18,7 +18,11 @@ export function ProfileOverflow({ profile, onReport, onBlock, onUnfriend }) {
   const onClick = ({ key }) => ({ unfriend: onUnfriend, block: onBlock, report: onReport })[key]?.();
   return (
     <Dropdown menu={{ items, onClick }} trigger={['click']} placement="bottomRight">
-      <Button type="text" icon={<MoreOutlined />} aria-label={`More options for ${profile.username}`} style={{ minWidth: 44, minHeight: 44, color: 'rgba(242,242,242,0.8)' }} />
+      <Button type="text" aria-label={`More options for ${profile.username}`} style={{ minWidth: 44, minHeight: 44, padding: 0, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
+        <span aria-hidden="true" style={{ width: 36, height: 36, borderRadius: '50%', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', background: 'var(--ff-card)', border: '1px solid var(--ff-card-border)', color: 'rgba(200,134,26,0.9)' }}>
+          <MoreOutlined />
+        </span>
+      </Button>
     </Dropdown>
   );
 }
@@ -38,7 +42,7 @@ export default function ProfileActions({ profile, busy, onAdd, onAccept, onDecli
         <>
           <Button type="primary" icon={<CheckOutlined />} style={BTN} loading={busy === 'accept'} aria-busy={busy === 'accept'}
             aria-label={`Accept friend request from ${name}`} onClick={run('accept', onAccept)}>Accept</Button>
-          {onDecline && <Button type="text" style={{ minHeight: 44 }} onClick={run('decline', onDecline)}>Decline</Button>}
+          {onDecline && <Button type="text" style={{ minHeight: 44 }} loading={busy === 'decline'} aria-label={`Decline friend request from ${name}`} onClick={run('decline', onDecline)}>Decline</Button>}
         </>
       )}
       {state === 'friends' && (

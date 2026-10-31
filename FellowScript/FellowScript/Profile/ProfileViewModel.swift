@@ -108,6 +108,12 @@ final class ProfileViewModel: ObservableObject {
         }
     }
 
+    func declineRequest() async {
+        await runFriendAction(failure: "Couldn't decline that right now. Please try again.") {
+            try await self.service.declineFriendRequest(userId: self.viewerId, senderId: self.targetId)
+        }
+    }
+
     private func runFriendAction(failure: String, _ work: () async throws -> Void) async {
         guard !busy else { return }
         busy = true

@@ -25,17 +25,27 @@ struct MentionText: View {
     var body: some View {
         let runs = MentionRender.runs(text: text, mentions: mentions)
         if runs.contains(where: { $0.isMention }) {
-            Text(Self.attributed(runs))
+            // Task 20261030-profile-everywhere: tappable runs open that user's profile.
+            Text(Self.attributed(runs, linking: MentionRender.validRanges(mentions, in: text)))
+                .mentionProfileOpener()
         } else {
             Text(text)
         }
     }
 
-    static func attributed(_ runs: [MentionRender.Run]) -> AttributedString {
+    static func attributed(_ runs: [MentionRender.Run], linking ranges: [FSMention] = []) -> AttributedString {
         var out = AttributedString()
+        var mentionIndex = 0
         for run in runs {
             var piece = AttributedString(run.text)
-            if run.isMention { piece.font = .inter(Theme.fontBody, weight: .bold) }
+            if run.isMention {
+                piece.font = .inter(Theme.fontBody, weight: .bold)
+                // Mention runs map 1:1, in order, onto the valid ranges.
+                if mentionIndex < ranges.count {
+                    piece.link = MentionProfileLink.url(for: ranges[mentionIndex], shownName: run.text)
+                }
+                mentionIndex += 1
+            }
             out.append(piece)
         }
         return out

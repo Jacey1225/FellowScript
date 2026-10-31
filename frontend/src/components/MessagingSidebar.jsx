@@ -7,6 +7,8 @@ import {
   ArrowLeftOutlined, PlusOutlined, SendOutlined,
   DeleteOutlined, EditOutlined, TeamOutlined,
 } from '@ant-design/icons';
+import ProfileLink from './profile/ProfileLink.jsx';
+import { INLINE_LINK_STYLE } from './profile/profileLinkStyles.js';
 
 const { Text, Title } = Typography;
 
@@ -82,19 +84,25 @@ function ChatView({ contact, messages, groupMembers, user, onBack, onSend }) {
         <div style={{ borderBottom: '1px solid rgba(200,134,26,0.15)', background: 'rgba(12,7,2,0.6)', padding: '0.85rem 1.1rem', maxHeight: 200, overflowY: 'auto' }}>
           <Text style={{ fontSize: '0.6rem', letterSpacing: '0.15em', textTransform: 'uppercase', color: 'rgba(200,134,26,0.45)', display: 'block', marginBottom: '0.55rem' }}>Members</Text>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.4rem' }}>
-            <Avatar size={26} src={user.profile_photo_url} style={{ background: 'rgba(200,134,26,0.12)', border: '1px solid rgba(200,134,26,0.25)', color: 'var(--gold)', fontSize: '0.65rem' }}>
-              {(user.username || 'Y')[0].toUpperCase()}
-            </Avatar>
+            <ProfileLink userId={user.user_id} username={user.username}>
+              <Avatar size={26} src={user.profile_photo_url} style={{ background: 'rgba(200,134,26,0.12)', border: '1px solid rgba(200,134,26,0.25)', color: 'var(--gold)', fontSize: '0.65rem' }}>
+                {(user.username || 'Y')[0].toUpperCase()}
+              </Avatar>
+            </ProfileLink>
             <Text style={{ fontFamily: "'Inter', sans-serif", fontSize: '0.78rem', color: 'var(--gold)' }}>{user.username || 'You'} (you)</Text>
           </div>
           {groupMembers.map((m, i) => {
             const uname = m.username || m.user_id?.slice(0, 8) || '?';
             return (
               <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.4rem' }}>
-                <Avatar size={26} src={m.photoUrl} style={{ background: 'rgba(200,134,26,0.12)', border: '1px solid rgba(200,134,26,0.25)', color: 'var(--gold)', fontSize: '0.65rem' }}>
-                  {uname[0].toUpperCase()}
-                </Avatar>
-                <Text style={{ fontFamily: "'Inter', sans-serif", fontSize: '0.78rem', color: 'rgba(244,228,193,0.7)' }}>{uname}</Text>
+                <ProfileLink userId={m.user_id} username={m.username}>
+                  <Avatar size={26} src={m.photoUrl} style={{ background: 'rgba(200,134,26,0.12)', border: '1px solid rgba(200,134,26,0.25)', color: 'var(--gold)', fontSize: '0.65rem' }}>
+                    {uname[0].toUpperCase()}
+                  </Avatar>
+                </ProfileLink>
+                <ProfileLink userId={m.user_id} username={m.username} style={INLINE_LINK_STYLE}>
+                  <Text style={{ fontFamily: "'Inter', sans-serif", fontSize: '0.78rem', color: 'rgba(244,228,193,0.7)' }}>{uname}</Text>
+                </ProfileLink>
               </div>
             );
           })}
@@ -105,7 +113,7 @@ function ChatView({ contact, messages, groupMembers, user, onBack, onSend }) {
       <div style={{ flex: 1, overflowY: 'auto', padding: '0.75rem 0.9rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
         {messages.map((m, i) => (
           <div key={i} className={`msg-bubble ${m.mine ? 'sent' : 'received'}`}>
-            {!m.mine && m.sender && <div className="msg-bubble-sender">{m.sender}</div>}
+            {!m.mine && m.sender && <div className="msg-bubble-sender"><ProfileLink userId={m.senderId} username={m.sender} style={INLINE_LINK_STYLE}>{m.sender}</ProfileLink></div>}
             {m.text}
             {m.timestamp && (
               <div className="msg-bubble-meta">

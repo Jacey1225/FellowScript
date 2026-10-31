@@ -6,6 +6,8 @@ import {
   fetchGroupRequests, approveRequest, denyRequest, undoDenyRequest, setAccepting,
   reportApplicant, blockApplicant, dateLabel, UNDO_FALLBACK_MS,
 } from '../lib/joinRequestsApi.js';
+import ProfileLink from './profile/ProfileLink.jsx';
+import { INLINE_LINK_STYLE } from './profile/profileLinkStyles.js';
 import '../styles/joinRequests.css';
 
 // Task 20261001-explorer-join-requests step 7. One shared owner list used on the
@@ -37,9 +39,11 @@ function Row({ req, state, actions }) {
   return (
     <li className="jr-row" data-request-id={id}>
       <div className="jr-row-main">
-        {photo ? <img className="jr-avatar" src={photo} alt="" width="40" height="40" referrerPolicy="no-referrer" /> : <span className="jr-avatar jr-avatar--blank" aria-hidden="true" />}
+        <ProfileLink userId={req.applicant_user_id} username={username}>
+          {photo ? <img className="jr-avatar" src={photo} alt="" width="40" height="40" referrerPolicy="no-referrer" /> : <span className="jr-avatar jr-avatar--blank" aria-hidden="true" />}
+        </ProfileLink>
         <div className="jr-row-body">
-          <p className="jr-name">{name}</p>
+          <p className="jr-name"><ProfileLink userId={req.applicant_user_id} username={username} style={INLINE_LINK_STYLE}>{name}</ProfileLink></p>
           <p className="jr-date">Requested {dateLabel(at)}</p>
           {note ? (
             <p className="jr-note">

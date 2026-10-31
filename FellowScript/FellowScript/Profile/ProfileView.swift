@@ -121,8 +121,7 @@ struct ProfileView: View {
             Capsule().fill(Color.white.opacity(0.06)).frame(height: 50).padding(.top, Theme.spacingMD)
         }
         .frame(maxWidth: .infinity)
-        .padding(Theme.spacingLG)
-        .widgetCard()
+        .fsCard(padding: 20)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Loading profile")
     }
@@ -162,8 +161,12 @@ struct ProfileView: View {
             Button("Block", systemImage: "hand.raised.fill", role: .destructive) { showBlockConfirm = true }
             Button("Report", systemImage: "flag.fill") { showReport = true }
         } label: {
-            Image(systemName: "ellipsis.circle")
-                .frame(minWidth: 44, minHeight: 44)
+            Image(systemName: "ellipsis")
+                .font(.system(size: 14, weight: .bold))
+                .frame(width: 36, height: 36)
+                .background(Circle().fill(Theme.cardGlassGray))
+                .overlay(Circle().strokeBorder(Theme.borderGray, lineWidth: 1))
+                .frame(width: 44, height: 44)
         }
         .foregroundColor(Theme.gold)
         .accessibilityLabel("More options for \(profile.username)")
@@ -178,9 +181,7 @@ struct ProfileView: View {
                     .font(.inter(Theme.fontSM, weight: .bold)).foregroundColor(Theme.gold)
                     .frame(minWidth: 44, minHeight: 44)
             }
-            .padding(.horizontal, Theme.spacingMD)
-            .background(RoundedRectangle(cornerRadius: Theme.radiusSM).fill(Theme.cardBg))
-            .overlay(RoundedRectangle(cornerRadius: Theme.radiusSM).stroke(Theme.borderGoldDim, lineWidth: 1))
+            .fsCard(padding: 12)
             .padding(Theme.spacingMD)
             .accessibilityElement(children: .contain)
         }

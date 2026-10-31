@@ -17,6 +17,8 @@ import GroupAnnouncements from './GroupAnnouncements.jsx';
 import InviteLinkSection from './InviteLinkSection.jsx';
 import AddGroupMembersModal from './AddGroupMembersModal.jsx';
 import { getVisibleGroupInfoSections } from './groupInfoSections.js';
+import ProfileLink from './profile/ProfileLink.jsx';
+import { INLINE_LINK_STYLE } from './profile/profileLinkStyles.js';
 import { useCapabilities } from '../hooks/useCapabilities.js';
 import { scrollToSubscription } from '../lib/upgradePrompt.js';
 
@@ -346,8 +348,8 @@ export default function GroupInfoPanel({
   const photoUrl = info ? info.photo_url : contact.photoUrl;
   const initial = (title || '?')[0].toUpperCase();
   const memberList = [
-    { key: 'me', username: user?.username, photoUrl: user?.profile_photo_url, me: true },
-    ...groupMembers.map((m, i) => ({ key: m.user_id || i, username: m.username || m.user_id?.slice(0, 8) || '?', photoUrl: m.photoUrl })),
+    { key: 'me', userId: user?.user_id, username: user?.username, photoUrl: user?.profile_photo_url, me: true },
+    ...groupMembers.map((m, i) => ({ key: m.user_id || i, userId: m.user_id, realName: m.username, username: m.username || m.user_id?.slice(0, 8) || '?', photoUrl: m.photoUrl })),
   ];
   // Friends who are not already in this group (task 20261003-web-reader-ios-parity).
   const memberIdSet = new Set([user?.user_id, ...(contact.toUsers || []), ...groupMembers.map(m => m.user_id)]);
@@ -538,10 +540,14 @@ export default function GroupInfoPanel({
           <div className={memberList.length > 8 ? 'group-info-members group-info-members-scroll' : 'group-info-members'}>
             {memberList.map((m) => (
               <div key={m.key} className="group-info-member">
-                <Avatar size={32} src={m.photoUrl} style={{ background: 'rgba(255,198,26,0.12)', color: 'var(--gold)' }}>
-                  {(m.username || '?')[0].toUpperCase()}
-                </Avatar>
-                <span className={m.me ? 'group-info-member-me' : undefined}>{m.username}{m.me ? ' (you)' : ''}</span>
+                <ProfileLink userId={m.userId} username={m.me ? m.username : m.realName}>
+                  <Avatar size={32} src={m.photoUrl} style={{ background: 'rgba(255,198,26,0.12)', color: 'var(--gold)' }}>
+                    {(m.username || '?')[0].toUpperCase()}
+                  </Avatar>
+                </ProfileLink>
+                <ProfileLink userId={m.userId} username={m.me ? m.username : m.realName} style={INLINE_LINK_STYLE}>
+                  <span className={m.me ? 'group-info-member-me' : undefined}>{m.username}{m.me ? ' (you)' : ''}</span>
+                </ProfileLink>
               </div>
             ))}
           </div>

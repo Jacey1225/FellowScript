@@ -56,6 +56,8 @@ final class ChatThreadViewModel: ObservableObject {
     // by ChatThreadView rather than requiring a backend change to stamp a
     // photo onto every message.
     @Published var photoByUsername: [String: String] = [:]
+    // Task 20261030-profile-everywhere: username -> user id for resolved group members.
+    @Published var userIdByUsername: [String: String] = [:]
     // Surfaced in the view as a small "Reconnecting…" banner. Previously a
     // dropped socket (network blip, backgrounding, Cloudflare/nginx idle
     // timeout, or the server evicting a stale connection) gave no visible
@@ -332,6 +334,7 @@ final class ChatThreadViewModel: ObservableObject {
             for await result in group {
                 guard let (mid, username, url) = result else { continue }
                 photoByUsername[username] = url
+                userIdByUsername[username] = mid
                 usernameById[mid] = username
             }
         }
@@ -358,7 +361,8 @@ final class ChatThreadViewModel: ObservableObject {
             attachmentURL: message.attachmentURL, attachmentMeta: message.attachmentMeta,
             reactions: message.reactions, reply: message.reply,
             pinned: message.pinned, systemKind: message.systemKind,
-            mentions: message.mentions, announcement: message.announcement
+            mentions: message.mentions, announcement: message.announcement,
+            senderId: message.senderId ?? message.sender
         )
     }
 
@@ -594,7 +598,8 @@ final class ChatThreadViewModel: ObservableObject {
                 reactions: old.reactions,
                 reply: reply ?? old.reply,
                 pinned: old.pinned, systemKind: old.systemKind,
-                mentions: mentions ?? old.mentions, announcement: old.announcement
+                mentions: mentions ?? old.mentions, announcement: old.announcement,
+                senderId: old.senderId
             )
         }
         return true
@@ -694,7 +699,8 @@ final class ChatThreadViewModel: ObservableObject {
             reply: FSReplyRef(frame: json),
             systemKind: json["system_kind"] as? String,
             mentions: FSMention.parse(json["mentions"]),
-            announcement: FSMessageAnnouncement.parse(json["announcement"])
+            announcement: FSMessageAnnouncement.parse(json["announcement"]),
+            senderId: ownAnnouncementLine ? nil : fromUser
         )
         // Dedup by id (a live frame for a row a history fetch already
         // delivered must not render twice); a frame without an id always appends.
@@ -1576,7 +1582,8 @@ struct ChatThreadView: View {
                                         replyFor: { message in replyHandler(for: message) },
                                         currentUserId: appState.currentUser?.user_id,
                                         onJumpToReply: { id in jumpTarget = id },
-                                        highlightedMessageId: highlightedMessageId
+                                        highlightedMessageId: highlightedMessageId,
+                                        profileLookup: ChatProfileLookup(dmPeerId: contact.type == .group ? nil : contact.id, idByUsername: vm.userIdByUsername)
                                     )
                                         .id(row.id)
                                 case .dayDivider(_, let label):
@@ -2444,6 +2451,7 @@ struct ChatThreadView: View {
             onGroupGone: { goBack() }
         )
         .environment(\.fsFocusJoinRequests, focusJoinRequests)
+        .environment(\.fsMemberIdByUsername, vm.userIdByUsername)
         // Task 20261001-message-threads: the Threads section opens a thread
         // through this closure (it closes the panel and switches this view
         // model into thread mode on its one socket).
@@ -2507,6 +2515,7 @@ struct ChatThreadView: View {
             .buttonStyle(.plain)
             .accessibilityLabel(contact.type == .group ? "Group info, \(displayName)" : contact.name)
             .accessibilityHint(contact.type == .group ? "Opens group settings, members, and shared media" : "")
+            .dmHeaderProfileTap(contact: contact)
 
             if contact.type == .group {
                 // Sessions lives in the group info chip row (20261023-group-info-row).
@@ -3181,6 +3190,7 @@ struct GroupMembersPanel: View {
     // existing call site/preview/test that predates this field, falling
     // back to the initials-only treatment exactly as before.
     var photoByUsername: [String: String] = [:]
+    @Environment(\.fsMemberIdByUsername) private var memberIdByUsername   // task 20261030-profile-everywhere
     var onAddTapped: (() -> Void)?  // present when the viewer may add members
 
     var body: some View {
@@ -3222,6 +3232,7 @@ struct GroupMembersPanel: View {
                 .foregroundColor(isMe ? Theme.gold : Theme.parchment.opacity(0.70))
         }
         .accessibilityLabel(isMe ? "\(name), you" : name)
+        .groupMemberProfileTap(name: name, userId: isMe ? user?.user_id : memberIdByUsername[name], photoURL: photoURL)
     }
 
     // Subtle dashed "+" chip that sits at the end of the member row.

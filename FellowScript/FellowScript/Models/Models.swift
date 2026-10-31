@@ -733,6 +733,11 @@ struct FSMessage: Identifiable, Codable {
     // Task 20261030-chat-announcements: the card of an announcement timeline line
     // (system_kind "announcement"). nil for every other message and old payloads.
     var announcement: FSMessageAnnouncement? = nil
+    // Task 20261030-profile-everywhere: the sender's raw user id, client-side
+    // only, used solely as a profile-tap target (never displayed). nil when the
+    // payload carries no id (paged rows send a username); optional so cached
+    // FSMessage JSON without the key still decodes.
+    var senderId: String? = nil
 
     // compile-errors #3 (20260904-frontend-arch-sweep): the wire value is a
     // plain String so it round-trips through Codable/JSON unchanged, but

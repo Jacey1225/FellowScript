@@ -90,5 +90,12 @@ def friend_accept_guard(request: Request) -> None:
     check_all(user_id, (("friend_accept_hour", "profile-friend-accept-hour"),))
 
 
+def friend_decline_guard(request: Request) -> None:
+    """Route dependency for the recipient-only friend-request decline."""
+    user_id = get_current_user(request)
+    check_all(user_id, (("friend_decline_hour", "profile-friend-decline-hour"),))
+
+
+friend_decline_dependency = Depends(friend_decline_guard)
 friend_request_dependency = Depends(friend_request_guard)
 friend_accept_dependency = Depends(friend_accept_guard)

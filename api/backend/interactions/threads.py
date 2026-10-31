@@ -31,6 +31,7 @@ from backend.interactions.attachments import generate_download_url
 from backend.interactions.groups import author_set
 from backend.interactions.html_text import clean_shared_note_meta
 from backend.interactions.message_mentions import attach_mentions
+from backend.interactions.message_sender_id import sender_id_entry
 from backend.interactions.send_guard import is_current_member
 from backend.interactions.threads_config import get_threads_config
 
@@ -346,6 +347,7 @@ class ThreadsManager(DBManager):
                 "id": str(_id),
                 "thread_id": tid,
                 "from_user": usernames.get(from_uid, ""),
+                **sender_id_entry(from_uid, usernames),
                 "mine": from_uid.lower() == me,
                 "text": content_store.open_(_id, content_store.F_THREAD_MESSAGE_TEXT, text),
                 "timestamp": paging.format_timestamp(ts),

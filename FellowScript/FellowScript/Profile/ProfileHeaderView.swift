@@ -37,8 +37,7 @@ struct ProfileHeaderView: View {
                 .padding(.top, Theme.spacingSM)
         }
         .frame(maxWidth: .infinity)
-        .padding(Theme.spacingLG)
-        .widgetCard()
+        .fsCard(padding: 20)
     }
 
     // MARK: Chip

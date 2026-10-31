@@ -9,6 +9,7 @@ import {
   mergeOlder, mergeLive, reconcileAck, findLostAckMatch,
 } from '../lib/chatPaging.js';
 import { parseReactions, toggled, setting, updatingCount, addReaction, removeReaction } from '../lib/reactions.js';
+import { isProfileId } from '../lib/profileId.js';
 import { replyFromWire } from '../lib/replies.js';
 import { MENTION_FEATURE, mentionFields, toWireMentions, verifyMentions } from '../lib/mentions.js';
 import {
@@ -333,6 +334,8 @@ export function useMessaging({ user }) {
             mine: isOwnAnnouncementFrame(data, user.user_id),
             timestamp: data.timestamp,
             sender: liveSenderName(data, cc),
+            // Task 20261030-profile-everywhere: raw sender id, profile-tap only.
+            ...(!isOwnAnnouncementFrame(data, user.user_id) && isProfileId(data.from_user) ? { senderId: data.from_user } : {}),
             // Task 20260904-messaging-attachments: null/absent for an
             // ordinary text-only message. attachment_url (image/video/file
             // only) is a freshly presigned GET the server resolves at
@@ -809,6 +812,7 @@ export function useMessaging({ user }) {
           ...(typeof m.id === 'string' && m.id ? { id: m.id, key: m.id } : {}),
           text: m.text, mine: m.mine, timestamp: m.timestamp,
           sender: m.mine ? '' : (m.from_user || ''),
+          ...(!m.mine && isProfileId(m.from_user) ? { senderId: m.from_user } : {}),
           // Task 20260904-messaging-attachments — see this file's WS
           // onmessage handler above for the field-shape rationale. Note:
           // never read `m.attachment_key` here even if a raw backend

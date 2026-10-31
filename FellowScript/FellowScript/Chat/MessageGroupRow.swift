@@ -216,6 +216,9 @@ struct MessageGroupRow: View {
     // Task 20261012-message-pins: message briefly highlighted after a jump
     // from the Pinned list (nil = none).
     var highlightedMessageId: String? = nil
+    // Task 20261030-profile-everywhere: ids the sender avatar/name need to open a
+    // profile (see ChatProfileHookins.swift). Default = nothing tappable.
+    var profileLookup: ChatProfileLookup = .none
 
     /// Scroll anchor id for one message. Prefixed so it can never collide with
     /// a MessageDisplayGroup row id (a group's id IS its first message's id).
@@ -282,6 +285,7 @@ struct MessageGroupRow: View {
                     Text(group.senderName)
                         .font(.inter(Theme.fontSM, weight: .bold))
                         .foregroundColor(Theme.parchment)
+                        .senderProfileTap(group: group, lookup: profileLookup, expandHitArea: false)
                     if !group.timeLabel.isEmpty {
                         Text(group.timeLabel)
                             .font(.inter(Theme.fontXXS))
@@ -502,7 +506,8 @@ struct MessageGroupRow: View {
             }
         }
         .frame(width: 32, height: 32)
-        .accessibilityHidden(true)
+        // Decorative unless tappable; SenderProfileTap hides it when it is not.
+        .senderProfileTap(group: group, lookup: profileLookup)
     }
 }
 

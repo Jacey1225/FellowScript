@@ -25,7 +25,7 @@ export default function ProfileHeader({ profile }) {
         {profile.username}
       </Title>
       {chip && (
-        <div style={{ color: 'rgba(242,242,242,0.7)', fontSize: '0.85rem' }}>
+        <div style={{ color: 'var(--ff-text-2)', fontSize: '0.85rem' }}>
           {chip.icon} <span style={{ marginLeft: 4 }}>{chip.text}</span>
         </div>
       )}

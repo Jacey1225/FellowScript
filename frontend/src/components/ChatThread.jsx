@@ -29,6 +29,9 @@ import ChatAnnouncementRow from './ChatAnnouncementRow.jsx';
 import ChatAnnouncementComposer from './ChatAnnouncementComposer.jsx';
 import { CHAT_ANNOUNCEMENT_FEATURE, isAnnouncementLine } from '../lib/chatAnnouncements.js';
 import MentionText from './MentionText.jsx';
+import ChatHeaderIdentity from './ChatHeaderIdentity.jsx';
+import ProfileLink from './profile/ProfileLink.jsx';
+import { INLINE_LINK_STYLE } from './profile/profileLinkStyles.js';
 import MentionPicker, { MENTION_LISTBOX_ID, mentionOptionId } from './MentionPicker.jsx';
 import {
   MENTION_FEATURE, MAX_MENTIONS, applyEdit, deleteAcrossMentions, fetchMentionMembers,
@@ -1360,15 +1363,7 @@ export default function ChatThread({
             <span className="group-info-header-name">{contact.name}</span>
           </button>
         ) : contact?.type === 'friend' && onViewProfile ? (
-          // Task 20261030-user-profiles: DM header name opens the profile.
-          <button
-            type="button"
-            className="group-info-header-btn"
-            aria-label={`View ${contact.name}'s profile`}
-            onClick={() => onViewProfile(contact.id)}
-          >
-            <span className="group-info-header-name">{contact.name}</span>
-          </button>
+          <ChatHeaderIdentity contact={contact} onViewProfile={onViewProfile} />
         ) : (
           <Text
             strong
@@ -1559,7 +1554,7 @@ export default function ChatThread({
                   )}
                 </div>
               )}
-              {!m.mine && m.sender && !isMedia && <div className="msg-bubble-sender">{m.sender}</div>}
+              {!m.mine && m.sender && !isMedia && <div className="msg-bubble-sender"><ProfileLink userId={m.senderId} username={m.sender} style={INLINE_LINK_STYLE}>{m.sender}</ProfileLink></div>}
               {repliesOn && m.reply && (() => {
                 const r = m.reply;
                 if (r.deleted) return <div className="msg-quote msg-quote-unavailable">{REPLY_UNAVAILABLE_LABEL}</div>;

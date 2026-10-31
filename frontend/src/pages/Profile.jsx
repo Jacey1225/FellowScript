@@ -15,7 +15,7 @@ import { useAuth } from '../context/AuthContext.jsx';
 import { useProfile } from '../hooks/useProfile.js';
 import { useDeferredAction } from '../hooks/useDeferredAction.js';
 import {
-  saveBio, sendFriendRequest, acceptFriendRequest, unfriend,
+  saveBio, sendFriendRequest, acceptFriendRequest, declineFriendRequest, DECLINE_FAILURE, unfriend,
   blockProfile, unblockProfile, reportProfile,
 } from '../lib/profileApi.js';
 import { evictCachedProfile } from '../lib/profileCache.js';
@@ -44,7 +44,7 @@ export default function Profile() {
 
   if (!user) return null;
 
-  const failCopy = (err) => (err.status === 429 ? RATE_COPY : GENERIC_ACTION_ERROR);
+  const failCopy = (err, key) => (err.status === 429 ? RATE_COPY : key === 'decline' ? DECLINE_FAILURE : GENERIC_ACTION_ERROR);
 
   const runAction = async (key, fn) => {
     if (busy) return;
@@ -53,7 +53,7 @@ export default function Profile() {
       await fn();
       await reload();
     } catch (err) {
-      setStatus(failCopy(err));
+      setStatus(failCopy(err, key));
     } finally {
       setBusy(null);
     }
@@ -61,6 +61,7 @@ export default function Profile() {
 
   const handleAdd = () => runAction('add', () => sendFriendRequest(userId));
   const handleAccept = () => runAction('accept', () => acceptFriendRequest(userId));
+  const handleDecline = () => runAction('decline', () => declineFriendRequest(user.user_id, userId));
 
   const handleSaveBio = async (text) => {
     const res = await saveBio(user.user_id, text.trim() === '' ? null : text);
@@ -133,6 +134,7 @@ export default function Profile() {
   const handleMessage = () => navigate('/reader', { state: { openDm: { id: userId, name: profile.username, photoUrl: profile.profile_photo_url || null } } });
 
   let body;
+  let below = null;
   if (state === 'loading') {
     body = <Skeleton avatar={{ size: 96 }} active={!window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches} paragraph={{ rows: 2 }} title />;
   } else if (state === 'unavailable') {
@@ -162,14 +164,18 @@ export default function Profile() {
             ? <BioEditor initial={profile.bio || ''} onSave={handleSaveBio} onCancel={() => setEditing(false)} />
             : <ProfileBio profile={profile} onEdit={() => setEditing(true)} />}
         </div>
+      </>
+    );
+    below = (
+      <div style={{ marginTop: 12 }}>
         <ProfileActions profile={profile} busy={busy} editing={editing}
-          onAdd={handleAdd} onAccept={handleAccept} onMessage={handleMessage} onEdit={() => setEditing(true)} />
-        <div role="status" aria-live="polite" style={{ marginTop: 12, minHeight: 20, fontSize: '0.85rem', color: 'rgba(242,242,242,0.7)' }}>
+          onAdd={handleAdd} onAccept={handleAccept} onDecline={handleDecline} onMessage={handleMessage} onEdit={() => setEditing(true)} />
+        <div role="status" aria-live="polite" style={{ marginTop: 12, minHeight: 20, fontSize: '0.85rem', color: 'var(--ff-text-2)' }}>
           {status || (refreshFailed
             ? <>Couldn't refresh. Showing what we had. <Button type="link" size="small" onClick={reload}>Retry</Button></>
             : refreshing ? 'Updating...' : '')}
         </div>
-      </>
+      </div>
     );
   }
 
@@ -185,6 +191,7 @@ export default function Profile() {
             <LeftOutlined style={{ fontSize: '0.7rem' }} /> Back
           </button>
           <div style={{ ...FORM_CARD_STYLE, padding: '1.25rem' }}>{body}</div>
+          {below}
         </div>
       </FormSkin>
       <ReportUserModal target={reportTarget}

@@ -117,13 +117,14 @@ extension NetworkService {
     }
 
     /// One paged row -> FSMessage. `mine` comes from the row; `from_user` is a
-    /// username (not an id) on paged rows.
+    /// username on paged rows; `from_user_id` (when present) is the profile-tap id.
     static func pagedMessage(_ m: RawMsg) -> FSMessage {
         let mine = m.mine ?? false
         return FSMessage(id: m.id ?? UUID().uuidString, text: m.text ?? "", mine: mine,
                          sender: mine ? "" : (m.from_user ?? ""), timestamp: m.timestamp,
                          attachmentKind: m.attachment_kind, attachmentURL: m.attachment_url,
-                         attachmentMeta: m.attachment_meta, reactions: m.reactions, reply: m.reply, pinned: m.pinned, systemKind: m.system_kind, mentions: m.mentions?.orNil, announcement: m.announcement?.value)
+                         attachmentMeta: m.attachment_meta, reactions: m.reactions, reply: m.reply, pinned: m.pinned, systemKind: m.system_kind, mentions: m.mentions?.orNil, announcement: m.announcement?.value,
+                         senderId: mine ? nil : m.from_user_id.flatMap { $0.isEmpty ? nil : $0 })
     }
 
     private func legacyFriendMessages(from data: Data) -> [FSMessage] {

@@ -6,7 +6,9 @@ from backend.interactions.groups import (
     GroupFullError, GroupsManager, MEDIA_KINDS, InvalidMemberError, ListedGroupOwnerOnlyError, normalize_group_title,
 )
 from backend.interactions.friends import  FriendsManager, is_nudge_enabled
-from backend.interactions.profile_limits import friend_accept_dependency, friend_request_dependency
+from backend.interactions.profile_limits import (
+    friend_accept_dependency, friend_decline_dependency, friend_request_dependency,
+)
 from backend.interactions.push import send_push
 from backend.interactions.push_preferences import async_is_push_enabled
 from backend.interactions import flags, friend_request_notifier, member_joined_notifier, paging
@@ -666,6 +668,33 @@ async def add_friend(user_id: str, friend_username: str, _: str = Depends(requir
         result = manager.add_friend(friend_username)
         if result and "error" in result:
             raise HTTPException(status_code=404, detail=result["error"])
+    finally:
+        manager.close()
+
+
+@friend_router.post("/{user_id}/requests/{sender_id}/decline", status_code=204,
+                    dependencies=[friend_decline_dependency])
+async def decline_friend_request(
+    user_id: str, sender_id: str, _: str = Depends(require_match("user_id")),
+) -> None:
+    """Decline (delete) the pending friend request from ``sender_id`` to the caller.
+
+    Recipient-only: ``user_id`` must be the signed-in caller and only a row
+    addressed to the caller is removed. The response is the same 204 whether or
+    not a request exists and whether the sender is unknown, blocked or
+    suspended (no enumeration oracle). No cooldown is recorded.
+
+    Args:
+        user_id: UUID of the caller (the request's recipient).
+        sender_id: UUID of the user whose request is declined.
+    """
+    try:
+        sender = str(uuid.UUID(sender_id))
+    except (ValueError, AttributeError, TypeError):
+        return
+    manager = FriendsManager(user_id)
+    try:
+        manager.decline_request_by_id(sender)
     finally:
         manager.close()
 

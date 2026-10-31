@@ -14,6 +14,7 @@ from backend.interactions.attachments import generate_download_url
 from backend.interactions.html_text import clean_shared_note_meta
 from backend.interactions import chat_announcements, lifecycle, member_joined_line, paging
 from backend.interactions.message_pins import attach_pins
+from backend.interactions.message_sender_id import sender_id_entry
 from backend.interactions.message_reactions import attach_reactions
 from backend.interactions.message_mentions import attach_mentions
 from backend.interactions.message_replies import attach_replies
@@ -473,6 +474,7 @@ class GroupsManager(DBManager):
             messages.append({
                 "id": str(_id),
                 "from_user": usernames.get(from_uid, ""),
+                **sender_id_entry(from_uid, usernames),
                 "mine": from_uid.lower() == me,
                 "text": content_store.open_(_id, content_store.F_MESSAGE_TEXT, text),
                 "timestamp": paging.format_timestamp(ts),

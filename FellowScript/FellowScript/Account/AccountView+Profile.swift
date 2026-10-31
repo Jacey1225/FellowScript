@@ -389,6 +389,9 @@ extension AccountView {
                             gradientPill("Accept", compact: true)
                         }
                         .accessibilityLabel("Accept friend request from \(req.username)")
+                        FriendRequestDeclineButton(username: req.username) {
+                            Task { await vm.declineRequest(senderId: req.id) }
+                        }
                     }
                 }
             }

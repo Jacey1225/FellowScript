@@ -382,6 +382,12 @@ struct FriendActivityHeroCard: View {
             .buttonStyle(FriendTileButtonStyle(reduceMotion: reduceMotion))
             .accessibilityLabel("\(headline(entry)). Opens chat.")
             .frame(width: 68, height: 68)
+            // Task 20261030-profile-everywhere: the 40pt avatar opens the profile; the
+            // rest of the tile still opens chat.
+            .overlay {
+                Color.clear.frame(width: 40, height: 40)
+                    .profileTap(userId: entry.friend_id, username: entry.username, photoURL: entry.profile_photo_url)
+            }
 
             // At accessibility Dynamic Type sizes the caption is dropped
             // from layout entirely rather than wrapping or forcing the
@@ -465,32 +471,37 @@ struct FriendActivityHeroCard: View {
     }
 
     private func activityRow(_ entry: FSFriendActivityEntry) -> some View {
-        Button(action: { onOpenFriend(entry) }) {
-            HStack(alignment: .top, spacing: 14) {
-                AvatarView(initial: entry.initial, photoURL: entry.profile_photo_url, diameter: 32)
-                    .padding(.top, 4)
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(headline(entry))
-                        .font(.system(size: 28, weight: .bold))
-                        .foregroundColor(Theme.parchment)
-                        .lineLimit(2)
-                        .fixedSize(horizontal: false, vertical: true)
-                    if let d = parseActivityDate(entry.last_active_at) {
-                        Text(activityTimeLabel(d))
-                            .font(.system(size: 11))
-                            .foregroundColor(Theme.parchment.opacity(0.55))
+        // Task 20261030-profile-everywhere: avatar is its own profile target, outside the chat button.
+        HStack(alignment: .top, spacing: 14) {
+            AvatarView(initial: entry.initial, photoURL: entry.profile_photo_url, diameter: 32)
+                .profileTapAvatar(userId: entry.friend_id, username: entry.username,
+                                  photoURL: entry.profile_photo_url, diameter: 32)
+                .padding(.top, 4)
+            Button(action: { onOpenFriend(entry) }) {
+                HStack(alignment: .top, spacing: 14) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(headline(entry))
+                            .font(.system(size: 28, weight: .bold))
+                            .foregroundColor(Theme.parchment)
+                            .lineLimit(2)
+                            .fixedSize(horizontal: false, vertical: true)
+                        if let d = parseActivityDate(entry.last_active_at) {
+                            Text(activityTimeLabel(d))
+                                .font(.system(size: 11))
+                                .foregroundColor(Theme.parchment.opacity(0.55))
+                        }
                     }
+                    Spacer(minLength: 0)
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundColor(Theme.gold.opacity(0.75))
+                        .padding(.top, 8)
                 }
-                Spacer(minLength: 0)
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 13, weight: .bold))
-                    .foregroundColor(Theme.gold.opacity(0.75))
-                    .padding(.top, 8)
             }
-            .padding(.top, 16)
+            .buttonStyle(.plain)
+            .accessibilityLabel("\(headline(entry)). Opens chat.")
         }
-        .buttonStyle(.plain)
-        .accessibilityLabel("\(headline(entry)). Opens chat.")
+        .padding(.top, 16)
     }
 
     // Distinct tap target from activityRow's headline Button above (task
