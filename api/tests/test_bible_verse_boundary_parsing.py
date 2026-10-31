@@ -307,7 +307,7 @@ def test_full_corpus_parity_no_unexplained_divergence():
         none_mismatches,
     )
     check(
-        "every remaining backend-vs-client divergence is explained by the documented pre-existing lowercase-opener gap",
+        "backend and client parsers agree on every verse (lowercase openers fixed in task 20261031-thread-verse-send-fail)",
         len(unexplained) == 0,
         unexplained[:20],
     )

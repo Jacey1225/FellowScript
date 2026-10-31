@@ -99,7 +99,7 @@ _BIBLE_JSON_PATH = os.path.join(os.path.dirname(__file__), "bible_data", "bible.
 # Inline section subheadings ("HEAD::<text>") embedded in the flowing chapter
 # text -- strip them (and their text, up to the next verse marker or the end
 # of the blob) before splitting into verses; they are never verse content.
-_HEAD_RE = re.compile(r"HEAD::.*?(?=\d+[A-Z“‘(]|\Z)", re.S)
+_HEAD_RE = re.compile(r"HEAD::.*?(?=\d+[A-Za-z“‘(\[]|\Z)", re.S)
 # A chapter blob always opens "{chapter}:1 {verse 1 text}...".
 _CHAPTER_START_RE = re.compile(r"^(\d+):1\s*(.*)", re.S)
 # Every verse after the first is a bare number (not itself preceded by
@@ -110,11 +110,13 @@ _CHAPTER_START_RE = re.compile(r"^(\d+):1\s*(.*)", re.S)
 # markers like "[12]" are always followed by "]", never directly by one of
 # these, so they never match). Kept in sync with the equivalent client-side
 # verse-boundary regexes (iOS BibleReaderView.swift, frontend/src/utils.js,
-# frontend/js/bible.js) as of task 20260908-bible-verse-boundary-parsing --
-# this module's own character class previously lacked the curly single quote
-# and opening-parenthesis cases, and the (?<!\d) guard, that the client
-# copies already had.
-_VERSE_SPLIT_RE = re.compile(r"(?<!\d)(\d+)(?=[A-Z“‘(])")
+# frontend/js/bible.js): the lookahead is any ASCII letter (upper OR lower
+# case -- many World English Bible verses open lowercase, e.g. Genesis 1:15
+# "and let them be for lights"), a curly quote, "(" or "[". Task
+# 20261031-thread-verse-send-fail: the lowercase and "[" cases were missing
+# here, so ~10% of verses returned None and every verse before one swallowed
+# its text.
+_VERSE_SPLIT_RE = re.compile(r"(?<!\d)(\d+)(?=[A-Za-z“‘(\[])")
 
 _raw_books: dict[str, list[str]] | None = None
 _chapter_cache: dict[tuple[str, int], dict[int, str]] = {}
