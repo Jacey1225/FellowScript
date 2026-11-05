@@ -6,6 +6,7 @@ from backend.interactions import flags
 from backend.interactions.agent_chats import AgentChatStore, ChatLimitError
 from backend.interactions.agent_chats_config import get_agent_chats_config
 from backend.interactions import session_summary_fanout as fanout
+from backend.interactions.note_markup import NoteMarkupError, normalize_note_markup
 from backend.interactions.session_summary_fanout_config import is_fanout_enabled
 from backend.rate_limiting import limiter
 from backend.errors import SaveFailedError, NoSummarizableContentError
@@ -527,7 +528,16 @@ async def summarize_session(user_id: str, agent_id: str, body: dict, _: str = De
     prompt_lines += [
         "",
         "Write a concise summary covering key scriptural insights, main takeaways, "
-        "and actionable next steps for the group. Format it as a readable study note.",
+        "and actionable next steps for the group. Make it a readable study note.",
+        "",
+        # The note editor cannot render markdown (task 20261104-ai-note-format-normalizer);
+        # the server also normalizes the reply, this is the first line of defense.
+        "Formatting: write plain text. The only markup allowed is <b>bold</b>, "
+        "<em>italic</em>, <u>underline</u>, <mark>highlight</mark> and <br> for line "
+        "breaks. Do NOT use markdown (no ** or * or _ emphasis, no # headings, no "
+        "backticks, no markdown links). Write a heading as a <b>bold</b> line. Write "
+        "lists as separate lines starting with \"1.\", \"2.\" or \"•\", each line "
+        "ended with <br>, and use <br><br> between sections.",
         "",
         # Bug fix (task 20260915-session-summary-note-fixes): agent_prompt.txt's
         # shared system prompt instructs the model to respond with a
@@ -578,6 +588,17 @@ async def summarize_session(user_id: str, agent_id: str, body: dict, _: str = De
                     agent_id, len(summary),
                 )
                 raise HTTPException(status_code=502, detail="Could not generate session summary.")
+
+        # Task 20261104-ai-note-format-normalizer: notes render as editor HTML, not
+        # markdown. Normalize ONCE here (after the leaked-JSON salvage, before the
+        # fan-out and the direct INSERT) so every recipient stores identical,
+        # editor-renderable text. Nothing renderable left -> fail the request
+        # (throw-not-fabricate), never save blank or raw LLM text.
+        try:
+            summary = normalize_note_markup(summary)
+        except NoteMarkupError as e:
+            logger.error("summarize_session normalization failed for agent %s: %s", agent_id, e)
+            raise HTTPException(status_code=502, detail="Could not generate session summary.")
 
         # `public` here means group-edit permission (task
         # 20260903-notes-public-repurpose), not visibility -- visibility of
