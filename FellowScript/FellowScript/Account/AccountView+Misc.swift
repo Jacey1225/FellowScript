@@ -7,6 +7,7 @@
 // section files.
 
 import SwiftUI
+import UserNotifications
 
 extension AccountView {
 
@@ -47,9 +48,44 @@ extension AccountView {
             }
             .accessibilityLabel("Notification settings")
             .accessibilityHint("Choose which push notifications you receive")
+
+            // Task 20261105-push-prompt-sheet: .provisional users get quiet
+            // delivery only. No sheet; a low-key row that opens iOS Settings
+            // (no requestAuthorization call).
+            if pushIsProvisional {
+                Divider().background(Theme.borderGray)
+                Button(action: openSystemNotificationSettings) {
+                    HStack {
+                        Label("Turn on alerts", systemImage: "bell.badge")
+                            .font(.system(size: Theme.fontBody))
+                            .foregroundColor(Theme.parchment)
+                        Spacer()
+                        Image(systemName: "arrow.up.right")
+                            .font(.caption)
+                            .foregroundColor(Theme.textMuted)
+                    }
+                    .frame(minHeight: 44)
+                    .contentShape(Rectangle())
+                }
+                .accessibilityLabel("Turn on alerts")
+                .accessibilityHint("Opens iOS Settings so notifications can show as alerts")
+                .accessibilityIdentifier("account.turnOnAlerts")
+            }
         }
         .padding(.horizontal, 18).padding(.vertical, 16)
         .glassCard(cornerRadius: 20)
+    }
+
+    @MainActor
+    func refreshPushProvisional() async {
+        let status = await UNUserNotificationCenter.current().notificationSettings().authorizationStatus
+        pushIsProvisional = (status == .provisional)
+    }
+
+    func openSystemNotificationSettings() {
+        if let url = URL(string: UIApplication.openSettingsURLString) {
+            UIApplication.shared.open(url)
+        }
     }
 
     var legalSection: some View {

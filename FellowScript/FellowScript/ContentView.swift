@@ -11,6 +11,10 @@ struct ContentView: View {
     @StateObject private var startup = StartupCoordinator()
     // Task 20261008-post-tour-prompts: first-run notifications + subscribe prompts.
     @StateObject private var postTour = PostTourPromptsCoordinator()
+    // Task 20261105-push-prompt-sheet: shared coordinator (owned by FellowScriptApp,
+    // evaluated on .active); this view supplies its suppression inputs.
+    @EnvironmentObject private var pushPrompt: PushPromptCoordinator
+    @State private var postTourSeenThisSession = false
     @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var selectedTab: Tab = .home
@@ -238,6 +242,18 @@ struct ContentView: View {
             }
         }
         .motionAwareAnimation(.easeInOut(duration: 0.25), value: appState.isAuthenticated, reduceMotion: reduceMotion)
+        // Task 20261105-push-prompt-sheet: install the suppression inputs and
+        // re-evaluate whenever they change (so a sheet held back by the loading
+        // screen or a call appears once the screen is clear, not only on the
+        // next .active). The authorization status is still read fresh each time.
+        .onChange(of: postTour.current) { _, current in
+            if current != nil { postTourSeenThisSession = true }
+        }
+        .task(id: pushPromptSuppression) {
+            let inputs = pushPromptSuppression
+            pushPrompt.suppression = { inputs }
+            await pushPrompt.evaluate()
+        }
         // Loading screen → mainTabView crossfade — a single ~350ms dissolve
         // at whatever point the video happened to be in its loop, not a
         // hard cut and not a wait for the loop to finish (see
@@ -263,6 +279,28 @@ struct ContentView: View {
             try? await Task.sleep(nanoseconds: 300_000_000)
             appState.pendingBibleNav = target
         }
+    }
+
+    /// Everything that must keep the push prompt away. The sheet is mounted by
+    /// DashboardView, so anything but a signed-in, ready, phone-layout Home tab
+    /// with no call, other cover, or sheet counts as suppression. Leaving Home
+    /// (Bible reader, Notes, Chat, Account) counts as an active session.
+    private var pushPromptSuppression: PushPromptSuppression {
+        PushPromptSuppression(
+            postTourPromptOwed: postTour.current != nil,
+            postTourAnsweredThisSession: postTourSeenThisSession,
+            inCall: call.inCall || call.isExpanded,
+            readingSession: selectedTab != .home,
+            loadingScreen: !startup.isReady,
+            otherPresentationActive: !appState.isAuthenticated
+                || !hasCompletedOnboarding
+                || appState.termsReacceptRequired
+                || appState.needsProfileCompletion
+                || appState.pendingInviteToken != nil
+                || startup.updateAvailable != nil
+                || WorkspaceLayoutMode.resolve(sizeClass: horizontalSizeClass,
+                                               flagEnabled: WorkspaceLayout.isFeatureEnabled()) == .workspace
+        )
     }
 
     private var canPresentPostTourPrompts: Bool {

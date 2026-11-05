@@ -94,6 +94,10 @@ struct AccountView: View {
 
     @State var showBlockedUsers = false
     @State var showNotificationSettings = false
+    // Task 20261105-push-prompt-sheet: true only while iOS reports .provisional
+    // (quiet delivery). Re-read from UNUserNotificationCenter, never persisted.
+    @State var pushIsProvisional = false
+    @Environment(\.scenePhase) private var accountScenePhase
 
     // Two-factor authentication (email code)
     @State var mfaEnabled = false
@@ -225,6 +229,10 @@ struct AccountView: View {
                     if wanted { consumePendingFriendRequestsOpen(scrollProxy) }
                 }
                 }
+            }
+            .task { await refreshPushProvisional() }
+            .onChange(of: accountScenePhase) { _, phase in
+                if phase == .active { Task { await refreshPushProvisional() } }
             }
             .navigationTitle("Account")
             .navigationBarTitleDisplayMode(.large)

@@ -240,6 +240,11 @@ struct DashboardView: View {
     @StateObject private var vm: DashboardViewModel
     // Shared ChatViewModel (injected by ContentView) for the Home create-group card.
     @EnvironmentObject var chatVM: ChatViewModel
+    // Task 20261105-push-prompt-sheet: coordinator state drives the push prompt
+    // sheet (primer / open-Settings). Evaluated on scenePhase .active by
+    // FellowScriptApp; ContentView supplies the suppression inputs.
+    @EnvironmentObject var pushPrompt: PushPromptCoordinator
+    @Environment(\.openURL) private var openURL
 
     // Required (no default): task 20260901-dashboard-stale-reload-ui moved
     // DashboardViewModel to be a StartupCoordinator-owned shared instance
@@ -285,6 +290,21 @@ struct DashboardView: View {
     // Task 20261029-home-pickup-past-note: the user's OWN note opened from
     // the pickup row (separate from the friend-note sheet above).
     @State private var pickupSheetNote:     FSNote? = nil
+
+    private func handlePushPromptPrimary(_ kind: PushPromptState) {
+        switch kind {
+        case .primer:
+            // Lift the post-tour deferral, then let the unchanged
+            // requestPushNotifications() show the system dialog.
+            pushPrompt.postTourStore.clearPushDeferral()
+            appState.requestPushNotifications()
+        case .openSettings:
+            if let url = URL(string: UIApplication.openSettingsURLString) { openURL(url) }
+        case .hidden:
+            break
+        }
+        pushPrompt.dismiss()
+    }
 
     private func openFriendChat(id: String, username: String) {
         appState.pendingChatContact = FSContact(id: id, name: username, type: .friend)
@@ -433,6 +453,18 @@ struct DashboardView: View {
             ) { saved in
                 await vm.saveNote(saved, editingId: note.id, userId: appState.currentUser?.user_id ?? "")
             }
+        }
+        // Task 20261105-push-prompt-sheet: the ask is counted by the coordinator
+        // at presentation, so any dismissal (swipe included) acts as "Not now".
+        .sheet(item: Binding(
+            get: { pushPrompt.state == .hidden ? nil : pushPrompt.state },
+            set: { if $0 == nil { pushPrompt.dismiss() } }
+        )) { kind in
+            PushPromptSheet(
+                kind: kind,
+                onPrimary: { handlePushPromptPrimary(kind) },
+                onSecondary: { pushPrompt.dismiss() }
+            )
         }
         .alert("Could Not Open Note", isPresented: Binding(
             get: { friendNoteLoadError != nil },
