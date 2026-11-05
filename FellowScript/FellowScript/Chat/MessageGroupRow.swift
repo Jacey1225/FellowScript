@@ -373,6 +373,7 @@ struct MessageGroupRow: View {
                             .font(.inter(Theme.fontBody))
                             .foregroundColor(Theme.parchment)
                             .multilineTextAlignment(.leading)
+                            .fixedSize(horizontal: false, vertical: true)
                             .padding(.horizontal, 14)
                             .padding(.bottom, 10)
                             .padding(.top, isMedia ? 6 : 0)
@@ -383,11 +384,16 @@ struct MessageGroupRow: View {
                     .font(.inter(Theme.fontBody))
                     .foregroundColor(Theme.parchment)
                     .multilineTextAlignment(.leading)
+                    // Reply body must never clip: claim full wrapped height
+                    // (the quote's fixedSize row otherwise squeezes it to one
+                    // line with a tail ellipsis).
+                    .fixedSize(horizontal: false, vertical: true)
                     .padding(.horizontal, 14)
                     .padding(.vertical, 10)
             }
         }
         }
+        .fixedSize(horizontal: false, vertical: true)
         .background(
             group.isOutgoing
                 ? Theme.gold.opacity(0.18)
