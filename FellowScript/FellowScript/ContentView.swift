@@ -251,6 +251,7 @@ struct ContentView: View {
         .onChange(of: appState.pendingChatContact) { _, target in
             if target != nil { selectedTab = .chat }
         }
+        .modifier(AskAiOpensChatTab(pending: appState.pendingAskAiOpen, selectedTab: $selectedTab))
         // Announcements free-limit card ("See plans") -> Account tab.
         .onReceive(NotificationCenter.default.publisher(for: .fsOpenSubscriptionPlans)) { _ in
             selectedTab = .account
@@ -503,5 +504,18 @@ struct ContentView: View {
         .padding(.horizontal, 16)
         .padding(.top, 8)
         .transition(.move(edge: .top).combined(with: .opacity))
+    }
+}
+
+/// Ask AI deep link: jump to the Chat tab. A separate modifier keeps
+/// ContentView.body within the type-checker's budget.
+private struct AskAiOpensChatTab: ViewModifier {
+    let pending: Bool
+    @Binding var selectedTab: ContentView.Tab
+
+    func body(content: Content) -> some View {
+        content.onChange(of: pending) { _, open in
+            if open { selectedTab = .chat }
+        }
     }
 }

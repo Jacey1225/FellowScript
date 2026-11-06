@@ -25,7 +25,7 @@ export default function MessagingPanel() {
     threadView, threadMessages, threadPage, threadLoad, restoredDraft,
     onCloseThread, onRetryThread, onLoadOlderThread, onSendThreadMessage,
     onStartThread, onDeleteMessage, onRestoreMessage,
-    onAddGroupMembers, onRetryMessage, onToggleReaction, pins,
+    onAddGroupMembers, onRetryMessage, onToggleReaction, pins, askAi,
   } = useMessagingPanel() || {};
   const inThread = !!threadView;
 
@@ -53,6 +53,7 @@ export default function MessagingPanel() {
         onCreateGroup={onCreateGroup} onUpdateGroup={onUpdateGroup} onLeaveGroup={onLeaveGroup}
         loaded={loaded} onLoad={onLoad}
         showAgents={false}
+        askAi={askAi}
       />
       {currentContact && createPortal(
         <div

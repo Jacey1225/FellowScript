@@ -683,6 +683,14 @@ def create_tables(cur):
     cur.execute("ALTER TABLE agents ALTER COLUMN role TYPE TEXT")
     cur.execute("ALTER TABLE agents ADD COLUMN IF NOT EXISTS name VARCHAR(255) DEFAULT ''")
     cur.execute("ALTER TABLE agents ADD COLUMN IF NOT EXISTS enabled BOOLEAN NOT NULL DEFAULT TRUE")
+    # Task 20261106-remove-agents-ask-ai: marks the user's single canonical
+    # ("Ask AI") agent. Additive; the merge script (scripts/merge_agents_to_default.py)
+    # and AgentManager.ensure_default_agent both set it. At most one per user.
+    cur.execute("ALTER TABLE agents ADD COLUMN IF NOT EXISTS is_default BOOLEAN NOT NULL DEFAULT FALSE")
+    cur.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_agents_one_default_per_user "
+        "ON agents (user_id) WHERE is_default"
+    )
 
     cur.execute(
         "CREATE TABLE IF NOT EXISTS subscriptions"

@@ -22,6 +22,7 @@ import psycopg2
 
 from backend import content_store
 from backend.errors import SaveFailedError
+from backend.interactions import flags
 from backend.interactions.agent_chats_config import get_agent_chats_config
 
 logger = logging.getLogger(__name__)
@@ -32,6 +33,18 @@ _COLS = "_id, title, created_at, last_message_at"
 
 class ChatLimitError(Exception):
     """The agent already has ``max_chats_per_agent`` chats."""
+
+
+ASK_AI_FLAG = "ask_ai_default_agent"
+
+
+def ask_ai_enabled(user_id: str) -> bool:
+    return flags.is_enabled(ASK_AI_FLAG, user_id)
+
+
+def multi_chat_enabled(user_id: str) -> bool:
+    """Multi-chat is on via its own flag or implied by Ask AI."""
+    return flags.is_enabled("agent_chats", user_id) or ask_ai_enabled(user_id)
 
 
 def default_chat_id(user_id: str, agent_id: str) -> str:
@@ -136,10 +149,14 @@ class AgentChatStore:
         self.ensure_default_chat(agent_id)
         cur = self.db.cur
         try:
-            cur.execute(
-                "SELECT COUNT(*) FROM agent_chats WHERE user_id = %s AND agent_id = %s",
-                (self.user_id, agent_id),
-            )
+            if ask_ai_enabled(self.user_id):
+                # One default AI: the cap is on the user's total chats.
+                cur.execute("SELECT COUNT(*) FROM agent_chats WHERE user_id = %s", (self.user_id,))
+            else:
+                cur.execute(
+                    "SELECT COUNT(*) FROM agent_chats WHERE user_id = %s AND agent_id = %s",
+                    (self.user_id, agent_id),
+                )
             if cur.fetchone()[0] >= get_agent_chats_config().max_chats_per_agent:
                 self.db.conn.rollback()
                 raise ChatLimitError()

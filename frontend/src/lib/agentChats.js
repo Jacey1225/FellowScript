@@ -3,6 +3,33 @@
 
 export const DEFAULT_MAX_CHATS = 50;
 
+// Ask AI (flag `ask_ai_default_agent`): one server-owned assistant. The client
+// never learns a real agent id; this constant is only a local handle so the
+// shared chat code has something to hang an "active assistant" on. Every
+// request in Ask AI mode goes to the agent-id-free /ask-ai routes.
+export const ASK_AI_ID = 'ask-ai';
+export const ASK_AI_LABEL = 'Ask AI';
+export const ASK_AI_AGENT = Object.freeze({ id: ASK_AI_ID, name: ASK_AI_LABEL });
+export const ASK_AI_CHAT_LIMIT_MESSAGE = "You've reached the chat limit for Ask AI.";
+
+// Last successful Ask AI chat list, so a failed refresh (or a cold start with
+// the network down) can still show saved chats instead of a blank or invented
+// list. Best-effort localStorage; never read as authoritative.
+export function askAiCacheKey(userId) { return `askAiChats.${userId}`; }
+
+export function readAskAiCache(userId) {
+  try {
+    const raw = window.localStorage.getItem(askAiCacheKey(userId));
+    const list = raw ? JSON.parse(raw) : null;
+    return Array.isArray(list) ? list : [];
+  } catch { return []; }
+}
+
+export function writeAskAiCache(userId, chats) {
+  try { window.localStorage.setItem(askAiCacheKey(userId), JSON.stringify(chats)); }
+  catch { /* storage unavailable: cache is best-effort */ }
+}
+
 export function lastChatKey(userId, agentId) {
   return `agentLastChat.${userId}.${agentId}`;
 }
@@ -55,8 +82,9 @@ export class AgentChatHttpError extends Error {
   }
 }
 
-export function createChatErrorMessage(err, agentName, max = DEFAULT_MAX_CHATS) {
+export function createChatErrorMessage(err, agentName, max = DEFAULT_MAX_CHATS, askAi = false) {
   if (err?.status === 409 && err?.code === 'chat_limit') {
+    if (askAi) return ASK_AI_CHAT_LIMIT_MESSAGE;
     return `You've reached the limit of ${max} chats with ${agentName}.`;
   }
   if (err?.status === 429) return 'Slow down a moment, then try again.';

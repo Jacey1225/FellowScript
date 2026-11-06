@@ -38,7 +38,7 @@ bookmarks              → users
 notes *                → users, groups
 messages               → users, groups
 devotions †            → users (creator_id)
-agents                 → users
+agents                 → users (is_default BOOLEAN, one canonical "Ask AI" row per user via partial unique idx_agents_one_default_per_user; flag ask_ai_default_agent; old rows are archived, never dropped)
 subscriptions          → users
 device_tokens          → users
 user_activity          → users
@@ -57,6 +57,12 @@ error_detection_reports → error_detections
 > group-scoped. `participants`/`verses`/`prompts` are `TEXT[]` columns on
 > this same row, not separate child tables.
 
+> **‡ agents_archive** (task 20261106-remove-agents-ask-ai) is created only by the operator-run
+> `api/scripts/merge_agents_to_default.py` (never at boot). The merge re-points `agent_chats`,
+> `agent_messages` and `agent_heartbeats` onto each user's canonical (`agents.is_default`) row and
+> leaves the retired `agents` rows in place, unreferenced: deleting one would cascade-delete its
+> chats, messages and heartbeats. The `agents` table and its columns are not dropped.
+
 > **users.subscription_id** is an FK to `subscriptions`, added via `ALTER
 > TABLE` *after* `subscriptions` exists (to avoid a circular create-time FK)
 > — the reverse direction of every other Level-1 relationship above, same
@@ -73,6 +79,7 @@ agent_heartbeats       → agents, users
 agent_messages         → agents, users, agent_chats (chat_id, nullable = legacy)
 agent_chats            → agents, users (flag agent_chats; DDL module schema_ddl/agent_chats.py; summary TEXT + summary_through_ts TIMESTAMPTZ added for flag agent_chat_memory, server-side only)
 subscription_request   → subscriptions, users
+agents_archive ‡       → (no FK) operator-created by api/scripts/merge_agents_to_default.py, NOT a boot DDL table: copy of every pre-merge agents row (role, name, enabled, was_default, merged_into)
 ```
 
 ---

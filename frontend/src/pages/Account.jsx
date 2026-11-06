@@ -30,6 +30,7 @@ import { isDesktopApp } from '../lib/desktopScope.js';
 import { API } from '../config.js';
 import { useDeclineFriendRequest } from '../hooks/useDeclineFriendRequest.js';
 import { handleBlockedResponse } from '../lib/upgradePrompt.js';
+import { useCapabilities } from '../hooks/useCapabilities.js';
 
 dayjs.extend(utc);
 
@@ -215,7 +216,12 @@ export default function Account() {
   const [blockedLoading,  setBlockedLoading]  = useState(false);
   const [unblockingId,    setUnblockingId]    = useState(null);
 
-  // Agents
+  // Flag `ask_ai_default_agent` (capability, fails closed): one built-in AI, no
+  // agent list/create/rename/delete/toggle and no agent picker for devotions.
+  const caps  = useCapabilities();
+  const askAi = !!caps?.isEnabled?.('ask_ai_default_agent');
+
+  // Agents (legacy, flag off)
   const [agents,        setAgents]        = useState([]);
   const [agentsLoading, setAgentsLoading] = useState(false);
   const [agentModal,    setAgentModal]    = useState(false);
@@ -310,6 +316,18 @@ export default function Account() {
   const loadAgents = useCallback(async () => {
     if (!user) return;
     setAgentsLoading(true);
+    if (askAi) {
+      // Agent-id-free, user-wide devotion list. A failed load keeps what is
+      // already shown rather than replacing it with an empty list.
+      try {
+        const r = await fetch(`${API}/ask-ai/${user.user_id}/heartbeats`);
+        if (r.ok) setEvents(await r.json());
+        else message.error('Could not load your scheduled devotions.');
+      } catch {
+        message.error('Could not load your scheduled devotions. Check your connection and try again.');
+      } finally { setAgentsLoading(false); }
+      return;
+    }
     try {
       const res = await fetch(`${API}/agent/${user.user_id}`);
       if (res.ok) {
@@ -331,7 +349,7 @@ export default function Account() {
         setEvents(hbResults.flat());
       }
     } catch {} finally { setAgentsLoading(false); }
-  }, [user]);
+  }, [user, askAi]);
 
   const loadUsage = useCallback(async () => {
     if (!user) return;
@@ -466,7 +484,7 @@ export default function Account() {
     setEvWeekdays([]);
     setEvMonthDays([]);
     setEvTime(dayjs());
-    setEvAgentId(agents[0]?.id || '');
+    setEvAgentId(askAi ? '' : (agents[0]?.id || ''));
     setEvPrompt('');
     setEvGroupId('');
     setEvModal(true);
@@ -489,7 +507,7 @@ export default function Account() {
     const timeStr = nonNull[0] || '09:00';
     const [h, m]  = timeStr.split(':').map(Number);
     setEvTime(dayjs.utc().hour(h).minute(m).local());
-    setEvAgentId(ev.agent_id || agents[0]?.id || '');
+    setEvAgentId(askAi ? '' : (ev.agent_id || agents[0]?.id || ''));
     setEvPrompt(ev.prompt || '');
     setEvGroupId(ev.group_id || '');
     setEvStep(recur === 'daily' ? 2 : 1);
@@ -497,7 +515,7 @@ export default function Account() {
   };
 
   const handleSaveEvent = async () => {
-    if (!evAgentId || !evPrompt.trim()) return;
+    if ((!askAi && !evAgentId) || !evPrompt.trim()) return;
     setEvSaving(true);
     try {
       const utcTime    = toUTCTime(evTime);
@@ -510,19 +528,19 @@ export default function Account() {
         // Update existing heartbeat
         const res = await fetch(
           `${API}/agent/${user.user_id}/${editingEvent._id}/update_heartbeats`,
-          { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...body, agent_id: evAgentId }) }
+          { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...body, agent_id: askAi ? (editingEvent.agent_id || '') : evAgentId }) }
         );
         if (res.ok) {
           setEvents(prev => prev.map(e =>
             e._id === editingEvent._id
-              ? { ...e, timestamps, prompt: evPrompt.trim(), agent_id: evAgentId, group_id: evGroupId || null }
+              ? { ...e, timestamps, prompt: evPrompt.trim(), agent_id: askAi ? e.agent_id : evAgentId, group_id: evGroupId || null }
               : e
           ));
           setEvModal(false);
         }
       } else {
         // Create new heartbeat
-        const res = await fetch(`${API}/agent/${user.user_id}/${evAgentId}/heartbeat`, {
+        const res = await fetch(askAi ? `${API}/ask-ai/${user.user_id}/heartbeat` : `${API}/agent/${user.user_id}/${evAgentId}/heartbeat`, {
           method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
         });
         if (res.status === 403) {
@@ -548,7 +566,7 @@ export default function Account() {
       restore: () => setEvents(prevEvents),
       commit: async () => {
         try {
-          await fetch(`${API}/agent/${user.user_id}/${event.agent_id}/heartbeat/${event._id}`, { method: 'DELETE' });
+          await fetch(askAi ? `${API}/ask-ai/${user.user_id}/heartbeat/${event._id}` : `${API}/agent/${user.user_id}/${event.agent_id}/heartbeat/${event._id}`, { method: 'DELETE' });
         } catch {}
       },
     });
@@ -856,7 +874,7 @@ export default function Account() {
     // Step 2: details
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-        {agents.length > 1 && (
+        {!askAi && agents.length > 1 && (
           <div>
             <Text style={{ fontFamily: "inherit", fontSize: '0.7rem', letterSpacing: '0.2em', textTransform: 'uppercase', color: 'rgba(200,134,26,0.55)', display: 'block', marginBottom: 6 }}>Agent</Text>
             <Select value={evAgentId} onChange={setEvAgentId} style={{ width: '100%' }}
@@ -926,7 +944,7 @@ export default function Account() {
     return [
       <Button key="back" onClick={() => setEvStep(evRecur === 'daily' ? 0 : 1)}>Back</Button>,
       <Button key="save" type="primary" loading={evSaving}
-        disabled={!evPrompt.trim() || !evAgentId}
+        disabled={!evPrompt.trim() || (!askAi && !evAgentId)}
         onClick={handleSaveEvent}>{editingEvent ? 'Update' : 'Save'}</Button>,
     ];
   };
@@ -1215,7 +1233,26 @@ export default function Account() {
           }
         </Card>
 
-        {/* Agents */}
+        {/* AI assistant (flag ask_ai_default_agent) / Agents (legacy) */}
+        {askAi ? (
+          <Card style={{ ...CARD_STYLE, animationDelay: '0.32s', animation: 'fadeUp 0.55s ease forwards', opacity: 0 }}>
+            <Text className="fs-eyebrow" style={{ marginBottom: '0.8rem', display: 'block' }}>
+              AI assistant
+            </Text>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+              <div style={{ width: 36, height: 36, borderRadius: '50%', background: 'rgba(200,134,26,0.1)', border: '1px solid rgba(200,134,26,0.25)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                <RobotOutlined aria-hidden="true" style={{ color: 'var(--gold)', fontSize: '0.95rem' }} />
+              </div>
+              <Text style={{ fontFamily: "'Lora', serif", fontSize: '0.8rem', color: 'rgba(244,228,193,0.55)', flex: 1, minWidth: 180, lineHeight: 1.65 }}>
+                Ask AI is built in. Start a chat from Messages.
+              </Text>
+              <Button size="small" type="default" onClick={() => navigate('/reader')}
+                style={{ fontFamily: "'Lora', serif", minHeight: 32 }}>
+                Open Ask AI
+              </Button>
+            </div>
+          </Card>
+        ) : (
         <Card style={{ ...CARD_STYLE, animationDelay: '0.32s', animation: 'fadeUp 0.55s ease forwards', opacity: 0 }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.8rem' }}>
             <Text className="fs-eyebrow" style={{ marginBottom: 0 }}>
@@ -1285,6 +1322,7 @@ export default function Account() {
                 })
           }
         </Card>
+        )}
 
         {/* Events */}
         <Card style={{ ...CARD_STYLE, animationDelay: '0.38s', animation: 'fadeUp 0.55s ease forwards', opacity: 0 }}>
@@ -1294,7 +1332,7 @@ export default function Account() {
             </Text>
             <Button size="small" type="text" icon={<PlusOutlined />}
               onClick={openEventModal}
-              disabled={agents.length === 0}
+              disabled={!askAi && agents.length === 0}
               style={{ color: 'rgba(200,134,26,0.6)', fontSize: '0.7rem' }}>
               New scheduled devotion
             </Button>
@@ -1306,10 +1344,10 @@ export default function Account() {
             ? <Spin size="small" />
             : events.length === 0
               ? <Text style={{ fontFamily: "inherit", fontSize: '0.8rem', color: 'rgba(244,228,193,0.28)' }}>
-                  {agents.length === 0 ? 'Create an agent in the Agents section first to schedule a devotion.' : 'No scheduled devotions yet. Add one to wake up to a devotion each day.'}
+                  {!askAi && agents.length === 0 ? 'Create an agent in the Agents section first to schedule a devotion.' : 'No scheduled devotions yet. Add one to wake up to a devotion each day.'}
                 </Text>
               : events.map(ev => {
-                  const agent = agents.find(a => a.id === ev.agent_id);
+                  const agent = askAi ? null : agents.find(a => a.id === ev.agent_id);
                   return (
                     <div key={ev._id} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.65rem 0', borderBottom: '1px solid rgba(200,134,26,0.08)' }}>
                       <div style={{ width: 30, height: 30, borderRadius: '50%', background: 'rgba(200,134,26,0.1)', border: '1px solid rgba(200,134,26,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
@@ -1335,7 +1373,8 @@ export default function Account() {
           }
         </Card>
 
-        {/* New agent modal */}
+        {/* New agent modal (legacy, flag off) */}
+        {!askAi && (
         <Modal
           open={agentModal}
           title={<Text style={{ fontFamily: 'inherit', color: 'var(--parchment)' }}>New Agent</Text>}
@@ -1355,6 +1394,7 @@ export default function Account() {
             style={{ fontSize: '0.82rem' }}
           />
         </Modal>
+        )}
 
         {/* New event modal */}
         <Modal

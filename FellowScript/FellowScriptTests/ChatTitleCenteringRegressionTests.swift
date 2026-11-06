@@ -179,7 +179,10 @@ final class ChatTitleCenteringRegressionTests: XCTestCase {
     func test_source_header_addButtonAccessibilityLabelUnchanged() throws {
         let header = try headerSource()
         XCTAssertTrue(
-            header.contains(#".accessibilityLabel(selectedSegment == 0 ? "Add friend" : selectedSegment == 1 ? "New group" : "New agent")"#),
+            // Task 20261106-remove-agents-ask-ai: the third segment's label is
+            // now flag-aware ("New AI chat" with ask_ai_default_agent on); the
+            // flag-off label is still exactly "New agent".
+            header.contains(#".accessibilityLabel(selectedSegment == 0 ? "Add friend" : selectedSegment == 1 ? "New group" : (askAiOn ? "New AI chat" : "New agent"))"#),
             "the add button's segment-dependent accessibility label must be unaffected by the centering change"
         )
     }

@@ -230,7 +230,11 @@ final class AgentChatViewModel: ObservableObject {
         self.agentId = agentId
         self.userId  = userId
         sessionEnded = false   // a fresh attempt; a rejection flips it back
-        var urlString = "\(wsBase)/agent/ws/\(agentId)/\(userId)"
+        // Task 20261106-remove-agents-ask-ai: the Ask AI handle uses the
+        // agent-id-free socket; the server resolves the default agent.
+        var urlString = agentId == FSAgent.askAiId
+            ? "\(wsBase)/ask-ai/ws/\(userId)"
+            : "\(wsBase)/agent/ws/\(agentId)/\(userId)"
         if let chat = activeChatId,
            let q = chat.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) {
             urlString += "?chat_id=\(q)"
@@ -587,7 +591,7 @@ struct AgentChatView: View {
         .task {
             let uid = appState.currentUser?.user_id ?? ""
             await vm.load(service: appState.service, agentId: agent.id, userId: uid,
-                          chatsEnabled: appState.capabilities.isEnabled("agent_chats"))
+                          chatsEnabled: agent.isAskAi || appState.capabilities.isEnabled("agent_chats"))
             // Task 20260908-chat-scroll-to-bottom-on-open: unconditional
             // initial scroll -- same root cause as ChatThreadView.swift
             // (`.onChange(of: vm.messages.count)` above never fires when
@@ -616,7 +620,7 @@ struct AgentChatView: View {
         }
         .sheet(isPresented: $showChatsSheet) {
             AgentChatsSheet(
-                agentName: agent.displayLabel,
+                agentName: agent.isAskAi ? "Your AI chats" : agent.displayLabel,
                 chats: vm.chats,
                 activeChatId: vm.activeChatId,
                 isLoading: vm.isLoadingChats,
@@ -682,7 +686,7 @@ struct AgentChatView: View {
                     }
                     .frame(minWidth: 44, minHeight: 44)
                     .contentShape(Rectangle())
-                    .accessibilityLabel("Chats with \(agent.displayLabel)")
+                    .accessibilityLabel(agent.isAskAi ? "Your AI chats" : "Chats with \(agent.displayLabel)")
                     .accessibilityHint("Opens list of your chats")
 
                     RoundIconButton(systemIcon: "square.and.pencil") {
@@ -693,7 +697,7 @@ struct AgentChatView: View {
                     .contentShape(Rectangle())
                     .opacity(vm.isCreatingChat ? 0.45 : 1)
                     .disabled(vm.isCreatingChat)
-                    .accessibilityLabel("New chat with \(agent.displayLabel)")
+                    .accessibilityLabel(agent.isAskAi ? "New AI chat" : "New chat with \(agent.displayLabel)")
                 }
             }
         }
@@ -717,7 +721,7 @@ struct AgentChatView: View {
             }
             .frame(width: 56, height: 56)
             .accessibilityHidden(true)
-            Text("Ask \(agent.displayLabel) anything")
+            Text(agent.isAskAi ? "Ask AI is ready. Ask anything." : "Ask \(agent.displayLabel) anything")
                 .font(.system(size: Theme.fontSM))
                 .foregroundColor(Theme.textSecondary)
         }

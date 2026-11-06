@@ -68,6 +68,8 @@ The delete endpoint manually removes owned notes, nulls message and devotion aut
 
 ### Scheduled devotions (internal: Events / heartbeats)
 
+> With flag `ask_ai_default_agent` on (task 20261106-remove-agents-ask-ai) the Account page has no agents section: no create, rename, enable/disable or delete, and no agent picker when setting up a devotion. An "AI assistant" card points to Ask AI in Messages, and "New scheduled devotion" is always enabled. Devotions run against the user's single default AI and the push title is the fixed "Scheduled Devotion". See [Ask AI](ask-ai.md).
+
 User-facing term (renamed from "Events" / "Agent events"): "scheduled devotions". Each row lists one
 scheduled devotion (internal name: agent heartbeat): every day at the chosen time your AI study
 partner writes a devotion and saves it as a note, even when the app is closed. Free plan includes 1 in total;
