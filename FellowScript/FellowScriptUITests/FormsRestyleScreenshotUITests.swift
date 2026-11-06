@@ -60,8 +60,6 @@ final class FormsRestyleScreenshotUITests: XCTestCase {
             if app.textFields["Username field"].exists { return }
             if app.buttons["Get Started"].waitForExistence(timeout: 8) {
                 tap(app.buttons["Get Started"], app)
-                tap(onboardingButton(app, "Skip →"), app)
-                tap(onboardingButton(app, "Begin the Tour →"), app)
                 tap(app.buttons["Skip"], app)
             }
             tap(onboardingButton(app, "Sign In"), app)

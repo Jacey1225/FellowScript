@@ -147,8 +147,6 @@ final class BibleNavDropdownUITests: XCTestCase {
             }
 
             waitHittableThenTap(app.buttons["Get Started"], timeout: 10)
-            waitHittableThenTap(onboardingButton(containing: "Skip →"))
-            waitHittableThenTap(onboardingButton(containing: "Begin the Tour →"))
             waitHittableThenTap(app.buttons["Skip"])
             waitHittableThenTap(onboardingButton(containing: "Sign In"))
 

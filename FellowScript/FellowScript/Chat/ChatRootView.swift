@@ -170,15 +170,29 @@ struct ChatRootView: View {
         }
         .sheet(item: $activeAgent) { agent in
             AgentChatView(agent: agent)
+                .onboardingCoach(surfaces: [.agentChatSheet])
+                .onDisappear { OnboardingEngine.shared.surfaceDismissed(.agentChatSheet) }
         }
         .sheet(isPresented: $showAddFriend) {
             AddFriendSheet { username in
                 let uid = appState.currentUser?.user_id ?? ""
                 Task {
-                    try? await appState.service.sendFriendRequest(userId: uid, username: username)
+                    do {
+                        try await appState.service.sendFriendRequest(userId: uid, username: username)
+                        // Onboarding: the request was really sent (server accepted it).
+                        OnboardingEngine.shared.report(.friendRequestSent)
+                    } catch {
+                        // Previously swallowed; outside onboarding this stays silent.
+                        OnboardingEngine.shared.reportFailure(.friendRequestSent, message: "We couldn't send that request. Try again.")
+                    }
                 }
             }
+            .onboardingCoach(surfaces: [.addFriendSheet])
+            .onAppear { OnboardingEngine.shared.report(.addFriendSheetOpened) }
+            .onDisappear { OnboardingEngine.shared.surfaceDismissed(.addFriendSheet) }
         }
+        // Task 20261105-onboarding-redo: coach signals and cue-driven segment.
+        .modifier(ChatOnboardingRouting(selectedSegment: $selectedSegment))
         .sheet(item: $profileContact) { contact in
             ProfileView(viewerId: appState.currentUser?.user_id ?? "", targetId: contact.id,
                         service: appState.service)
@@ -487,6 +501,7 @@ struct ChatRootView: View {
                     .overlay(Image(systemName: "plus").font(.system(size: 16, weight: .bold)).foregroundColor(Color(hex: "#24170A")))
                     .shadow(color: .black.opacity(0.4), radius: 10, x: 0, y: 6)
             }
+            .onboardingAnchor(selectedSegment == 0 ? .friendsPlusButton : nil)
             .accessibilityLabel(selectedSegment == 0 ? "Add friend" : selectedSegment == 1 ? "New group" : "New agent")
         }
         .padding(.horizontal, 20)
@@ -523,6 +538,7 @@ struct ChatRootView: View {
                 .clipShape(Capsule())
         }
         .buttonStyle(.plain)
+        .onboardingAnchor(index == 2 ? .agentsSegment : nil)
         .accessibilityLabel(label)
         .accessibilityAddTraits(isActive ? .isSelected : [])
     }
@@ -830,6 +846,7 @@ struct ChatRootView: View {
                         .listRowSeparator(.hidden)
                         .listRowInsets(EdgeInsets(top: 5, leading: 20, bottom: 5, trailing: 20))
                         .onTapGesture { activeAgent = agent }
+                        .onboardingAnchor(agent.id == filteredAgents.first?.id ? .studyPartnerRow : nil)
                         .accessibilityLabel("Chat with agent: \(agent.displayLabel)")
                 }
                 .listStyle(.plain)
@@ -1556,3 +1573,28 @@ struct AddGroupSheet: View {
     }
 }
 
+
+/// Walkthrough hooks for the Chat tab: report the Agents segment being shown and
+/// show the segment each cue is about (an already-satisfied cue advances).
+private struct ChatOnboardingRouting: ViewModifier {
+    @Binding var selectedSegment: Int
+    @ObservedObject private var onboarding = OnboardingEngine.shared
+
+    func body(content: Content) -> some View {
+        content
+            .onChange(of: selectedSegment) { _, seg in
+                if seg == 2 { OnboardingEngine.shared.report(.agentsSegmentShown) }
+            }
+            .onChange(of: onboarding.currentCue?.id) { _, id in route(id) }
+            .onAppear { route(onboarding.currentCue?.id) }
+    }
+
+    private func route(_ cueID: String?) {
+        switch cueID {
+        case "friend.open": if selectedSegment != 0 { selectedSegment = 0 }
+        case "learn.agents": if selectedSegment == 2 { OnboardingEngine.shared.report(.agentsSegmentShown) }
+        case "learn.open": if selectedSegment != 2 { selectedSegment = 2 }
+        default: break
+        }
+    }
+}

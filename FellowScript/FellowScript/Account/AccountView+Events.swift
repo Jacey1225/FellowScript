@@ -112,13 +112,18 @@ extension AccountView {
                 guard !vm.agents.isEmpty else { return }
                 // Explicit user action (scheduling a devotion): lifts any
                 // first-run "Maybe later" deferral (task 20261008-post-tour-prompts).
-                PostTourPromptsStore().clearPushDeferral()
-                appState.requestPushNotifications()
+                // Not during the first-run walkthrough (task 20261105-onboarding-redo):
+                // the final push prompt owns the system dialog.
+                if !OnboardingEngine.shared.blocksPostTourPrompts {
+                    PostTourPromptsStore().clearPushDeferral()
+                    appState.requestPushNotifications()
+                }
                 activeSheet = .newEvent
             }) {
                 ghostLabelPill(icon: "plus", "New scheduled devotion", color: vm.agents.isEmpty ? Theme.textMuted : Theme.gold)
             }
             .disabled(vm.agents.isEmpty)
+            .onboardingAnchor(.newDevotionButton)
             .accessibilityLabel("Create new scheduled devotion")
         }
         .padding(.horizontal, 18).padding(.vertical, 16)

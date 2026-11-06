@@ -214,8 +214,6 @@ final class AccountUITests: XCTestCase {
 
             // ── Onboarding (welcome -> survey -> bridge -> tour -> cta) ────
             waitHittableThenTap(app.buttons["Get Started"], timeout: 10)
-            waitHittableThenTap(onboardingButton(containing: "Skip →"))
-            waitHittableThenTap(onboardingButton(containing: "Begin the Tour →"))
             waitHittableThenTap(app.buttons["Skip"])
             waitHittableThenTap(onboardingButton(containing: "Sign In"))
 

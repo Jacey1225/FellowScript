@@ -82,6 +82,7 @@ extension NotesListView {
                         .contentShape(Circle())
                 }
                 .buttonStyle(.plain)
+                .onboardingAnchor(.newNoteButton)
                 .accessibilityLabel("Create new note")
             }
         }
@@ -131,6 +132,7 @@ extension NotesListView {
                     .overlay(Image(systemName: "plus").font(.system(size: 16, weight: .bold)).foregroundColor(Color(hex: "#24170A")))
                     .shadow(color: .black.opacity(0.4), radius: 10, x: 0, y: 6)
             }
+            .onboardingAnchor(.newNoteButton)
             .accessibilityLabel("Create new note")
         }
         .padding(.horizontal, 20)

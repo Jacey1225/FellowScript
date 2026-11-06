@@ -94,6 +94,8 @@ struct AccountView: View {
 
     @State var showBlockedUsers = false
     @State var showNotificationSettings = false
+    @State var showReplaySurvey = false
+    @ObservedObject var onboardingEngine = OnboardingEngine.shared
     // Task 20261105-push-prompt-sheet: true only while iOS reports .provisional
     // (quiet delivery). Re-read from UNUserNotificationCenter, never persisted.
     @State var pushIsProvisional = false
@@ -191,6 +193,9 @@ struct AccountView: View {
                         // ── Notifications (task 20261012-notification-settings) ──
                         notificationsSection
 
+                        // ── Replay onboarding (task 20261105-onboarding-redo) ──
+                        replayOnboardingSection
+
                         // ── Legal ───────────────────────────────────────────────
                         legalSection
 
@@ -221,6 +226,7 @@ struct AccountView: View {
                 .onChange(of: upgradeCenter.scrollToSubscription) { _, wanted in
                     if wanted { scrollToSubscriptionSection(scrollProxy) }
                 }
+                .onboardingScroll(scrollProxy)
                 .onAppear {
                     if upgradeCenter.scrollToSubscription { scrollToSubscriptionSection(scrollProxy) }
                     consumePendingFriendRequestsOpen(scrollProxy)
@@ -252,6 +258,14 @@ struct AccountView: View {
         .fsUndoSnackbar(message: $undoMessage,
                         onUndo: { undoRestore?(); undoCommit = nil; undoRestore = nil },
                         onExpire: { undoCommit?(); undoCommit = nil; undoRestore = nil })
+        // Replay: survey, then the walkthrough over this live app. Never re-arms the
+        // post-tour prompts and never touches hasCompletedOnboarding.
+        .fullScreenCover(isPresented: $showReplaySurvey) {
+            OnboardingSurveyView(onFinish: { picks in
+                showReplaySurvey = false
+                OnboardingEngine.shared.startReplay(picks: picks)
+            }, onCancel: { showReplaySurvey = false })
+        }
         .sheet(isPresented: $showDeleteSheet) {
             DeleteAccountSheet(username: appState.currentUser?.username ?? "",
                                userId: appState.currentUser?.user_id ?? "",
@@ -295,7 +309,8 @@ struct AccountView: View {
                     Task { await vm.createAgent(role: role) }
                 }
             case .newEvent:
-                EventSetupSheet(agents: vm.agents, groups: vm.groups) { agentId, prompt, timestamps, groupId, notesPublic, idempotencyKey in
+                EventSetupSheet(agents: vm.agents, groups: vm.groups,
+                                starterPrompt: OnboardingEngine.shared.starterPromptIfActive) { agentId, prompt, timestamps, groupId, notesPublic, idempotencyKey in
                     Task { await vm.createEvent(agentId: agentId, prompt: prompt, timestamps: timestamps, groupId: groupId, notesPublic: notesPublic, idempotencyKey: idempotencyKey) }
                 }
             case .editEvent(let event):

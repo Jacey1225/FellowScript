@@ -15,6 +15,8 @@ struct ContentView: View {
     // evaluated on .active); this view supplies its suppression inputs.
     @EnvironmentObject private var pushPrompt: PushPromptCoordinator
     @State private var postTourSeenThisSession = false
+    // Task 20261105-onboarding-redo: the hands-on walkthrough runs over this view.
+    @ObservedObject private var onboarding = OnboardingEngine.shared
     @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var selectedTab: Tab = .home
@@ -260,6 +262,45 @@ struct ContentView: View {
         // LoadingScreenView / StartupCoordinator).
         .motionAwareAnimation(.easeOut(duration: 0.35), value: startup.isReady, reduceMotion: reduceMotion)
         .tint(Theme.gold)
+        // Task 20261105-onboarding-redo: coach card + spotlight over the live app
+        // (sheets host their own), then the recap. The recap sits BEFORE the
+        // existing push and subscribe prompts (they wait on `blocksPostTourPrompts`).
+        .onboardingCoach(surfaces: WorkspaceLayoutMode.resolve(sizeClass: horizontalSizeClass,
+                                                               flagEnabled: WorkspaceLayout.isFeatureEnabled()) == .workspace
+                         ? [.root] : [.root, .accountScreen])
+        .overlay {
+            if onboarding.isRecap && walkthroughReady {
+                OnboardingRecapView().transition(.opacity)
+            }
+        }
+        .motionAwareAnimation(.easeInOut(duration: 0.25), value: onboarding.isRecap, reduceMotion: reduceMotion)
+        .task(id: walkthroughReady) {
+            guard walkthroughReady else { return }
+            onboarding.configure(service: appState.service, userId: appState.currentUser?.user_id ?? "")
+            // Signed in and ready: start a saved first-run flow (no-op otherwise).
+            onboarding.startIfPending()
+            routeOnboarding()
+        }
+        .onChange(of: onboarding.currentCue?.id) { _, _ in routeOnboarding() }
+    }
+
+    /// Main screen ready, signed in, no blocking cover: the walkthrough may run.
+    private var walkthroughReady: Bool {
+        hasCompletedOnboarding && appState.isAuthenticated && startup.isReady
+            && !appState.termsReacceptRequired && !appState.needsProfileCompletion
+    }
+
+    /// Phone: show the tab the current cue is about. (iPad routes in WorkspaceView.)
+    private func routeOnboarding() {
+        guard walkthroughReady, let dest = onboarding.currentCue?.destination else { return }
+        guard WorkspaceLayoutMode.resolve(sizeClass: horizontalSizeClass,
+                                          flagEnabled: WorkspaceLayout.isFeatureEnabled()) == .phoneTabs else { return }
+        switch dest {
+        case .account: selectedTab = .account
+        case .chat:    selectedTab = .chat
+        case .notes:   selectedTab = .notes
+        case .bible:   selectedTab = .bible
+        }
     }
 
     /// Friend / group / verse links present only on a ready, signed-in main screen
@@ -294,6 +335,8 @@ struct ContentView: View {
             loadingScreen: !startup.isReady,
             otherPresentationActive: !appState.isAuthenticated
                 || !hasCompletedOnboarding
+                || onboarding.isActive
+                || onboarding.blocksPostTourPrompts
                 || appState.termsReacceptRequired
                 || appState.needsProfileCompletion
                 || appState.pendingInviteToken != nil
@@ -304,7 +347,9 @@ struct ContentView: View {
     }
 
     private var canPresentPostTourPrompts: Bool {
-        hasCompletedOnboarding && appState.isAuthenticated && startup.isReady
+        // Walkthrough, add-a-friend and recap finish first (task 20261105-onboarding-redo).
+        !onboarding.blocksPostTourPrompts
+        && hasCompletedOnboarding && appState.isAuthenticated && startup.isReady
             && !appState.termsReacceptRequired && !appState.needsProfileCompletion
             && appState.pendingInviteToken == nil
     }

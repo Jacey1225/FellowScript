@@ -32,6 +32,35 @@ extension AccountView {
     }
 
     /// Task 20261012-notification-settings: entry row to the Notifications sub-page.
+    /// Task 20261105-onboarding-redo: replay the guided walkthrough. Hidden while one is running.
+    @ViewBuilder var replayOnboardingSection: some View {
+        if !OnboardingEngine.shared.isActive && !OnboardingEngine.shared.blocksPostTourPrompts {
+            VStack(alignment: .leading, spacing: Theme.spacingSM) {
+                sectionLabel("Guided tour")
+                Button(action: { showReplaySurvey = true }) {
+                    HStack {
+                        Label("Replay onboarding", systemImage: "play.circle")
+                            .font(.system(size: Theme.fontBody))
+                            .foregroundColor(Theme.parchment)
+                        Spacer()
+                        Image(systemName: "chevron.right")
+                            .font(.caption)
+                            .foregroundColor(Theme.textMuted)
+                    }
+                    .frame(minHeight: 44)
+                    .contentShape(Rectangle())
+                }
+                .accessibilityLabel("Replay onboarding")
+                .accessibilityHint("Pick what you want help with and walk through it again")
+                Text("Walk through the parts of the app you want help with, step by step.")
+                    .font(.system(size: Theme.fontXS))
+                    .foregroundColor(Theme.textMuted)
+            }
+            .padding(.horizontal, 18).padding(.vertical, 16)
+            .glassCard(cornerRadius: 20)
+        }
+    }
+
     var notificationsSection: some View {
         VStack(alignment: .leading, spacing: Theme.spacingSM) {
             sectionLabel("Notifications")
@@ -46,6 +75,7 @@ extension AccountView {
                         .foregroundColor(Theme.textMuted)
                 }
             }
+            .onboardingAnchor(.notificationSettingsRow)
             .accessibilityLabel("Notification settings")
             .accessibilityHint("Choose which push notifications you receive")
 

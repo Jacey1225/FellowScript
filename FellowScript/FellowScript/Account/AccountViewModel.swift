@@ -743,8 +743,11 @@ final class AccountViewModel: ObservableObject {
         do {
             try await service.addHeartbeat(userId: uid, agentId: agentId, heartbeat: hb, idempotencyKey: idempotencyKey)
             events.append(hb)
+            // Onboarding: the devotion is saved server-side.
+            OnboardingEngine.shared.report(.devotionSaved)
             await refreshUsage()
         } catch {
+            OnboardingEngine.shared.reportFailure(.devotionSaved, message: "We couldn't save your devotion. Try again.")
             // Free-tier cap: shared upgrade prompt instead of the inline alert.
             if UpgradePromptCenter.shared.present(for: error) { await refreshUsage(); return }
             // Other failure: don't add the event, tell the user.

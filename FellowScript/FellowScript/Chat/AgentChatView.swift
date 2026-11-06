@@ -302,6 +302,8 @@ final class AgentChatViewModel: ObservableObject {
             messages.append(reply)
         }
         refreshThinking()
+        // Onboarding: a real agent reply arrived over the socket.
+        if !reply.mine { OnboardingEngine.shared.report(.agentReplyReceived) }
     }
 
     private func handleSocketFailure(task t: URLSessionWebSocketTask?, handshakeStatus: Int?) {
@@ -581,6 +583,7 @@ struct AgentChatView: View {
             }
         }
         .preferredColorScheme(.dark)
+        .onAppear { OnboardingEngine.shared.report(.agentChatOpened) }
         .task {
             let uid = appState.currentUser?.user_id ?? ""
             await vm.load(service: appState.service, agentId: agent.id, userId: uid,

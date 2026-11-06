@@ -45,8 +45,6 @@ final class PushPromptSheetUITests: XCTestCase {
                 app.buttons.matching(NSPredicate(format: "label CONTAINS[c] %@", t)).firstMatch
             }
             tapWhenHittable(app.buttons["Get Started"])
-            tapWhenHittable(ob("Skip →"))
-            tapWhenHittable(ob("Begin the Tour →"))
             tapWhenHittable(app.buttons["Skip"])
             tapWhenHittable(ob("Sign In"))
             let user = app.textFields["Username field"]

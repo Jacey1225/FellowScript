@@ -67,8 +67,6 @@ final class NoteViewerBlurScreenshotUITests: XCTestCase {
             let usernameProbe = app.textFields["Username field"]
             let advance: [XCUIElement] = [
                 app.buttons["Get Started"],
-                app.buttons.matching(NSPredicate(format: "label CONTAINS[c] %@", "Skip →")).firstMatch,
-                app.buttons.matching(NSPredicate(format: "label CONTAINS[c] %@", "Begin the Tour →")).firstMatch,
                 app.buttons["Skip"],
                 app.buttons.matching(NSPredicate(format: "label CONTAINS[c] %@", "Sign In")).firstMatch,
             ]

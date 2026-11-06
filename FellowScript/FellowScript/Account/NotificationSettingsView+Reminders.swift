@@ -7,56 +7,45 @@ import SwiftUI
 
 struct NotificationRemindersCard: View {
     @ObservedObject var model: NotificationPreferencesModel
+    @ObservedObject private var onboarding = OnboardingEngine.shared
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
-        VStack(alignment: .leading, spacing: Theme.spacingSM) {
-            Text("DAILY REMINDERS")
-                .font(.system(size: Theme.fontXS, weight: .semibold))
-                .foregroundColor(Theme.textMuted)
-                .accessibilityAddTraits(.isHeader)
-            ForEach(Array(NotificationPushType.reminders.enumerated()), id: \.element.id) { idx, type in
-                if idx > 0 { Divider().background(Theme.borderGray) }
-                row(type)
+        FSFormCard(title: "Daily reminders") {
+            VStack(alignment: .leading, spacing: 0) {
+                ForEach(Array(NotificationPushType.reminders.enumerated()), id: \.element.id) { idx, type in
+                    if idx > 0 { Divider().overlay(Theme.borderGray) }
+                    row(type)
+                }
+                Text("Reminders arrive around your chosen time in your account time zone.")
+                    .font(.fsHelper)
+                    .foregroundColor(Theme.textSecondary)
+                    .padding(.top, 12)
             }
-            Text("Reminders arrive around your chosen time in your account time zone.")
-                .font(.system(size: Theme.fontXS))
-                .foregroundColor(Theme.textMuted)
-                .padding(.top, Theme.spacingXS)
         }
-        .padding(.horizontal, 18).padding(.vertical, 16)
-        .glassCard(cornerRadius: 20)
     }
 
     @ViewBuilder
     private func row(_ type: NotificationPushType) -> some View {
         let isOn = model.prefs[type.key] ?? false
-        VStack(alignment: .leading, spacing: Theme.spacingSM) {
-            Toggle(isOn: Binding(
-                get: { model.prefs[type.key] ?? false },
-                set: { v in Task { await model.set(type.key, v) } })) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(type.label).font(.system(size: Theme.fontBody)).foregroundColor(Theme.parchment)
-                    Text(type.detail).font(.system(size: Theme.fontXS)).foregroundColor(Theme.textMuted)
-                }
-            }
-            .tint(Theme.gold)
-            .disabled(model.savingKey != nil)
-            .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: isOn)
-            .accessibilityLabel("\(type.label) notifications")
-            .accessibilityHint(type.detail)
-
+        VStack(alignment: .leading, spacing: 0) {
+            NotificationToggleRow(type: type, model: model)
+                .onboardingAnchor(type.key == "prayer_reminder" ? .prayerToggle : nil)
             if isOn, let timeKey = PushReminderKeys.timeKey[type.key],
                let confirmed = model.times[timeKey],
                let date = PushReminderKeys.date(from: confirmed) {
-                timeRow(label: type.label, timeKey: timeKey, date: date)
+                timeTile(label: type.label, timeKey: timeKey, confirmed: confirmed, date: date,
+                         isPrayer: type.key == "prayer_reminder")
+                    .padding(.bottom, 12)
                     .transition(.opacity)
             }
         }
+        .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: isOn)
     }
 
-    private func timeRow(label: String, timeKey: String, date: Date) -> some View {
+    /// "Remind me at" time tile: field-recipe tile with the compact time picker.
+    private func timeTile(label: String, timeKey: String, confirmed: String, date: Date, isPrayer: Bool) -> some View {
         let picker = DatePicker("", selection: Binding(
             get: { date },
             set: { d in Task { await model.setTime(timeKey, PushReminderKeys.format(d)) } }),
@@ -66,22 +55,33 @@ struct NotificationRemindersCard: View {
             .tint(Theme.gold)
             .disabled(model.savingKey != nil)
             .accessibilityLabel("\(label) reminder time")
-        return VStack(alignment: .leading, spacing: 0) {
-            Divider().background(Theme.borderGray)
-            Group {
-                if dynamicTypeSize.isAccessibilitySize {
-                    VStack(alignment: .leading, spacing: Theme.spacingXS) { timeText; picker }
-                } else {
-                    HStack { timeText; Spacer(); picker }
-                }
+        return VStack(alignment: .leading, spacing: 8) {
+            Text("Remind me at").font(.fsLabel).foregroundColor(Theme.textPrimary)
+            HStack {
+                Image(systemName: "clock").foregroundColor(Theme.gold).accessibilityHidden(true)
+                Spacer()
+                picker
             }
-            .frame(minHeight: 44)
+            .padding(.horizontal, 14)
+            .frame(minHeight: Theme.formFieldHeight)
+            .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Theme.fieldFill))
+            .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(Theme.fieldBorder, lineWidth: 1))
+            .onboardingAnchor(isPrayer ? .prayerTime : nil)
+            // Onboarding only: accept the time already shown (a real re-save).
+            if isPrayer, onboarding.currentCue?.id == "prayer.time" {
+                Button {
+                    Task { await model.setTime(timeKey, confirmed, force: true) }
+                } label: {
+                    Text("Keep this time")
+                        .font(.system(size: 14, weight: .semibold)).foregroundColor(Theme.gold)
+                        .frame(minHeight: 44).padding(.horizontal, 16)
+                        .overlay(Capsule().strokeBorder(Theme.borderGold, lineWidth: 1))
+                }
+                .buttonStyle(.plain)
+                .disabled(model.savingKey != nil)
+            }
         }
-    }
-
-    private var timeText: some View {
-        Text("Time").font(.system(size: Theme.fontBody)).foregroundColor(Theme.parchment)
-            .accessibilityHidden(true)
+        .padding(.top, 4)
     }
 }
 
@@ -95,11 +95,8 @@ struct NotificationAlwaysOnCard: View {
     ]
 
     var body: some View {
-        VStack(alignment: .leading, spacing: Theme.spacingSM) {
-            Text("ALWAYS ON")
-                .font(.system(size: Theme.fontXS, weight: .semibold))
-                .foregroundColor(Theme.textMuted)
-                .accessibilityAddTraits(.isHeader)
+        FSFormCard(title: "Always on") {
+          VStack(alignment: .leading, spacing: Theme.spacingSM) {
             ForEach(Array(Self.lines.enumerated()), id: \.offset) { _, line in
                 HStack(alignment: .top, spacing: Theme.spacingSM + 4) {
                     Image(systemName: line.icon)
@@ -116,8 +113,7 @@ struct NotificationAlwaysOnCard: View {
                 .accessibilityElement(children: .ignore)
                 .accessibilityLabel("\(line.title), always on. \(line.detail)")
             }
+          }
         }
-        .padding(.horizontal, 18).padding(.vertical, 16)
-        .glassCard(cornerRadius: 20)
     }
 }

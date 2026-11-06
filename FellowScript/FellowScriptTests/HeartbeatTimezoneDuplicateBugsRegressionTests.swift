@@ -168,9 +168,12 @@ final class HeartbeatTimezoneDuplicateBugsRegressionTests: XCTestCase {
                       + "in flight for this attempt, so a rapid double-tap can't dispatch onSave twice")
         XCTAssertTrue(source.contains("isSaving = true"),
                       "the Save/Update action must set isSaving before dispatching onSave")
-        XCTAssertTrue(source.contains(".disabled(isSaving"),
-                      "the Save/Update PillButton must be disabled while isSaving is true, "
+        XCTAssertTrue(source.contains("saving: isSaving"),
+                      "the Save/Update pinned bar must be given saving: isSaving (FSPinnedActionBar disables itself while saving), "
                       + "as a visible complementary guard alongside the guard-return above")
+        let bar = try readSource("FellowScript/Shared/Forms/FSPinnedActionBar.swift")
+        XCTAssertTrue(bar.contains(".disabled(saving)"), "FSPinnedActionBar must disable its buttons while saving")
+        XCTAssertTrue(source.contains("if isSaving { return true }"), "primary must also dim while saving")
     }
 
     // MARK: Bug 2 — 5. A fresh idempotency token is generated once per Save tap
