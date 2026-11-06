@@ -23,7 +23,7 @@
       
       
       <link rel="icon" href="../../assets/images/favicon.png">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.8.0">
     
     
       
@@ -31,10 +31,10 @@
       
     
     
-      <link rel="stylesheet" href="../../assets/stylesheets/main.484c7ddc.min.css">
+      <link rel="stylesheet" href="../../assets/stylesheets/main.57a0d79d.min.css">
       
         
-        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.fb2fffe2.min.css">
       
       
 
@@ -243,17 +243,18 @@
   
   
   
-    <li class="md-tabs__item">
-      <a href="../../api/overview/" class="md-tabs__link">
-        
-  
-  
     
+    
+      <li class="md-tabs__item">
+        <a href="../../api/overview/" class="md-tabs__link">
+          
+  
   
   API
 
-      </a>
-    </li>
+        </a>
+      </li>
+    
   
 
       
@@ -665,6 +666,39 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#user-profiles-ios" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        User profiles (iOS)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#profile-taps-everywhere-ios-and-webdesktop" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Profile taps everywhere (iOS and web/desktop)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#onboarding-ios-and-ipad" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Onboarding (iOS and iPad)
+      
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -998,9 +1032,25 @@
   
   
   
-    <li class="md-nav__item">
-      <a href="../../api/overview/" class="md-nav__link">
+    
+    
+    
+    
+      
+      
         
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="0">
+            
   
   
   <span class="md-ellipsis">
@@ -1014,7 +1064,79 @@
   
   
 
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    API
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api/overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
       </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api/chat-mentions/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Chat mentions
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
     </li>
   
 
@@ -1282,6 +1404,24 @@ has one call point instead of a per-screen copy; <code>detailsScreen</code> move
 the <code>ScrollView</code> + <code>VStack</code> + <code>widgetCard()</code> shell its sibling steps already used, same section
 order and headers. Appearance-only — the group-picker <code>Menu</code> added by the group-tagging feature
 above, <code>onSave</code>/<code>onCreate</code>, <code>prefill(from:)</code>, and all existing accessibility labels are unchanged.</p>
+<h2 id="user-profiles-ios">User profiles (iOS)</h2>
+<p>A profile sheet shows a user's avatar, username, relationship chip and bio. Open it by tapping a friend's avatar in the Chat list (or swipe a friend row, or use the iPad row menu, then "Profile"), by tapping a requester's avatar under Friend Requests, or from the "View my profile" row in Account. Bios are shown to the owner and to friends only; strangers see "Bio is shared with friends." The primary action follows the relationship (Add friend, Request sent, Accept, Message); Unfriend (with a 6 second undo), Block and Report sit in the "More options" menu and reuse the existing report and block flows.</p>
+<p>Own bio is edited inline (160 characters, plain text, no links; newlines collapse to spaces). A failed save keeps the draft and shows the reason. A profile that is unknown, blocked or suspended shows "This profile isn't available." and any cached copy is dropped; a network failure keeps the cached copy and shows "Couldn't refresh. Showing what we had." The cache is memory-only and cleared on sign-out. Code: <code>FellowScript/Profile/</code>, <code>NetworkService+Profile.swift</code>.</p>
+<h2 id="profile-taps-everywhere-ios-and-webdesktop">Profile taps everywhere (iOS and web/desktop)</h2>
+<p><strong>Shared tap target.</strong> iOS: <code>View.profileTap(userId:username:photoURL:expandHitArea:)</code> in <code>Profile/ProfileTapTarget.swift</code>. It gives a 44pt hit area, the button trait, the label "View {name}'s profile", and its own sheet that shows <code>ProfileView</code>. <code>ProfileLinkedAvatar</code> now uses it. Web and desktop: <code>components/profile/ProfileLink.jsx</code> links to <code>/profile/:id</code> (44px minimum, stops click propagation, sets an aria-label). <code>hooks/useProfileNav.js</code> gives <code>openProfile(id)</code> for code that already receives handlers. <code>lib/profileId.js</code> holds the UUID check. Desktop uses the same bundle and the existing allowed route pattern, so <code>desktopScope.js</code> did not change. Avatars and names get no visible chrome (no ring, underline or chevron).</p>
+<p><strong>Deny by default.</strong> A tap is wired only when there is a real UUID and a real name. <code>ProfileTapGuard</code> (iOS) and <code>ProfileLink</code> (web) fail closed: with no id, a non-UUID id, or a placeholder name ("Someone", "A member", "Them", "You", the short-id fallbacks), the content renders as plain, non-interactive text. <code>ProfileLink</code> also renders plain children outside a Router. Ids never appear in visible text or accessibility labels.</p>
+<p><strong>Where taps are wired.</strong>
+- iOS: DM header avatar and name; received-message avatar and name in DMs, groups and reply threads; group info member chips (own chip opens own profile); pinned message author avatar; dashboard friend-activity tile and list-row avatars; group join-request avatars; mentions in message text (<code>fsprofile://&lt;uuid&gt;</code> links opened in a profile sheet). Contact rows, swipe and iPad menu actions, and friend-request avatars were already wired. Message senders come from the new optional <code>senderId</code> on <code>FSMessage</code>; paged history rows that carry only a name are matched to the group's resolved member list, and stay plain text if there is no match.
+- Web and desktop: DM header (<code>ChatHeaderIdentity</code>), group sender names in <code>ChatThread</code> and <code>MessagingSidebar</code>, sidebar and <code>GroupInfoPanel</code> member lists, Account friend-request rows, pinned message author avatar, join requests, session call bubbles and widget avatars, mentions, and Highlights username chips. <code>useMessaging</code> sets an optional <code>senderId</code> only when <code>from_user</code> is a UUID. The compact session widget avatars are inline-sized, below 44px.</p>
+<p><strong>Intentionally untappable.</strong>
+- No id available (Q6): notes list and note detail authors, shared-note senders, and announcement creator lines. The payloads carry a username only. Adding ids needs a backend change, which is out of scope.
+- Friend search results (D5): the search response returns no id by design, so a stranger can't be opened from it.
+- Ring member rows (Q3): selection UI, where a tap means pick, not open.
+- Own message rows, system lines, announcement lines you sent, and any member whose lookup failed.</p>
+<p><strong>Profile card restyle.</strong> The profile cards now match the form cards: translucent gray (<code>Theme.cardGlassGray</code> fill, <code>Theme.borderGray</code> 1pt border, radius 20 via <code>fsCard</code>) in place of the dark brown widget card. iOS covers the identity card, skeleton, undo bar, "View my profile" row, bio editor field (<code>fieldFill</code> and <code>fieldBorder</code>, gold when focused) and the overflow menu trigger (36pt gray circle inside a 44pt frame). The gold primary action button stays uncarded. The avatar keeps its gold-dim ring, and the sheet chrome and Close capsule are unchanged. Web uses one <code>FORM_CARD_STYLE</code> card for header and bio, with the actions beneath it, and <code>--ff-*</code> tokens for text and the overflow trigger.</p>
+<p><strong>Unavailable profile.</strong> Tap sites never branch on why a profile can't be shown and never pre-fetch. The profile view alone calls <code>/profiles/{id}</code>. For an unknown, blocked or suspended user it shows the same message, "This profile isn't available.", with a Back button (any cached copy is dropped on iOS). A network failure keeps the cached copy and shows a retry state.</p>
+<h2 id="onboarding-ios-and-ipad">Onboarding (iOS and iPad)</h2>
+<p>New installs see welcome, a four-option "what would you like help with?" survey (tick all that apply, Skip allowed), then sign-in. After sign-in a coach card and spotlight guide the user through the real screens for only the picked topics, in fixed order: scheduled devotion, prayer reminder, study partner question, and note/highlight/chapter jump. A fixed add-a-friend part (Chat, Friends, gold +, send a request by username) always runs last, then a recap, then the existing notification and subscribe prompts. A step completes only when its real action succeeds; "Skip this step" is always available. Devotion and study partner steps show a "needs a subscription" card for free users. Account has "Replay onboarding", which never re-triggers the first-run prompts.</p>
 
 
 
@@ -1337,10 +1477,10 @@ above, <code>onSave</code>/<code>onCreate</code>, <code>prefill(from:)</code>, a
     
       
       
-      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.tabs", "navigation.sections", "navigation.top", "toc.integrate"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.tabs", "navigation.sections", "navigation.top", "toc.integrate"], "search": "../../assets/javascripts/workers/search.a7633da7.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
     
     
-      <script src="../../assets/javascripts/bundle.79ae519e.min.js"></script>
+      <script src="../../assets/javascripts/bundle.c21346df.min.js"></script>
       
     
   </body>

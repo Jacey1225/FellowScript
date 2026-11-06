@@ -16,23 +16,25 @@
         <link rel="prev" href="../../architecture/price-cut-runbook/">
       
       
+        <link rel="next" href="../chat-mentions/">
+      
       
         
       
       
       <link rel="icon" href="../../assets/images/favicon.png">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.8.0">
     
     
       
-        <title>API - FellowScript</title>
+        <title>Overview - FellowScript</title>
       
     
     
-      <link rel="stylesheet" href="../../assets/stylesheets/main.484c7ddc.min.css">
+      <link rel="stylesheet" href="../../assets/stylesheets/main.57a0d79d.min.css">
       
         
-        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.fb2fffe2.min.css">
       
       
 
@@ -108,7 +110,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              API
+              Overview
             
           </span>
         </div>
@@ -241,17 +243,18 @@
     
   
   
-    <li class="md-tabs__item md-tabs__item--active">
-      <a href="./" class="md-tabs__link">
-        
-  
-  
     
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="./" class="md-tabs__link">
+          
+  
   
   API
 
-      </a>
-    </li>
+        </a>
+      </li>
+    
   
 
       
@@ -863,6 +866,63 @@
   
   
   
+    
+    
+    
+    
+      
+        
+        
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    API
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+    
+  
+  
+  
     <li class="md-nav__item md-nav__item--active">
       
       <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
@@ -878,7 +938,7 @@
   <span class="md-ellipsis">
     
   
-    API
+    Overview
   
 
     
@@ -896,7 +956,7 @@
   <span class="md-ellipsis">
     
   
-    API
+    Overview
   
 
     
@@ -1001,6 +1061,23 @@
       
     </span>
   </a>
+  
+    <nav class="md-nav" aria-label="Groups">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#announcements-in-chat-task-20261030-chat-announcements" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Announcements in chat (task 20261030-chat-announcements)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
   
 </li>
       
@@ -1164,6 +1241,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="POST /devotions/ring (task 20260916-call-ring-members)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#ring-lifecycle-task-20261028-dm-direct-call" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Ring lifecycle (task 20261028-dm-direct-call)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
         
       </ul>
@@ -1304,9 +1398,56 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#user-profiles-task-20261030-user-profiles" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        User profiles (task 20261030-user-profiles)
+      
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../chat-mentions/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Chat mentions
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
       
     </li>
   
@@ -1365,6 +1506,7 @@
 </tr>
 </tbody>
 </table>
+<p><strong>Session lifetime (task <code>20261017-chat-ws-reconnect-stuck</code>).</strong> The <code>session</code> cookie is an opaque token backed by a <code>sessions</code> row. A session lasts 30 days (<code>SESSION_TTL_DAYS</code>) and slides: an authenticated REST request that would move the expiry forward by at least a day extends it to 30 days from now and re-issues <code>Set-Cookie</code> with the renewed remaining lifetime. A hard cap of 90 days (<code>SESSION_MAX_AGE_DAYS</code>) from sign-in (<code>sessions.created_at</code>) is never exceeded; after that the user signs in again. Renewal only happens after a successful resolve, so an expired session is never extended or revived (REST returns <code>401</code>, the chat websocket handshake is refused with <code>403</code>). The websocket does not renew (a handshake cannot refresh the cookie). <code>/logout</code> and password reset still delete the session(s). A daily scheduler job (<code>session_purge</code>, 04:31) deletes expired rows.</p>
 <p>All signup paths automatically create a <code>plan_type='free'</code> subscription row for the new user.</p>
 <hr />
 <h2 id="users">Users</h2>
@@ -1380,7 +1522,7 @@
 <tr>
 <td>GET</td>
 <td><code>/user/{user_id}</code></td>
-<td>Get user profile (excludes <code>hash_pass</code>)</td>
+<td>Public identity of any user: for someone else only <code>user_id</code>, <code>username</code>, <code>profile_photo_url</code> (plus blank <code>email</code>, <code>mfa_enabled</code>, <code>friend_requests</code>, <code>suspended_at</code> kept for old decoders); never <code>bio</code>. The owner gets their full record (no <code>hash_pass</code>) plus <code>bio</code>. See User profiles below.</td>
 </tr>
 <tr>
 <td>PUT</td>
@@ -1630,6 +1772,14 @@ may still be populated.</p>
 <p><strong>Reports (<code>POST /reports/</code>).</strong> <code>content_type</code> also accepts <code>group_listing</code> and <code>thread_message</code>. A malformed <code>content_id</code> answers <code>422</code> (it used to be a 500; <code>group_listing</code> ids are 10-character alphanumeric public ids, every other type takes a UUID). Content that cannot be found for a listing or thread type answers <code>404</code> and nothing is stored; the five original types keep their lenient behaviour. The stored <code>content_id</code> is the canonical internal id.</p>
 <p><strong>Explorer listing moderation.</strong> Reports on a listing send its 10-character <code>public_id</code>; the server stores the listing's internal id and a snapshot (title, summary, description, status, public id; at most 5000 characters). A listing report is limited per reporter (<code>listings.rate_limits.report</code>, <code>429</code> over the limit). When the listing has reports from <code>report_auto_hide_threshold</code> distinct reporters it is hidden (reason <code>reported</code>) and the owner is emailed. Admin endpoints (<code>require_admin</code>): <code>GET /admin/explorer/listings/queue?status=</code>, <code>POST /admin/explorer/listings/{public_id}/approve|reject|hide|restore</code> (<code>reject</code> and <code>hide</code> take <code>{"reason_code": ...}</code> from the configured lists and email the owner), <code>DELETE /admin/explorer/listings/{public_id}</code>. CLI: <code>python -m backend.admin_listings hide &lt;public_id&gt; [--reason CODE]</code>, <code>restore &lt;public_id&gt;</code>, <code>hide-all</code> (rollback lever, reason <code>bulk</code>); <code>python -m backend.moderation.admin_actions resolve &lt;report_id&gt; --remove-content</code> removes a reported listing and <code>--eject</code> also hides the suspended owner's listings at once.</p>
 <hr />
+<h3 id="announcements-in-chat-task-20261030-chat-announcements">Announcements in chat (task 20261030-chat-announcements)</h3>
+<p>Behind the default-OFF flag <code>chat_announcements</code> (<code>features.chat_announcements</code> in <code>/app/capabilities</code>). Groups only.</p>
+<ul>
+<li><code>POST /groups/{user_id}/{group_id}/announcements</code> takes a new optional <code>post_to_chat</code> (boolean). <code>true</code> also publishes the announcement as a line in the group timeline once it is published (immediately, or at <code>publish_at</code>). <code>422</code> while the flag is off for the caller. Everything else (member-only 403, free-plan 403 body, 422 validation) is unchanged. Edit, delete and restore are unchanged; the line follows the announcement (an edit shows in place, a deleted announcement's line disappears and returns on restore within the grace window).</li>
+<li><code>GET /groups/{user_id}/{group_id}/messages</code> (legacy and paged): with the flag on for the caller, announcement lines are returned with <code>system_kind: "announcement"</code>, <code>announcement_id</code> and <code>announcement</code> (the caller's view of the announcement plus <code>edited</code>). With the flag off they are omitted entirely. Older clients that ignore <code>system_kind</code> show the line text <code>posted an announcement</code>.</li>
+<li>WebSocket: the line is delivered as a message frame carrying the same three keys (the <code>announcement</code> card is viewer-neutral; re-GET the announcement for viewer fields), and <code>{"type": "announcement_updated", "group_id", "announcement_id", "action"}</code> tells clients to refetch after an edit, delete or restore.</li>
+<li>No new endpoints. The announcement push is unchanged and the line sends no push of its own.</li>
+</ul>
 <h2 id="friends">Friends</h2>
 <table>
 <thead>
@@ -1643,7 +1793,7 @@ may still be populated.</p>
 <tr>
 <td>POST</td>
 <td><code>/friends/{user_id}/request</code></td>
-<td>Send a friend request</td>
+<td>Send a friend request by username. Same response whether or not the username exists, is blocked or suspended (no enumeration); <code>400</code> for yourself, <code>429</code> over the rate limit or the pending-request cap</td>
 </tr>
 <tr>
 <td>GET</td>
@@ -1652,8 +1802,13 @@ may still be populated.</p>
 </tr>
 <tr>
 <td>POST</td>
-<td><code>/friends/{user_id}/accept/{friend_id}</code></td>
-<td>Accept a request</td>
+<td><code>/friends/{user_id}/add?friend_username=</code></td>
+<td>Accept a request. Requires a pending request from that user; one uniform <code>404</code> for unknown, blocked, suspended or no pending request</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/friends/{user_id}/requests/{sender_id}/decline</code></td>
+<td>Decline an incoming request: the recipient (<code>user_id</code>, must be the caller) deletes the pending request from <code>sender_id</code>. Always <code>204</code>, whether or not a request exists and whether the sender is unknown, malformed, blocked or suspended (no probing). No cooldown on a later re-request. <code>429</code> over <code>friend_decline_hour</code> in <code>api/config/profile.json</code></td>
 </tr>
 <tr>
 <td>DELETE</td>
@@ -1663,7 +1818,7 @@ may still be populated.</p>
 <tr>
 <td>GET</td>
 <td><code>/friends/{user_id}</code></td>
-<td>Friend list</td>
+<td>Friend list: <code>user_id</code>, <code>username</code>, <code>profile_photo_url</code> (no email)</td>
 </tr>
 <tr>
 <td>GET</td>
@@ -1742,8 +1897,9 @@ may still be populated.</p>
 <ul>
 <li><code>GET /groups/{user_id}/{group_id}?limit=N</code>: with the flag on for the caller, the response is <code>{group, members, messages, page}</code> where <code>messages</code> is the newest page, oldest-first, and <code>host_msgs</code>/<code>other_msgs</code> are omitted. With no <code>limit</code>, or with the flag off (or an older server), the response is the legacy <code>{group, members, host_msgs, other_msgs}</code> shape; a client treats a missing <code>page</code> key as full history. <code>limit</code> must be an integer of at least 1 (otherwise <code>422</code>, only while the flag is on); a value above <code>max_page_size</code> is clamped. <code>403</code> for a non-member.</li>
 <li><code>GET /groups/{user_id}/{group_id}/messages?limit=&amp;cursor_timestamp=&amp;cursor_seq=&amp;cursor_id=</code>: one older page, <code>{messages, page}</code>. While the flag is off for the caller this answers <code>404</code>. Order of checks: session, <code>user_id</code> match, flag (<code>404</code>), membership (<code>403</code>), <code>limit</code> and cursor (<code>422</code>, before any SQL), then the query. Rate limited by <code>pagination.rate_limits.messages_page</code> in <code>api/config/chat.json</code>.</li>
+<li><code>GET /groups/{user_id}/{group_id}/media?kind=&amp;limit=&amp;cursor_timestamp=&amp;cursor_seq=&amp;cursor_id=</code>: one page of the group's main-chat media (thread media excluded), newest first, <code>{media, page}</code>. Each item is <code>{message_id, kind, thumb_url, url, width, height, duration, sender_id, sender_name, created_at}</code>. <code>kind</code> is a comma list of <code>image</code>, <code>video</code>, <code>gif</code> (default all three; anything else <code>422</code>). <code>url</code> is a fresh presigned GET for image and video and the provider https URL for gif; <code>thumb_url</code> equals <code>url</code> for images, the provider preview for gifs and null for videos (no server thumbnail exists). <code>width</code>, <code>height</code> and <code>duration</code> come from client-supplied meta and are null when absent or out of range. Gated by the default-OFF <code>group_media</code> flag (capabilities <code>features.group_media</code>); while off it answers <code>404</code>. Check order: session, <code>user_id</code> match, flag (<code>404</code>), membership (<code>403</code>), <code>kind</code>/<code>limit</code>/cursor (<code>422</code>, before any SQL), then the query. Only the caller's and current, unblocked members' media is returned; soft-deleted rows are excluded. Rate limited by <code>pagination.rate_limits.messages_page</code>. The older ungated <code>GET /groups/{user_id}/{group_id}/gallery</code> (group info panel) is unchanged.</li>
 <li><code>page</code> is <code>{limit, has_more, next_cursor_timestamp, next_cursor_seq, next_cursor_id}</code>. Pass the three <code>next_cursor_*</code> values back as <code>cursor_timestamp</code>, <code>cursor_seq</code> and <code>cursor_id</code> (timestamp and id together or neither; seq optional, default 0). They are null when <code>has_more</code> is false.</li>
-<li>Row shape: <code>{id, from_user (username), mine, text, timestamp (ISO 8601 UTC, microseconds, Z), attachment_kind, attachment_meta, attachment_url}</code>. <code>attachment_url</code> is a fresh short-lived presigned GET (null when there is no stored attachment); the stored key is never returned.</li>
+<li>Row shape: <code>{id, from_user (username), from_user_id, mine, text, timestamp (ISO 8601 UTC, microseconds, Z), attachment_kind, attachment_meta, attachment_url}</code>. <code>from_user_id</code> is the sender's lowercase user id; it is present only when the author is a live user (absent for deleted or system authors), so clients must tolerate its absence. It is already visible in member lists and adds no email or other field; blocked authors' rows are excluded exactly as before. <code>attachment_url</code> is a fresh short-lived presigned GET (null when there is no stored attachment); the stored key is never returned.</li>
 <li>Pages are ordered <code>timestamp DESC, seq DESC, id DESC</code> with a keyset predicate, so inserts and deletes never shift older pages. Only the caller's own messages and those of current, unblocked members are returned (blocking is filtered in SQL, so a page never shrinks), and soft-deleted rows are excluded.</li>
 </ul>
 <h3 id="direct-message-history-paging-task-20261001-chat-pagination-backend-step-4">Direct message history paging (task 20261001-chat-pagination, backend step 4)</h3>
@@ -2018,6 +2174,34 @@ discriminator lets the client tell a ring push apart from the plain "New
 Session"/"Session Starting" pushes above and route its tap-through
 straight into the live join flow instead of just the session detail
 screen.</p>
+<h4 id="ring-lifecycle-task-20261028-dm-direct-call">Ring lifecycle (task <code>20261028-dm-direct-call</code>)</h4>
+<p>Every accepted ring (DM calls and group sessions alike, same route) also
+writes a <code>ring_states</code> row per <code>(session, target)</code> with <code>status</code>
+(<code>ringing</code>, <code>answered</code>, <code>declined</code>, <code>canceled</code>, <code>timed_out</code>) and
+<code>expires_at = now + RING_TIMEOUT_SECONDS</code> (45s in repo config; the server
+owns expiry, the client timer is only a fallback). The <code>/ring</code> response
+shape is unchanged. Rings only target the user's most recently registered
+VoIP device (one token per user).</p>
+<ul>
+<li><code>POST /devotions/ring/respond</code> — body <code>{ devotion_id, user_id,
+  target_id, outcome }</code>, <code>outcome</code> one of <code>answered</code>/<code>declined</code> (only the
+  ringed target) or <code>canceled</code> (only the ring's caller). Atomic
+  compare-and-set on <code>ringing</code>; a ring that already ended returns its
+  current status with <code>changed: false</code>. Caller hang-up sends a VoIP push
+  <code>{ "action": "ring_cancel", devotion_id, caller_id, reason }</code> so the
+  target's CallKit UI ends. 404 when the ring is disabled or no ring
+  exists, 403 for a non-party.</li>
+<li><code>GET /devotions/ring/status?devotion_id=&amp;user_id=</code> — the caller's rings
+  on that session: <code>{ "rings": { target_id: { status, seconds_left } } }</code>,
+  so the caller UI can show ringing / declined / no answer.</li>
+<li>A scheduler job (<code>ring_expiry</code>, every 10s) times out unanswered rings
+  and sends the same <code>ring_cancel</code> push (<code>reason: "timed_out"</code>).
+  <code>POST /devotions/join-call</code> by the ringed user also marks the ring
+  <code>answered</code>.</li>
+<li>With <code>RING_VOIP_ENABLED=false</code> the ring is a plain alert push: state is
+  still tracked (the caller sees declined/no answer) but no cancel push is
+  sent since there is no CallKit UI.</li>
+</ul>
 <hr />
 <h2 id="agent-ai-check-ins">Agent (AI Check-ins)</h2>
 <table>
@@ -2405,7 +2589,7 @@ into <code>notes.text</code>.</p>
 <tr>
 <td>GET</td>
 <td><code>/groups/{user_id}/{group_id}/threads/{thread_id}/messages?limit=&amp;cursor_timestamp=&amp;cursor_seq=&amp;cursor_id=</code></td>
-<td>One page of a thread's messages: the same <code>{ messages, page }</code> envelope, ordering, cursor rules and row shape as the main chat page (<code>{id, from_user, mine, text, timestamp, attachment_kind, attachment_meta, attachment_url}</code>) plus <code>thread_id</code> on each row. Only messages by the caller and current, unblocked members.</td>
+<td>One page of a thread's messages: the same <code>{ messages, page }</code> envelope, ordering, cursor rules and row shape as the main chat page (<code>{id, from_user, from_user_id, mine, text, timestamp, attachment_kind, attachment_meta, attachment_url}</code>) plus <code>thread_id</code> on each row (<code>from_user_id</code> as on the main chat page). Only messages by the caller and current, unblocked members.</td>
 </tr>
 <tr>
 <td>PUT</td>
@@ -2465,6 +2649,11 @@ into <code>notes.text</code>.</p>
 <tbody>
 <tr>
 <td>GET</td>
+<td><code>/join-requests/{user_id}/pending-summary</code></td>
+<td>Badge source: <code>{ "groups": [{ group_id, pending_count }] }</code> for groups you own and may approve for, pending requests only (counts, no applicant data; groups with none are omitted). Other users get an empty list. With <code>join_requests</code> off for you it is <code>200 { "groups": [] }</code>, not a 404. Shares the owner-read rate limit.</td>
+</tr>
+<tr>
+<td>GET</td>
 <td><code>/join-requests/{user_id}/groups/{group_id}/requests</code></td>
 <td><code>{ "accepting_requests": bool \| null, "pending_count", "requests": [{ id, applicant_user_id, username, profile_photo_url, note, created_at }] }</code>, newest first. <code>accepting_requests</code> is null when the group has no listing. <code>applicant_user_id</code> is for Report and Block only.</td>
 </tr>
@@ -2492,6 +2681,41 @@ into <code>notes.text</code>.</p>
 </table>
 <p>Push (flag <code>join_request_push</code>, evaluated for the owner): the owner gets at most one <code>join_request</code> push per group per 30 minutes with generic text, and the applicant gets one when approved; data <code>{ "action": "join_request", "group_id" }</code>. Notes, usernames and ids never appear in push text.</p>
 <!-- /JRQ -->
+
+<h2 id="user-profiles-task-20261030-user-profiles">User profiles (task 20261030-user-profiles)</h2>
+<p>Config: <code>api/config/profile.json</code> (validated at startup). Column: <code>users.bio</code> (nullable text, added by <code>schema_ddl/user_bio.py</code>).</p>
+<table>
+<thead>
+<tr>
+<th>Method</th>
+<th>Path</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>GET</td>
+<td><code>/profiles/{target_id}</code></td>
+<td>Tiered profile of the signed-in caller's view: <code>user_id</code>, <code>username</code>, <code>profile_photo_url</code>, <code>relationship.state</code> (<code>self</code>/<code>friends</code>/<code>request_sent</code>/<code>request_received</code>/<code>none</code>), <code>editable</code>; <code>bio</code> (string or null) only for self and friends, absent for strangers. <code>404</code> (identical body) for unknown, malformed, suspended or blocked (either direction) targets and for a suspended caller. <code>429</code> over the read limits</td>
+</tr>
+<tr>
+<td>PUT</td>
+<td><code>/profile/{user_id}/bio</code></td>
+<td>Own bio only (<code>403</code> otherwise). Body <code>{"bio": string or null}</code>, no other fields. NFC-normalised, invisible characters stripped, whitespace collapsed, max <code>bio_max_length</code> (160) characters, no links, email addresses or HTML tags, explicit-content filter. <code>422</code> with a user-facing message on rejection (never truncated), <code>429</code> over the edit limits. <code>null</code> or blank clears it</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/profiles/{target_id}/friend-request</code></td>
+<td>Request by user id; always <code>204</code> (same as the username route), <code>400</code> for yourself, <code>429</code> over limits</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/profiles/{target_id}/friend-accept</code></td>
+<td>Accept by user id; <code>204</code> or the uniform <code>404</code></td>
+</tr>
+</tbody>
+</table>
+<p><code>GET /friends/{user_id}/{friend_id}</code> and <code>GET /message/messages/{host_user}/</code> now require an existing friendship and return <code>friend</code> as <code>{user_id, username, profile_photo_url, bio}</code> (no email); a non-friend gets the same <code>404</code> as an unknown or blocked user.</p>
 
 
 
@@ -2547,10 +2771,10 @@ into <code>notes.text</code>.</p>
     
       
       
-      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.tabs", "navigation.sections", "navigation.top", "toc.integrate"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.tabs", "navigation.sections", "navigation.top", "toc.integrate"], "search": "../../assets/javascripts/workers/search.a7633da7.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
     
     
-      <script src="../../assets/javascripts/bundle.79ae519e.min.js"></script>
+      <script src="../../assets/javascripts/bundle.c21346df.min.js"></script>
       
     
   </body>

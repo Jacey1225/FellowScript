@@ -23,7 +23,7 @@
       
       
       <link rel="icon" href="../../assets/images/favicon.png">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.8.0">
     
     
       
@@ -31,10 +31,10 @@
       
     
     
-      <link rel="stylesheet" href="../../assets/stylesheets/main.484c7ddc.min.css">
+      <link rel="stylesheet" href="../../assets/stylesheets/main.57a0d79d.min.css">
       
         
-        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.fb2fffe2.min.css">
       
       
 
@@ -243,17 +243,18 @@
   
   
   
-    <li class="md-tabs__item">
-      <a href="../../api/overview/" class="md-tabs__link">
-        
-  
-  
     
+    
+      <li class="md-tabs__item">
+        <a href="../../api/overview/" class="md-tabs__link">
+          
+  
   
   API
 
-      </a>
-    </li>
+        </a>
+      </li>
+    
   
 
       
@@ -1047,6 +1048,28 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#recurring-announcement-reminders-task-20261016-announcement-recurring-reminder" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Recurring announcement reminders (task 20261016-announcement-recurring-reminder)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#announcements-in-chat-task-20261030-chat-announcements" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Announcements in chat (task 20261030-chat-announcements)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#join-requests-task-20261001-explorer-join-requests" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1374,9 +1397,25 @@
   
   
   
-    <li class="md-nav__item">
-      <a href="../../api/overview/" class="md-nav__link">
+    
+    
+    
+    
+      
+      
         
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="0">
+            
   
   
   <span class="md-ellipsis">
@@ -1390,7 +1429,79 @@
   
   
 
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    API
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api/overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
       </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api/chat-mentions/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Chat mentions
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
     </li>
   
 
@@ -2044,9 +2155,24 @@
 <td>Scans <code>devotions</code> for any session whose <code>time_start</code> (absolute TIMESTAMPTZ) has passed and hasn't been reminded yet, atomically claims it (<code>UPDATE devotions SET reminder_sent_at = NOW() WHERE reminder_sent_at IS NULL</code>), then pushes every resolved member (<code>DevotionManager.resolve_members</code> — creator, participants, and the group/DM roster, the same membership concept <code>is_authorized</code> already encodes). One-shot dedup via <code>reminder_sent_at</code>, not a rolling time window — see <a href="../data/#devotions"><code>devotions.reminder_sent_at</code></a>.</td>
 </tr>
 <tr>
+<td><code>_purge_expired_auth_sessions</code></td>
+<td>daily cron 04:31 (job id <code>session_purge</code>)</td>
+<td>Deletes <code>sessions</code> rows (login sessions, not study sessions) whose <code>expires_at</code> is past. Behavior-neutral (expired rows cannot resolve or renew); runs in an executor, logs the count only. Note the activity-monitoring <code>logins</code> series reads <code>sessions.created_at</code>, so its window must stay within the 30-day session lifetime.</td>
+</tr>
+<tr>
 <td><code>_advance_recurring_sessions</code></td>
 <td>every <code>SESSION_RECURRING_ADVANCE_POLL_INTERVAL_SECONDS</code> (60s, 2026-09-21)</td>
 <td>Scans <code>devotions</code> for any <code>recurring = TRUE</code> session whose <code>time_end</code> is more than <code>SESSION_RECURRING_ADVANCE_GRACE_SECONDS</code> (1h) in the past, gates on the same fail-closed AWS Chime presence check the auto-delete job uses, then advances <code>time_start</code>/<code>time_end</code> in place by exactly one calendar week — computed in the session creator's own local timezone (<code>users.timezone</code>, zoneinfo-aware, so a DST transition doesn't shift the wall-clock time) rather than a raw 7-day UTC offset. The same atomic UPDATE also resets <code>reminder_sent_at</code> to <code>NULL</code> (so the advanced occurrence's start-time push re-arms) and <code>chime_meeting_id</code>/<code>chime_meeting</code> to their column defaults (<code>''</code>/<code>{}</code>, so the new occurrence never inherits a finished call's meeting state), re-checking the row's <code>time_end</code> at write time to avoid a double-advance across concurrent poll cycles. A non-recurring session is never touched by this job; a malformed <code>time_end</code> or an unresolvable creator timezone is a fail-closed skip, not a guess. No push/websocket notification of the new time is sent — clients pick it up on their next session fetch.</td>
+</tr>
+<tr>
+<td><code>fire_due_announcement_repeats</code></td>
+<td>every 60s (2026-10-16)</td>
+<td>Re-pushes published announcements whose author set a repeat; claim-before-send on <code>next_repeat_at</code>, see <a href="#recurring-announcement-reminders-task-20261016-announcement-recurring-reminder">Recurring announcement reminders</a>. No-op while <code>ANNOUNCEMENT_REPEAT_ENABLED</code> is off</td>
+</tr>
+<tr>
+<td><code>fire_due_chat_announcements</code></td>
+<td>every 60s (2026-10-30)</td>
+<td>Turns a due scheduled announcement that was created with <code>post_to_chat</code> into its group timeline line; see <a href="#announcements-in-chat-task-20261030-chat-announcements">Announcements in chat</a>. Idempotent via the unique index on <code>messages.announcement_id</code>; looks back at most 1 hour (no back-fill); inert per poster while the <code>chat_announcements</code> flag is off</td>
 </tr>
 <tr>
 <td><code>run_join_request_sweeper_job</code></td>
@@ -2150,6 +2276,24 @@
 </ul>
 <!-- /THR -->
 
+<h2 id="recurring-announcement-reminders-task-20261016-announcement-recurring-reminder">Recurring announcement reminders (task 20261016-announcement-recurring-reminder)</h2>
+<p>An author (the announcement's creator or the group creator) can make a published group announcement re-push itself daily, weekly or monthly until they turn it off, set an end date, or a cap is hit. It sits beside the one-hour-before reminder and the publish push and changes neither.</p>
+<p><strong>Flag.</strong> <code>ANNOUNCEMENT_REPEAT_ENABLED</code> in <code>backend/interactions/announcement_repeat_rules.py</code> is a plain module constant (the same mechanism as <code>ANNOUNCEMENTS_ENABLED</code> and <code>ANNOUNCEMENT_PUSH_ENABLED</code>, not a config file) and ships <code>False</code>. While off, a non-null <code>repeat_interval</code> is a 422, the job claims and sends nothing, and announcement payloads contain no <code>repeat_*</code> keys. Turning it on is the owner's decision.</p>
+<p><strong>Schema</strong> (DDL module <code>announcement_repeat</code>, additive and idempotent, NULL = no repeat, not applied to production until the next approved boot): <code>repeat_interval</code> (<code>daily</code>/<code>weekly</code>/<code>monthly</code>), <code>repeat_until</code>, <code>repeat_tz</code>, <code>repeat_started_at</code>, <code>next_repeat_at</code> (NULL = disarmed), <code>repeat_push_count</code>, <code>last_repeat_push_at</code>.</p>
+<p><strong>API</strong> (<code>POST</code>/<code>PUT /groups/{user_id}/{group_id}/announcements[/{id}]</code>, all optional): <code>repeat_interval</code> (<code>"daily"|"weekly"|"monthly"</code>, <code>null</code> clears the whole repeat), <code>repeat_until</code> (ISO-8601 with offset, after <code>publish_at</code> and now, at most 365 days ahead, <code>null</code> removes the end date), <code>repeat_tz</code> (IANA name such as <code>America/New_York</code>; invalid is a 422; <code>null</code> means UTC). Repeat is editable after publish. Setting or changing it recomputes the next occurrence from now and never back-fills. Responses (flag on) carry <code>repeat_interval</code>, <code>repeat_until</code>, <code>repeat_ends_at</code> (the explicit end, else 365 days after the repeat was set), <code>repeat_auto_stops</code> (no explicit end), <code>repeat_active</code> (still armed) for every member, and <code>repeat_tz</code> for editors only. Errors: 422 validation, 409 limit reached (52 pushes per announcement, 3 active repeating announcements per group), 403 for anyone but the creator or group creator.</p>
+<p><strong>Occurrences.</strong> Occurrence k is <code>publish_at</code> plus k days, 7k days or k calendar months on the wall clock in <code>repeat_tz</code>, converted to UTC, so months clamp to month-end without drifting and DST neither shifts nor double-fires the time.</p>
+<p><strong>Job</strong> (<code>announcement_repeat.py</code>, <code>announcement_repeat_fire</code>, 60 s, registered beside <code>announcement_reminder_fire</code>): one transaction selects due rows <code>FOR UPDATE SKIP LOCKED</code>, advances <code>next_repeat_at</code> and <code>repeat_push_count</code>, and commits before sending (at-most-once, a failed send is logged and not retried). A due time older than an hour is advanced past without a push. Rows for a deleted, unpublished, past-end, capped, invalid-state or departed/suspended-author announcement are disarmed or skipped, never deleted. A group that already used 5 pushes (publish, creation or repeat, other announcements) in 24 hours skips the repeat. Recipients, mute, block, token and the 500 recipient cap come from <code>announcement_notifier._recipients(push_type="announcement_reminder")</code>, so the existing <code>announcement_reminder</code> toggle (default on) also covers repeats. Alert: group title plus <code>Reminder: {title}</code>; payload ids only; logs ids and counts only.</p>
+<h2 id="announcements-in-chat-task-20261030-chat-announcements">Announcements in chat (task 20261030-chat-announcements)</h2>
+<p>A member can publish an announcement as a line in the group message timeline. It reuses the existing announcement record, serializer, permissions, free-plan limit, content filter and push; there is no second content store. Groups only. Flag <code>chat_announcements</code> (default OFF, exposed as <code>features.chat_announcements</code>). Code: <code>backend/interactions/chat_announcements.py</code>, DDL module <code>chat_announcements</code>.</p>
+<ul>
+<li><strong>Opt in per post.</strong> <code>POST /groups/{u}/{g}/announcements</code> accepts <code>post_to_chat: true</code>. Any member may post (same rule as today); the flag must be on for the poster or the request is a 422 (fail closed). The marker <code>group_announcements.post_to_chat</code> is written inside the create transaction, so a post is never half-saved.</li>
+<li><strong>The line.</strong> A <code>messages</code> row with <code>system_kind = 'announcement'</code>, <code>announcement_id</code>, constant text <code>posted an announcement</code> (the fallback an old client shows as a plain line) and <code>from_user</code> = poster. Written directly like the pin line: no chat push, no <code>message_recipients</code> rows. The announcement push stays the only notification.</li>
+<li><strong>When.</strong> Immediate posts: a background task right after create. Scheduled posts: <code>fire_due_chat_announcements</code> once the announcement is published. The poster must still be a live member and the flag on for them. A unique partial index on <code>messages.announcement_id</code> makes it exactly once. Reminders and repeats never add lines. Nothing is back-filled (existing rows have <code>post_to_chat = FALSE</code>, and the scheduler only looks back 1 hour).</li>
+<li><strong>Read side (derived, not copied).</strong> <code>GroupsManager._system_filter</code> appends <code>chat_announcements.history_filter_sql</code>: lines are hidden for viewers with the flag off, and for any line whose announcement is soft-deleted or unpublished. So delete hides the line, restore (within the 120 s grace) brings it back, and edits show immediately, with nothing to keep in sync. Blocked and departed authors are already excluded by <code>author_set</code>. Every group history reader (legacy, paged, contact-list load) goes through the same filter.</li>
+<li><strong>Payload.</strong> With the flag on, history messages (<code>GET /groups/{u}/{g}/messages</code>, both modes) carry <code>system_kind: "announcement"</code>, <code>announcement_id</code> and <code>announcement</code>: the viewer's own serialized announcement (same shape as <code>GET .../announcements/{id}</code>, including <code>can_edit</code>, RSVP and poll fields, flag-gated keys honoured per viewer) plus <code>edited</code> (true when <code>updated_at</code> is more than 5 s after <code>created_at</code>). A line whose announcement cannot be loaded is dropped, never rendered as a placeholder.</li>
+<li><strong>Live frames</strong> (best effort, members with the flag on only): the line arrives as a normal message frame plus <code>system_kind</code>, <code>announcement_id</code> and a viewer-neutral <code>announcement</code> card (id, title, description, banner_url, creator_id, creator_username, title_color, publish_at, created_at, updated_at, edited; no flag-gated extras or viewer fields, so clients re-GET the announcement before showing those). Edit, delete and restore send <code>{"type": "announcement_updated", "group_id", "announcement_id", "action": "updated"|"deleted"|"restored"}</code> (ids only, only when the announcement has a line); clients refetch.</li>
+<li><strong>Errors.</strong> 403 non-member (existing <code>_open</code>), 403 free limit (existing body), 422 flag off or validation. Emit failures are logged by type and retried by the scheduler tick inside the 1-hour window; they never fail the create.</li>
+</ul>
 <h2 id="join-requests-task-20261001-explorer-join-requests">Join requests (task 20261001-explorer-join-requests)</h2>
 <!-- JRQ (20261001-explorer-join-requests) -->
 <p>A signed-in person asks to join a group from its published Explorer listing and the group's owner approves or denies. It is a second path to group membership next to invite links, and it never creates or reads an invite row or token. Flags are DB rows: <code>join_requests</code> (the whole feature) and <code>join_request_push</code> (owner and requester pushes), both off by default; tunables are in <code>api/config/explorer.json</code> section <code>join_requests</code> (<code>backend/interactions/join_requests_config.py</code>, every key required, validated at startup).</p>
@@ -2162,6 +2306,7 @@
 <li><strong>Bounded waits.</strong> Every transaction that can wait on a lock first arms <code>lock_timeout</code> from <code>join_requests.lock_timeout_ms</code> (<code>set_config(..., true)</code>, the <code>SET LOCAL</code> equivalent) and catches SQLSTATE 55P03 around its own raw <code>cur.execute</code> calls, before any <code>DBManager</code> helper can log <code>DB_WRITE_FAILURE</code>. It rolls back and answers 409 <code>busy</code> with one INFO line and no ERROR. This keeps a route from holding one of the shared 40 threadpool tokens longer than <code>lock_timeout_ms</code>.</li>
 <li><strong>Create</strong> serialises one user's creates with an advisory lock (exact per-user caps), takes the group lock (exact per-group cap) and re-checks requestability under it. A repeat returns the existing pending request without using a cap.</li>
 <li><strong>Deny, undo, withdraw</strong> are conditional <code>UPDATE ... WHERE status = 'pending'</code>. Deny starts the cooldown (<code>cooldown_days</code>) and may set <code>block_reapply</code>; the applicant is never notified. Undo is allowed only for the decider, within <code>undo_deny_seconds</code> on the server clock, and fails with 409 <code>not_undoable</code> if the applicant already asked again.</li>
+<li><strong>Pending summary</strong> (task 20261016-notification-badges-logic). <code>GET /join-requests/{user_id}/pending-summary</code> returns per-group pending counts for the caller's own approvable groups in one query (same creator + member + not-suspended predicate as <code>approver_ok</code>), so iOS badges need no per-group calls. Flag off answers an empty list instead of the uniform 404 so a badge refresh never errors during a rollback. Uses the <code>owner_read</code> limit; counts only.</li>
 <li><strong>Accepting switch.</strong> <code>PUT /join-requests/{user_id}/groups/{group_id}/accepting</code> writes ONLY through <code>listings.set_accepting_requests</code> (LST owns the column) and reads through <code>listings.get_accepting_requests</code>; the group must have a listing (else the uniform 404). It does not require <code>explorer_browse</code> and leaves pending requests untouched.</li>
 <li><strong>Privacy.</strong> The owner list carries <code>applicant_user_id</code> (needed by Report and Block) to the approver only. Notes are visible only to the owner. Notes, usernames and applicant ids never appear in logs, push text or audit lines; <code>JOIN_REQUEST_AUDIT</code> lines carry request, group and (owner actions) actor ids only. The requester sees the group's identity only after approval; the title shown to a requester is the listing's own snapshot.</li>
 <li><strong>Limits.</strong> Per-user and per-IP limits use <code>shared_limit</code> with FIXED scopes (<code>jrq_create</code>, <code>jrq_create_ip</code>, <code>jrq_withdraw</code>, <code>jrq_mine</code>, <code>jrq_owner_read</code>, <code>jrq_decide</code>, <code>jrq_accepting</code>), values from <code>rate_limits</code>.</li>
@@ -2391,10 +2536,10 @@
     
       
       
-      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.tabs", "navigation.sections", "navigation.top", "toc.integrate"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.tabs", "navigation.sections", "navigation.top", "toc.integrate"], "search": "../../assets/javascripts/workers/search.a7633da7.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
     
     
-      <script src="../../assets/javascripts/bundle.79ae519e.min.js"></script>
+      <script src="../../assets/javascripts/bundle.c21346df.min.js"></script>
       
     
   </body>
