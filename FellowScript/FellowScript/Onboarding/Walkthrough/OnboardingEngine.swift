@@ -31,14 +31,19 @@ final class OnboardingEngine: ObservableObject {
 
     static let uiTestEnableArgument = "UI-TESTING-WALKTHROUGH"
     private var store: OnboardingProgressStore
+    /// Records the first-run outcome for the "Take a quick tour" prompt (task
+    /// 20261105-take-tour-prompt). Written only when a FIRST-RUN flow ends.
+    private let tourPromptStore: TourPromptStore
     private let arguments: [String]
     private var subscriptionCheck: (() async -> Bool)?
     private var gatedPart: OnboardingPart?
     private var gateTask: Task<Void, Never>?
 
     init(store: OnboardingProgressStore = OnboardingProgressStore(),
+         tourPromptStore: TourPromptStore = TourPromptStore(),
          arguments: [String] = ProcessInfo.processInfo.arguments) {
         self.store = store
+        self.tourPromptStore = tourPromptStore
         self.arguments = arguments
         self.state = store.load()
     }
@@ -104,7 +109,10 @@ final class OnboardingEngine: ObservableObject {
     /// Recap "Continue": ends the flow. First run: ContentView then runs the
     /// existing push and subscribe prompts (the engine never arms or clears them).
     func finishRecap() {
-        guard state?.phase == .recap else { return }
+        guard let s = state, s.phase == .recap else { return }
+        // First run only: remember whether anything was finished so a skipper can
+        // be offered the tour later. Replay never writes the marker.
+        if s.mode == .firstRun { tourPromptStore.recordFirstRunOutcome(completedParts: s.completed.count) }
         commit(nil)
     }
 

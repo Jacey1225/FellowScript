@@ -226,11 +226,28 @@ struct FellowScriptApp: App {
         )
     }
 
+    // Task 20261105-take-tour-prompt: "Take a quick tour" sheet for users who
+    // skipped the walkthrough. Launch with UI-TESTING-TOUR-PROMPT for a
+    // deterministic skipped-outcome state in isolated defaults.
+    @StateObject private var tourPrompt = FellowScriptApp.makeTourPromptCoordinator()
+
+    private static func makeTourPromptCoordinator() -> TourPromptCoordinator {
+        let args = ProcessInfo.processInfo.arguments
+        guard args.contains(TourPromptStore.uiTestEnableArgument),
+              let defaults = UserDefaults(suiteName: TourPromptStore.uiTestEnableArgument) else {
+            return TourPromptCoordinator()
+        }
+        defaults.removePersistentDomain(forName: TourPromptStore.uiTestEnableArgument)
+        defaults.set(TourPromptOutcome.skipped.rawValue, forKey: TourPromptStore.outcomeKey)
+        return TourPromptCoordinator(store: TourPromptStore(defaults: defaults, arguments: args))
+    }
+
     var body: some Scene {
         WindowGroup {
             RootView()
                 .environmentObject(appState)
                 .environmentObject(pushPrompt)
+                .environmentObject(tourPrompt)
                 .environment(\.fsCapabilities, appState.capabilities)
                 .preferredColorScheme(.dark)
                 .onReceive(NotificationCenter.default.publisher(for: .apnsTokenReceived)) { note in

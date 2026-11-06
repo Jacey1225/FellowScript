@@ -15,6 +15,12 @@ struct ContentView: View {
     // evaluated on .active); this view supplies its suppression inputs.
     @EnvironmentObject private var pushPrompt: PushPromptCoordinator
     @State private var postTourSeenThisSession = false
+    // Task 20261105-take-tour-prompt: sheet for users who skipped the walkthrough.
+    @EnvironmentObject private var tourPrompt: TourPromptCoordinator
+    @State private var tourFlowSeenThisSession = false
+    @State private var pushPromptShownThisSession = false
+    @State private var tourStartRequested = false
+    @State private var showTourSurvey = false
     // Task 20261105-onboarding-redo: the hands-on walkthrough runs over this view.
     @ObservedObject private var onboarding = OnboardingEngine.shared
     @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = false
@@ -31,6 +37,46 @@ struct ContentView: View {
     }
 
     var body: some View {
+        // Split in two: one modifier chain this long exceeds the type-checker budget.
+        baseBody
+        // Task 20261105-take-tour-prompt: lowest priority. The push sheet gets
+        // first claim (evaluated here too) so the two can never race; this
+        // prompt only shows when nothing above it is up or owed.
+        .onChange(of: pushPrompt.state) { _, state in
+            if state != .hidden { pushPromptShownThisSession = true }
+        }
+        .onChange(of: onboarding.blocksPostTourPrompts) { _, blocks in
+            if blocks { tourFlowSeenThisSession = true }
+        }
+        .onAppear { if onboarding.blocksPostTourPrompts { tourFlowSeenThisSession = true } }
+        .task(id: tourPromptSuppression) {
+            guard !tourPromptSuppression.isSuppressed else { return }
+            await pushPrompt.evaluate()
+            tourPrompt.evaluate(suppression: tourPromptSuppression)
+        }
+        .sheet(isPresented: Binding(
+            get: { tourPrompt.isPresented },
+            set: { if !$0 { tourPrompt.dismiss() } }
+        ), onDismiss: {
+            // Present the survey only after the sheet is fully gone.
+            if tourStartRequested { tourStartRequested = false; showTourSurvey = true }
+        }) {
+            TourPromptSheet(
+                onPrimary: { tourStartRequested = true; tourPrompt.accept() },
+                onSecondary: { tourPrompt.dismiss() }
+            )
+        }
+        // Replay path: survey, then the existing engine. Never touches the
+        // PostTourPromptsStore keys.
+        .fullScreenCover(isPresented: $showTourSurvey) {
+            OnboardingSurveyView(onFinish: { picks in
+                showTourSurvey = false
+                OnboardingEngine.shared.startReplay(picks: picks)
+            }, onCancel: { showTourSurvey = false })
+        }
+    }
+
+    private var baseBody: some View {
         ZStack {
             Theme.bgPage.ignoresSafeArea()
 
@@ -337,12 +383,39 @@ struct ContentView: View {
                 || !hasCompletedOnboarding
                 || onboarding.isActive
                 || onboarding.blocksPostTourPrompts
+                || tourPrompt.isPresented
+                || showTourSurvey
                 || appState.termsReacceptRequired
                 || appState.needsProfileCompletion
                 || appState.pendingInviteToken != nil
                 || startup.updateAvailable != nil
                 || WorkspaceLayoutMode.resolve(sizeClass: horizontalSizeClass,
                                                flagEnabled: WorkspaceLayout.isFeatureEnabled()) == .workspace
+        )
+    }
+
+    /// Inputs for the tour prompt. Unlike the push sheet it is hosted here, so it
+    /// works in both phone and workspace layouts; only the phone layout has a
+    /// Home-tab "reading session" rule.
+    private var tourPromptSuppression: TourPromptSuppression {
+        let phone = WorkspaceLayoutMode.resolve(sizeClass: horizontalSizeClass,
+                                                flagEnabled: WorkspaceLayout.isFeatureEnabled()) == .phoneTabs
+        return TourPromptSuppression(
+            walkthroughActive: onboarding.isActive || onboarding.blocksPostTourPrompts || tourFlowSeenThisSession,
+            replayActive: onboarding.state != nil || showTourSurvey,
+            postTourOwed: postTour.current != nil || PostTourPromptsStore().nextPrompt() != nil,
+            postTourSeenThisSession: postTourSeenThisSession,
+            pushPromptActive: pushPrompt.state != .hidden,
+            pushPromptShownThisSession: pushPromptShownThisSession,
+            inCall: call.inCall || call.isExpanded,
+            readingSession: phone && selectedTab != .home,
+            loadingScreen: !startup.isReady,
+            otherPresentationActive: !appState.isAuthenticated
+                || !hasCompletedOnboarding
+                || appState.termsReacceptRequired
+                || appState.needsProfileCompletion
+                || appState.pendingInviteToken != nil
+                || startup.updateAvailable != nil
         )
     }
 
