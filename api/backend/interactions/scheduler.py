@@ -416,6 +416,7 @@ async def _fire_due_heartbeats() -> None:
     import asyncio
     import functools
     from backend.interactions.agent import AgentManager
+    from backend.interactions import flags
     from backend.interactions.push import send_push
     from backend.subscription.limits import check_limit
 
@@ -433,9 +434,22 @@ async def _fire_due_heartbeats() -> None:
     def _post_fire_lookups(agent_id_: str, user_id_: str):
         token_rows = db.lookup("device_tokens", {"user_id": user_id_})
         token = list(token_rows.values())[0].get("token") if token_rows else None
+        if flags.is_enabled("ask_ai_default_agent", user_id_):
+            # One default AI: fixed product title, canonical id in the payload.
+            # ensure_default_agent raises on failure; the heartbeat's own real
+            # agent_id is kept then (never a fabricated value).
+            am_ = AgentManager(user_id_)
+            try:
+                canonical = am_.ensure_default_agent()
+            except Exception as e:  # noqa: BLE001
+                logger.warning("canonical agent lookup failed for push payload: %s", type(e).__name__)
+                canonical = agent_id_
+            finally:
+                am_.close()
+            return token, "", canonical
         agent_row = db.lookup("agents", {"_id": agent_id_})
         agent_name = list(agent_row.values())[0].get("name", "") if agent_row else ""
-        return token, agent_name
+        return token, agent_name, agent_id_
 
     loop = asyncio.get_running_loop()
     db = DBManager()
@@ -509,7 +523,7 @@ async def _fire_due_heartbeats() -> None:
                     # (LLM/parse/claim failure) both mean no push is warranted.
                     continue
 
-                token, agent_name = await loop.run_in_executor(
+                token, agent_name, push_agent_id = await loop.run_in_executor(
                     None, functools.partial(_post_fire_lookups, agent_id, user_id)
                 )
                 if not token:
@@ -517,7 +531,8 @@ async def _fire_due_heartbeats() -> None:
                 if not await async_is_push_enabled(user_id, "reminders"):
                     continue  # task 20261012-notification-settings: opted out
 
-                title = agent_name or "Scheduled Event"
+                ask_ai = flags.is_enabled("ask_ai_default_agent", user_id)
+                title = agent_name or ("Scheduled Devotion" if ask_ai else "Scheduled Event")
                 # No prompt/note content in the alert -- a remote push transits
                 # Apple's infrastructure and is composed directly by this
                 # backend, a different trust surface than the old per-device
@@ -527,8 +542,9 @@ async def _fire_due_heartbeats() -> None:
                 ok = await send_push(
                     token,
                     title,
-                    "Your agent responded to a scheduled event. Check your notes.",
-                    data={"heartbeat_id": heartbeat_id, "agent_id": agent_id},
+                    ("Your scheduled devotion is ready. Check your notes." if ask_ai
+                     else "Your agent responded to a scheduled event. Check your notes."),
+                    data={"heartbeat_id": heartbeat_id, "agent_id": push_agent_id},
                 )
                 if not ok:
                     logger.warning(

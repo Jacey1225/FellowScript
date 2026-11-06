@@ -109,23 +109,31 @@ extension AccountView {
 
             Divider().background(Theme.borderGoldFaint)
             Button(action: {
-                guard !vm.agents.isEmpty else { return }
+                guard newEventEnabled else { return }
                 // Explicit user action (scheduling a devotion): lifts any
                 // first-run "Maybe later" deferral (task 20261008-post-tour-prompts).
                 PostTourPromptsStore().clearPushDeferral()
                 appState.requestPushNotifications()
                 activeSheet = .newEvent
             }) {
-                ghostLabelPill(icon: "plus", "New scheduled devotion", color: vm.agents.isEmpty ? Theme.textMuted : Theme.gold)
+                ghostLabelPill(icon: "plus", "New scheduled devotion", color: newEventEnabled ? Theme.gold : Theme.textMuted)
             }
-            .disabled(vm.agents.isEmpty)
+            .disabled(!newEventEnabled)
             .accessibilityLabel("Create new scheduled devotion")
         }
         .padding(.horizontal, 18).padding(.vertical, 16)
         .glassCard(cornerRadius: 20)
     }
 
+    /// Ask AI is built in, so "New scheduled devotion" never waits on an agent.
+    var newEventEnabled: Bool { appState.capabilities.askAiEnabled || !vm.agents.isEmpty }
+
+    /// The sheet's agent list: just the Ask AI handle when the flag is on (the
+    /// picker only renders for more than one agent, so it disappears).
+    var eventSheetAgents: [FSAgent] { appState.capabilities.askAiEnabled ? [FSAgent.askAi] : vm.agents }
+
     func agentName(for agentId: String) -> String {
-        vm.agents.first(where: { $0.id == agentId })?.displayLabel ?? "Agent"
+        if appState.capabilities.askAiEnabled { return "Ask AI" }
+        return vm.agents.first(where: { $0.id == agentId })?.displayLabel ?? "Agent"
     }
 }

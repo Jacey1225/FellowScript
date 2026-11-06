@@ -9,6 +9,28 @@ import SwiftUI
 
 extension AccountView {
 
+    // Task 20261106-remove-agents-ask-ai: flag `ask_ai_default_agent` on. The
+    // agents card (list, toggle, rename, delete, New Agent) is replaced by this
+    // read-only note. Flag off keeps `agentsSection` below, unchanged.
+    var aiAssistantSection: some View {
+        VStack(alignment: .leading, spacing: Theme.spacingSM) {
+            sectionLabel("AI assistant")
+
+            Text("Ask AI is built in. Start a chat from Messages.")
+                .font(.inter(Theme.fontSM))
+                .foregroundColor(Theme.textMuted)
+
+            Divider().background(Theme.borderGoldFaint)
+            Button(action: { appState.pendingAskAiOpen = true }) {
+                ghostLabelPill(icon: "brain", "Open Ask AI")
+            }
+            .accessibilityLabel("Open Ask AI")
+            .accessibilityHint("Opens your AI chats in Messages")
+        }
+        .padding(.horizontal, 18).padding(.vertical, 16)
+        .glassCard(cornerRadius: 20)
+    }
+
     var agentsSection: some View {
         VStack(alignment: .leading, spacing: Theme.spacingSM) {
             sectionLabel("Agents")

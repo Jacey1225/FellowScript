@@ -156,6 +156,11 @@ register("friend_highlight_push")
 # Gates server acceptance of ``reply_to`` on send and the reply fields in payloads/frames; exposed in
 # capabilities for the iOS UI. Canary allowed. Ships OFF.
 register("chat_replies")
+# Ask AI / single default agent (task 20261106-remove-agents-ask-ai). Gates the agent-id-free
+# /ask-ai routes, legacy /agent/* id remapping onto the canonical agent, the user-wide chat cap,
+# call-time default prompt and the fixed scheduled-devotion push copy. Implies multi-chat.
+# Exposed in capabilities for clients. Ships OFF; flip only AFTER the merge script has run.
+register("ask_ai_default_agent")
 
 
 def _load_snapshot() -> dict[str, tuple[str, frozenset[str]]]:

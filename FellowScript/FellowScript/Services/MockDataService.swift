@@ -866,7 +866,7 @@ final class MockDataService: DataServiceProtocol {
     }
 
     func fetchHeartbeats(userId: String, agentId: String) async throws -> [FSHeartbeat] {
-        agentId == Self.mockHeartbeat.agent_id ? [Self.mockHeartbeat] : []
+        (agentId == Self.mockHeartbeat.agent_id || agentId == FSAgent.askAiId) ? [Self.mockHeartbeat] : []
     }
 
     func createAgent(userId: String, role: String) async throws -> FSAgent {

@@ -46,6 +46,7 @@ function ChatRow({ chat, active, focused, onSelect, rowRef }) {
 }
 
 function ChatList({ chatUi, agentName, onClose }) {
+  const askAi = !!chatUi.askAi;
   const { chats, chatsLoading, chatsError, activeChatId, creatingChat, onSelectChat, onCreateChat, onRefreshChats } = chatUi;
   const [focusIdx, setFocusIdx] = useState(() => Math.max(0, chats.findIndex(c => c.id === activeChatId)));
   const rowRefs = useRef([]);
@@ -64,17 +65,17 @@ function ChatList({ chatUi, agentName, onClose }) {
   return (
     <div style={{ width: 280, maxHeight: 'min(320px, 60vh)', display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
       <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.4rem', padding: '0 0.2rem' }}>
-        <Text strong style={{ fontSize: '0.8rem', color: 'var(--parchment)' }}>Chats</Text>
-        <Text style={{ fontSize: '0.7rem', color: SECONDARY, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{agentName}</Text>
+        <Text strong style={{ fontSize: '0.8rem', color: 'var(--parchment)' }}>{askAi ? 'Your AI chats' : 'Chats'}</Text>
+        {!askAi && <Text style={{ fontSize: '0.7rem', color: SECONDARY, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{agentName}</Text>}
       </div>
 
       {chatsError && chats.length > 0 && (
         <div role="status" aria-live="polite" style={{ fontSize: '0.7rem', color: SECONDARY, padding: '0 0.2rem' }}>
-          Couldn't refresh chats
+          {askAi ? "Couldn't refresh. Showing saved chats." : "Couldn't refresh chats"}
         </div>
       )}
 
-      <div role="listbox" aria-label={`Chats with ${agentName}`} onKeyDown={onKeyDown}
+      <div role="listbox" aria-label={askAi ? 'Your AI chats' : `Chats with ${agentName}`} onKeyDown={onKeyDown}
         style={{ overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 4, minHeight: 0 }}>
         {loadingFirst && (
           <div aria-label="Loading chats" role="status" style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
@@ -83,13 +84,13 @@ function ChatList({ chatUi, agentName, onClose }) {
         )}
         {chatsError && chats.length === 0 && (
           <div role="alert" style={{ padding: '0.6rem', textAlign: 'center' }}>
-            <Text style={{ display: 'block', fontSize: '0.74rem', color: SECONDARY, marginBottom: 6 }}>Couldn't load chats</Text>
+            <Text style={{ display: 'block', fontSize: '0.74rem', color: SECONDARY, marginBottom: 6 }}>{askAi ? "Couldn't load your chats." : "Couldn't load chats"}</Text>
             <Button size="small" onClick={() => onRefreshChats()}>Try again</Button>
           </div>
         )}
         {!loadingFirst && !chatsError && chats.length === 0 && (
           <div style={{ padding: '0.6rem', textAlign: 'center' }}>
-            <Text style={{ display: 'block', fontSize: '0.74rem', color: SECONDARY, marginBottom: 6 }}>No chats yet</Text>
+            <Text style={{ display: 'block', fontSize: '0.74rem', color: SECONDARY, marginBottom: 6 }}>{askAi ? 'No AI chats yet.' : 'No chats yet'}</Text>
             <Button size="small" onClick={create}>Start a chat</Button>
           </div>
         )}
@@ -133,13 +134,13 @@ export default function AgentChatSwitcher({ chatUi, agentName }) {
         content={<ChatList chatUi={chatUi} agentName={agentName} onClose={close} />}
       >
         <Button ref={btnRef} type="text" icon={<MessageOutlined />}
-          aria-label={`Chats with ${agentName}`} aria-haspopup="listbox" aria-expanded={open}
+          aria-label={chatUi.askAi ? 'Your AI chats' : `Chats with ${agentName}`} aria-haspopup="listbox" aria-expanded={open}
           style={{ color: GOLD, minWidth: 32, minHeight: 32, fontSize: '0.74rem' }}>
           <span className="agent-chats-label">Chats</span>
         </Button>
       </Popover>
-      <Tooltip title="New chat">
-        <Button type="text" aria-label={`New chat with ${agentName}`}
+      <Tooltip title={chatUi.askAi ? 'New AI chat' : 'New chat'}>
+        <Button type="text" aria-label={chatUi.askAi ? 'New AI chat' : `New chat with ${agentName}`}
           icon={creatingChat ? <Spin size="small" /> : <PlusOutlined />}
           disabled={creatingChat} onClick={onCreateChat}
           style={{ color: GOLD, minWidth: 32, minHeight: 32, opacity: creatingChat ? 0.45 : 1 }} />

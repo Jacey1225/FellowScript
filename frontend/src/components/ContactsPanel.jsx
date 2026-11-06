@@ -3,6 +3,7 @@ import JoinWithLinkModal from './JoinWithLinkModal.jsx';
 import { useCapabilities } from '../hooks/useCapabilities.js';
 import { exploreEntryUrl } from '../lib/exploreEntry.js';
 import { useCollapsedSections } from '../hooks/useCollapsedSections.js';
+import { chatActivityIso, chatDateLabel, chatDisplayTitle } from '../lib/agentChats.js';
 import { Button, Avatar, Typography, Modal, Form, Checkbox, Spin, Dropdown, Radio, Input, message as antMessage } from 'antd';
 import {
   MessageOutlined, PlusOutlined, EditOutlined, DeleteOutlined, UserAddOutlined,
@@ -74,6 +75,104 @@ function AgentRow({ agent, active, onOpen }) {
         {agentLabel(agent)}
       </Text>
     </div>
+  );
+}
+
+// ── Ask AI chat row (flag ask_ai_default_agent) ──────────────────────────────
+
+function AskAiChatRow({ chat, active, onOpen }) {
+  const untitled = !(chat.title || '').trim();
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      aria-current={active ? 'true' : undefined}
+      onClick={onOpen}
+      onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onOpen(); } }}
+      style={{
+        display: 'flex', alignItems: 'center', gap: '0.5rem', minHeight: 44,
+        padding: '0.35rem 0.8rem', cursor: 'pointer',
+        background: active ? 'rgba(255,198,26,0.12)' : 'transparent',
+        borderLeft: `2px solid ${active ? 'var(--gold)' : 'transparent'}`,
+        transition: 'background 0.15s, border-color 0.15s',
+      }}
+      onMouseEnter={e => { if (!active) e.currentTarget.style.background = 'rgba(255,198,26,0.06)'; }}
+      onMouseLeave={e => { if (!active) e.currentTarget.style.background = 'transparent'; }}
+    >
+      <div style={{
+        width: 30, height: 30, borderRadius: '50%', flexShrink: 0,
+        background: 'rgba(255,198,26,0.12)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+      }}>
+        <RobotOutlined aria-hidden="true" style={{ color: 'var(--gold)', fontSize: '0.8rem' }} />
+      </div>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{
+          fontFamily: "'Inter', sans-serif", fontSize: '0.72rem', overflow: 'hidden',
+          textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+          color: untitled ? 'rgba(242,242,242,0.55)' : (active ? 'var(--parchment)' : 'rgba(242,242,242,0.75)'),
+        }}>
+          {chatDisplayTitle(chat)}
+        </div>
+        <div style={{ fontFamily: "'Inter', sans-serif", fontSize: '0.6rem', color: 'rgba(242,242,242,0.5)' }}>
+          {chatDateLabel(chatActivityIso(chat))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Ask AI section: the user's separate chats with the one built-in assistant.
+// A failed refresh keeps whatever list is already shown (never an invented one).
+function AskAiSection({ askAi, collapsed, onToggle }) {
+  const chats = askAi.chats || [];
+  const loadingFirst = askAi.loading && chats.length === 0 && !askAi.error;
+  const sorted = [...chats].sort((a, b) => String(chatActivityIso(b)).localeCompare(String(chatActivityIso(a))));
+  return (
+    <>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.55rem 0.8rem 0.25rem', borderTop: '1px solid rgba(255,255,255,0.048)', marginTop: '0.3rem' }}>
+        <SectionToggle label="Ask AI" collapsed={collapsed} onToggle={onToggle} controlsId="contacts-askai-body" />
+        <Button type="text" size="small" icon={<PlusOutlined />} onClick={askAi.onNewChat}
+          disabled={askAi.creating} aria-label="New AI chat" title="New AI chat"
+          style={{ color: 'rgba(255,198,26,0.5)', padding: '0 3px', minHeight: 28 }} />
+      </div>
+      {!collapsed && (
+        <div id="contacts-askai-body">
+          {askAi.createError && (
+            <div role="status" aria-live="polite" style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '0.2rem 0.8rem', fontSize: '0.62rem', color: 'rgba(242,242,242,0.7)' }}>
+              <span style={{ flex: 1 }}>{askAi.createError}</span>
+              <Button type="link" size="small" onClick={askAi.onClearCreateError} style={{ fontSize: '0.62rem', padding: 0 }}>Dismiss</Button>
+            </div>
+          )}
+          {askAi.error && chats.length > 0 && (
+            <div role="status" aria-live="polite" style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '0.2rem 0.8rem', fontSize: '0.62rem', color: 'rgba(242,242,242,0.7)' }}>
+              <span style={{ flex: 1 }}>Couldn't refresh. Showing saved chats.</span>
+              <Button type="link" size="small" onClick={() => askAi.onRefresh()} style={{ fontSize: '0.62rem', padding: 0 }}>Retry</Button>
+            </div>
+          )}
+          {loadingFirst && (
+            <div role="status" aria-label="Loading chats" style={{ padding: '0.2rem 0.8rem', display: 'flex', flexDirection: 'column', gap: 4 }}>
+              {[0, 1, 2].map(i => <div key={i} style={{ height: 36, borderRadius: 8, background: 'rgba(255,255,255,0.05)' }} />)}
+            </div>
+          )}
+          {askAi.error && chats.length === 0 && (
+            <div role="alert" style={{ textAlign: 'center', padding: '0.6rem 0.5rem' }}>
+              <Text style={{ display: 'block', color: 'rgba(242,242,242,0.5)', fontSize: '0.62rem', marginBottom: 4 }}>Couldn't load your chats.</Text>
+              <Button size="small" onClick={() => askAi.onRefresh()}>Retry</Button>
+            </div>
+          )}
+          {!loadingFirst && !askAi.error && chats.length === 0 && (
+            <div style={{ textAlign: 'center', padding: '0.6rem 0.5rem' }}>
+              <Text style={{ display: 'block', color: 'rgba(242,242,242,0.5)', fontSize: '0.62rem', marginBottom: 4 }}>No AI chats yet.</Text>
+              <Button size="small" type="primary" onClick={askAi.onNewChat} disabled={askAi.creating}>Start a chat</Button>
+            </div>
+          )}
+          {sorted.map(c => (
+            <AskAiChatRow key={c.id} chat={c} active={askAi.activeChatId === c.id} onOpen={() => askAi.onOpenChat(c.id)} />
+          ))}
+        </div>
+      )}
+    </>
   );
 }
 
@@ -192,6 +291,7 @@ export default function ContactsPanel({
   loaded, onLoad,
   agents, activeAgent, onOpenAgent, onNewAgent,
   showAgents = true,
+  askAi = null,
 }) {
   const [friendInput,    setFriendInput]    = useState('');
   const [showAddFriend,  setShowAddFriend]  = useState(false);
@@ -361,8 +461,13 @@ export default function ContactsPanel({
         </div>
         )}
 
-        {/* Agents */}
-        {showAgents && (
+        {/* Ask AI (flag ask_ai_default_agent): replaces the Agents list. */}
+        {askAi && (
+          <AskAiSection askAi={askAi} collapsed={!!collapsed.askAi} onToggle={() => toggleCollapsed('askAi')} />
+        )}
+
+        {/* Agents (legacy, flag off) */}
+        {showAgents && !askAi && (
           <>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.55rem 0.8rem 0.25rem', borderTop: '1px solid rgba(255,255,255,0.048)', marginTop: '0.3rem' }}>
               <Text style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 700, fontSize: '0.52rem', letterSpacing: '0.2em', textTransform: 'uppercase', color: 'rgba(255,198,26,0.4)' }}>Agents</Text>

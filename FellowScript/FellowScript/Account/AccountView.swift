@@ -149,9 +149,10 @@ struct AccountView: View {
 
                         // ── Friend requests ────────────────────────────────────
                         friendRequestsSection
+                            .id("friendRequestsSection")
 
                         // ── Agents ──────────────────────────────────────────────
-                        agentsSection
+                        if appState.capabilities.askAiEnabled { aiAssistantSection } else { agentsSection }
 
                         // ── Events ──────────────────────────────────────────────
                         eventsSection
@@ -197,6 +198,10 @@ struct AccountView: View {
                 }
                 .onAppear {
                     if upgradeCenter.scrollToSubscription { scrollToSubscriptionSection(scrollProxy) }
+                    consumePendingFriendRequestsOpen(scrollProxy)
+                }
+                .onChange(of: appState.pendingFriendRequestsOpen) { _, wanted in
+                    if wanted { consumePendingFriendRequestsOpen(scrollProxy) }
                 }
                 }
             }
@@ -221,6 +226,7 @@ struct AccountView: View {
         }
         .task {
             if let user = appState.currentUser {
+                vm.askAiEnabled = appState.capabilities.askAiEnabled
                 await vm.load(service: appState.service, user: user)
                 // Seed local @State from the freshly-fetched profile (vm.profileData),
                 // not the stale pre-fetch `user` snapshot captured above — falling back
@@ -250,7 +256,7 @@ struct AccountView: View {
                     Task { await vm.createAgent(role: role) }
                 }
             case .newEvent:
-                EventSetupSheet(agents: vm.agents, groups: vm.groups) { agentId, prompt, timestamps, groupId, notesPublic, idempotencyKey in
+                EventSetupSheet(agents: eventSheetAgents, groups: vm.groups) { agentId, prompt, timestamps, groupId, notesPublic, idempotencyKey in
                     Task { await vm.createEvent(agentId: agentId, prompt: prompt, timestamps: timestamps, groupId: groupId, notesPublic: notesPublic, idempotencyKey: idempotencyKey) }
                 }
             case .editEvent(let event):
@@ -261,7 +267,7 @@ struct AccountView: View {
                 // consume it (POST .../heartbeat) -- updateHeartbeat (PUT
                 // .../update_heartbeats) is not a duplicate-row-creating
                 // endpoint, so the token is intentionally discarded here.
-                EventSetupSheet(agents: vm.agents, groups: vm.groups, existing: event) { agentId, prompt, timestamps, groupId, notesPublic, _ in
+                EventSetupSheet(agents: eventSheetAgents, groups: vm.groups, existing: event) { agentId, prompt, timestamps, groupId, notesPublic, _ in
                     Task { await vm.updateEvent(event, agentId: agentId, prompt: prompt, timestamps: timestamps, groupId: groupId, notesPublic: notesPublic) }
                 }
             case .timezonePicker:

@@ -193,6 +193,9 @@ struct ContentView: View {
         .onChange(of: appState.pendingChatContact) { _, target in
             if target != nil { selectedTab = .chat }
         }
+        .onChange(of: appState.pendingAskAiOpen) { _, open in
+            if open { selectedTab = .chat }
+        }
         // Announcements free-limit card ("See plans") -> Account tab.
         .onReceive(NotificationCenter.default.publisher(for: .fsOpenSubscriptionPlans)) { _ in
             selectedTab = .account

@@ -36,6 +36,8 @@ final class AppState: ObservableObject {
     /// editor with the verse attached, then clears it. iPhone keeps its sheet.
     @Published var pendingNoteDraft: VerseNoteDraft? = nil
     @Published var pendingChatContact: FSContact? = nil   // set to open a chat from another tab
+    /// Task 20261106-remove-agents-ask-ai: Account's "Open Ask AI" -> Chat tab, Ask AI segment.
+    @Published var pendingAskAiOpen = false
     /// Task 20261012-share-verses-notes-in-chat: a verse/note picked for "Send in
     /// chat". The chat thread for `contact` sends it over the one chat socket
     /// once it has loaded, then clears this. Memory only.

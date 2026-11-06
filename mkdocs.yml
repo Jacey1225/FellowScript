@@ -27,6 +27,7 @@ nav:
     - Community: design/community.md
     - Account: design/account.md
     - Agent Chats: design/agent-chats.md
+    - Ask AI: design/ask-ai.md
   - Architecture:
     - System Overview: architecture/overview.md
     - Backend: architecture/backend.md

@@ -38,6 +38,11 @@ struct FSCapabilities: Decodable, Equatable {
     /// the verse/note widgets' send path show only when the flag is on.
     var sharedObjectsEnabled: Bool { isEnabled("chat_shared_objects") }
 
+    /// Task 20261106-remove-agents-ask-ai: one built-in AI assistant ("Ask AI"),
+    /// no user-created agents. Server flag `ask_ai_default_agent`; fail closed
+    /// (missing/odd value = off = the existing agents UI and /agent routes).
+    var askAiEnabled: Bool { isEnabled("ask_ai_default_agent") }
+
     /// Task 20261010-reaction-highlight-push: friend-highlight push toggle shows only when the flag is on.
     var friendHighlightPushEnabled: Bool { isEnabled("friend_highlight_push") }
 

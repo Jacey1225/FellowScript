@@ -18,7 +18,7 @@ from db import DBManager
 from backend.errors import SaveFailedError, TimelineGenerationError
 from backend.interactions.groups import GroupsManager
 from backend.interactions import flags
-from backend.interactions.agent_chats import AgentChatStore
+from backend.interactions.agent_chats import AgentChatStore, ask_ai_enabled, multi_chat_enabled
 from backend.interactions import agent_memory
 from backend.interactions.agent_memory_config import get_agent_memory_config
 from fastapi import WebSocket
@@ -131,6 +131,10 @@ def detect_leaked_action_json(response: str) -> Optional[dict]:
     return None
 
 
+_DEFAULT_AGENT_NS = uuid.UUID("2b7c1e0a-8f14-4a6d-b1c9-3f5d6a9e7c42")
+DEFAULT_AGENT_NAME = "Ask AI"
+
+
 class AgentManager(DBManager):
     def __init__(self, user_id: str):
         super().__init__()
@@ -163,6 +167,67 @@ class AgentManager(DBManager):
         a bare agent_id from the URL/body must check this before reading or
         acting on it — the id alone is not proof of ownership."""
         return bool(self.lookup(self.agent_table, {"_id": agent_id, "user_id": self.user_id}))
+
+    # ── Default ("Ask AI") agent ─────────────────────────────────────────────
+
+    @staticmethod
+    def default_agent_id(user_id: str) -> str:
+        """Deterministic id used when a user has no agent row yet."""
+        return str(uuid.uuid5(_DEFAULT_AGENT_NS, user_id))
+
+    def ensure_default_agent(self) -> str:
+        """The caller's single canonical agent id; created if they have none.
+
+        Selection (shared with scripts/merge_agents_to_default.py): the row
+        already marked ``is_default``; else an existing agent -- enabled
+        first, then the one with the earliest message, then lowest id -- is
+        promoted; else a row with the deterministic id is inserted. Rows are
+        never deleted or re-pointed here. Raises SaveFailedError on a DB
+        failure (never returns an id that is not persisted).
+        """
+        try:
+            for _ in range(2):
+                self.cur.execute(
+                    "SELECT _id FROM agents WHERE user_id = %s AND is_default", (self.user_id,))
+                row = self.cur.fetchone()
+                if row:
+                    self.conn.commit()
+                    return str(row[0])
+                self.cur.execute(
+                    "SELECT a._id FROM agents a WHERE a.user_id = %s "
+                    "ORDER BY a.enabled DESC, "
+                    "(SELECT MIN(m.timestamp) FROM agent_messages m WHERE m.agent_id = a._id) ASC NULLS LAST, "
+                    "a._id ASC LIMIT 1", (self.user_id,))
+                row = self.cur.fetchone()
+                try:
+                    if row:
+                        self.cur.execute(
+                            "UPDATE agents SET is_default = TRUE WHERE _id = %s AND user_id = %s",
+                            (row[0], self.user_id))
+                    else:
+                        self.cur.execute(
+                            "INSERT INTO agents (_id, user_id, role, chats, name, enabled, is_default) "
+                            "VALUES (%s, %s, '', '{}', %s, TRUE, TRUE)",
+                            (self.default_agent_id(self.user_id), self.user_id, DEFAULT_AGENT_NAME))
+                    self.conn.commit()
+                    return str(row[0]) if row else self.default_agent_id(self.user_id)
+                except psycopg2.errors.UniqueViolation:
+                    # Concurrent request promoted a default first: re-read it.
+                    self.conn.rollback()
+            raise SaveFailedError()
+        except psycopg2.Error as e:
+            self.conn.rollback()
+            logger.error("DB_WRITE_FAILURE op=ensure_default_agent table=agents error=%s", type(e).__name__)
+            raise SaveFailedError()
+
+    def _agent_role(self, agent_id: str) -> str:
+        """Extra instructions layered on the shared prompt. With Ask AI on the
+        stored per-agent role is ignored, so the prompt file is read at call
+        time (_call_api) for everyone; flag off keeps the stored role."""
+        if ask_ai_enabled(self.user_id):
+            return ""
+        result = self.lookup(self.agent_table, {"_id": agent_id})
+        return list(result.values())[0].get("role", "") if result else ""
 
     def get_user_agents(self) -> dict:
         return self.lookup(self.agent_table, {"user_id": self.user_id})
@@ -1017,8 +1082,7 @@ class AgentManager(DBManager):
             finally:
                 gm.close()
         effective_notes_public = bool(heartbeat_notes_public) if effective_group_id else False
-        result     = self.lookup(self.agent_table, {"_id": agent_id})
-        agent_role = list(result.values())[0].get("role", "") if result else ""
+        agent_role = self._agent_role(agent_id)
         if day_instruction:
             context_str = f"TODAY'S PLANNED CONTENT (from this event's current timeline instruction): {day_instruction}"
             # Materially stronger than a soft "try to follow this" wording --
@@ -1237,8 +1301,7 @@ class AgentManager(DBManager):
         fut.add_done_callback(_BG_REFRESHES.discard)
 
     def chat(self, agent_id: str, user_content: str, chat_id: Optional[str] = None) -> str:
-        result     = self.lookup(self.agent_table, {"_id": agent_id})
-        agent_role = list(result.values())[0].get("role", "") if result else ""
+        agent_role = self._agent_role(agent_id)
         memory     = self._memory_enabled()
         mem_chat   = ""
         summary, history = None, []
@@ -1290,7 +1353,7 @@ class AgentManager(DBManager):
         # the flag off is refused, never silently dropped). Flag on: absent
         # chat_id -> the default chat; a supplied one must belong to
         # (caller, agent) or the socket closes 4404 (fail closed).
-        multi = flags.is_enabled("agent_chats", self.user_id)
+        multi = multi_chat_enabled(self.user_id)
         store = AgentChatStore(self) if multi else None
         active_chat = ""
         if chat_id and not multi:
@@ -1303,8 +1366,7 @@ class AgentManager(DBManager):
                 return
             active_chat = resolved
         loop = asyncio.get_running_loop()
-        agent_data = self.get_agent(agent_id) or {}
-        agent_role = list(agent_data.values())[0].get("role", "") if agent_data else ""
+        agent_role = self._agent_role(agent_id)
         # Sliding window of recent message timestamps, scoped to this one
         # connection (one per user_id/agent_id pair -- see agent_ws_endpoint).
         message_times: deque[float] = deque()

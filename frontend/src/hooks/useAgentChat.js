@@ -4,7 +4,8 @@ import { API, WS_BASE } from '../config.js';
 import { handleBlockedResponse } from '../lib/upgradePrompt.js';
 import { compareTimestamps } from '../utils.js';
 import {
-  AgentChatHttpError, createChatErrorMessage, pickInitialChatId, readLastChat, writeLastChat,
+  AgentChatHttpError, ASK_AI_AGENT, createChatErrorMessage, pickInitialChatId, readAskAiCache,
+  readLastChat, writeAskAiCache, writeLastChat,
 } from '../lib/agentChats.js';
 
 // Deferred-summary retry: server presence goes stale after 45 s, so retry ~50 s apart.
@@ -25,7 +26,11 @@ function mapHistory(data) {
 
 // multiChat = capability `agent_chats`. Off: the legacy single flat chat, no
 // chat_id anywhere. On: per-agent chat list, chat-scoped history and socket.
-export function useAgentChat({ user, onNoteSaved, multiChat = false }) {
+// askAi = capability `ask_ai_default_agent`: one server-owned assistant. Every
+// request goes to the agent-id-free /ask-ai routes (no agent id is ever sent),
+// the chat list is the user's Ask AI chats, and it implies multi-chat.
+export function useAgentChat({ user, onNoteSaved, multiChat: multiChatFlag = false, askAi = false }) {
+  const multiChat = multiChatFlag || askAi;
   const [agents,               setAgents]               = useState([]);
   const [agentMessages,        setAgentMessages]        = useState([]);
   const [activeAgent,          setActiveAgent]          = useState(null);
@@ -49,11 +54,18 @@ export function useAgentChat({ user, onNoteSaved, multiChat = false }) {
   const activeAgentRef = useRef(null);
   const activeChatRef  = useRef(null);
   const multiChatRef   = useRef(multiChat);
+  const askAiRef       = useRef(askAi);
   const historySeqRef  = useRef(0);   // stale-response guard for history fetches
   const chatsSeqRef    = useRef(0);   // stale-response guard for list fetches
   // Per-chat transcript cache so a failed refresh keeps the prior messages.
   const messageCacheRef = useRef(new Map());
   multiChatRef.current = multiChat;
+  askAiRef.current = askAi;
+
+  // Base URL for one assistant's HTTP routes. Ask AI ignores agentId.
+  const agentBase = useCallback((agentId) => (
+    askAiRef.current ? `${API}/ask-ai/${user.user_id}` : `${API}/agent/${user.user_id}/${agentId}`
+  ), [user]);
 
   useEffect(() => { heartbeatsRef.current  = heartbeats;  }, [heartbeats]);
   useEffect(() => { onNoteSavedRef.current = onNoteSaved; }, [onNoteSaved]);
@@ -62,8 +74,14 @@ export function useAgentChat({ user, onNoteSaved, multiChat = false }) {
 
   const loadAgents = useCallback(async () => {
     if (!user) return;
+    if (askAiRef.current) {
+      // One built-in assistant: nothing to list or create.
+      setAgents(prev => (prev.length === 1 && prev[0].id === ASK_AI_AGENT.id ? prev : [ASK_AI_AGENT]));
+      return;
+    }
     try {
       const res = await fetch(`${API}/agent/${user.user_id}`);
+      if (askAiRef.current) return; // flag flipped on while this was in flight
       if (res.ok) {
         const data = await res.json();
         const list = Object.entries(data).map(([id, a]) => ({ id, ...a }));
@@ -78,6 +96,18 @@ export function useAgentChat({ user, onNoteSaved, multiChat = false }) {
 
   const loadHeartbeats = useCallback(async (agentList) => {
     if (!user || !agentList?.length) return;
+    if (askAiRef.current) {
+      // User-wide list; a failed refresh keeps the previous schedule.
+      try {
+        const res = await fetch(`${API}/ask-ai/${user.user_id}/heartbeats`);
+        if (!res.ok) throw new Error(`Heartbeat list failed with status ${res.status}`);
+        const list = await res.json();
+        setHeartbeats(list.map(hb => ({ ...hb, agent_id: hb.agent_id || ASK_AI_AGENT.id })));
+      } catch (err) {
+        console.error('Failed to load heartbeats:', err);
+      }
+      return;
+    }
     try {
       const results = await Promise.all(
         agentList.map(agent =>
@@ -134,7 +164,10 @@ export function useAgentChat({ user, onNoteSaved, multiChat = false }) {
         if (now.getTime() < scheduledToday.getTime()) continue;
 
         try {
-          const res = await fetch(`${API}/agent/${user.user_id}/${hb.agent_id}/${hb._id}/commit_heartbeat`, {
+          const commitUrl = askAiRef.current
+            ? `${API}/ask-ai/${user.user_id}/heartbeats/${hb._id}/commit`
+            : `${API}/agent/${user.user_id}/${hb.agent_id}/${hb._id}/commit_heartbeat`;
+          const res = await fetch(commitUrl, {
             method:  'POST',
             headers: { 'Content-Type': 'application/json' },
             body:    JSON.stringify({ prompt: hb.prompt }),
@@ -192,7 +225,10 @@ export function useAgentChat({ user, onNoteSaved, multiChat = false }) {
     if (agentWsRef.current) agentWsRef.current.close();
     const key = chatId || LEGACY_CHAT_KEY;
     const qs = chatId ? `?chat_id=${encodeURIComponent(chatId)}` : '';
-    const ws = new WebSocket(`${WS_BASE}/agent/ws/${agentId}/${user.user_id}${qs}`);
+    const wsPath = askAiRef.current
+      ? `/ask-ai/ws/${user.user_id}`
+      : `/agent/ws/${agentId}/${user.user_id}`;
+    const ws = new WebSocket(`${WS_BASE}${wsPath}${qs}`);
     agentWsRef.current = ws;
     ws.onmessage = (e) => {
       try {
@@ -222,11 +258,11 @@ export function useAgentChat({ user, onNoteSaved, multiChat = false }) {
   // ── Chats (flag agent_chats) ──────────────────────────────────────────────
 
   const fetchChatList = useCallback(async (agentId) => {
-    const res = await fetch(`${API}/agent/${user.user_id}/${agentId}/chats`);
+    const res = await fetch(`${agentBase(agentId)}/chats`);
     if (!res.ok) throw new AgentChatHttpError(res.status);
     const data = await res.json();
     return Array.isArray(data?.chats) ? data.chats : [];
-  }, [user]);
+  }, [user, agentBase]);
 
   // Load one chat's history. Throws nothing: sets historyError and keeps the
   // cached transcript instead (never shows a failed load as an empty chat).
@@ -237,7 +273,7 @@ export function useAgentChat({ user, onNoteSaved, multiChat = false }) {
     setHistoryError(null);
     const qs = chatId ? `?chat_id=${encodeURIComponent(chatId)}` : '';
     try {
-      const res = await fetch(`${API}/agent/${user.user_id}/${agentId}/messages${qs}`);
+      const res = await fetch(`${agentBase(agentId)}/messages${qs}`);
       if (seq !== historySeqRef.current) return 'stale';
       if (!res.ok) {
         setHistoryLoading(false);
@@ -259,7 +295,7 @@ export function useAgentChat({ user, onNoteSaved, multiChat = false }) {
       setHistoryError("Couldn't load this chat. Try again");
       return 'error';
     }
-  }, [user]);
+  }, [user, agentBase]);
 
   const activateChat = useCallback(async (agent, chatId) => {
     activeChatRef.current = chatId;
@@ -273,13 +309,16 @@ export function useAgentChat({ user, onNoteSaved, multiChat = false }) {
   // Re-fetch the list. A failed refresh keeps the existing list and sets
   // chatsError; it never blanks or fabricates chats. Returns the list or null.
   const refreshChats = useCallback(async (agent) => {
-    const target = agent || activeAgentRef.current;
+    const ask = askAiRef.current;
+    const target = ask ? ASK_AI_AGENT : (agent || activeAgentRef.current);
     if (!user || !target) return null;
     const seq = ++chatsSeqRef.current;
     setChatsLoading(true);
     try {
       const list = await fetchChatList(target.id);
-      if (seq !== chatsSeqRef.current || activeAgentRef.current?.id !== target.id) return null;
+      // Ask AI's list is not tied to an open thread, so only the sequence guard applies.
+      if (seq !== chatsSeqRef.current || (!ask && activeAgentRef.current?.id !== target.id)) return null;
+      if (ask) writeAskAiCache(user.user_id, list);
       setChats(list);
       setChatsLoaded(true);
       setChatsError(null);
@@ -288,6 +327,9 @@ export function useAgentChat({ user, onNoteSaved, multiChat = false }) {
     } catch (err) {
       if (seq !== chatsSeqRef.current) return null;
       console.error('Failed to load agent chats:', err);
+      // Ask AI: with nothing on screen yet, fall back to the last saved list
+      // (flagged by chatsError) rather than showing a failed load as empty.
+      if (ask) setChats(prev => (prev.length ? prev : readAskAiCache(user.user_id)));
       setChatsError("Couldn't load chats");
       setChatsLoading(false);
       return null;
@@ -311,12 +353,13 @@ export function useAgentChat({ user, onNoteSaved, multiChat = false }) {
   }, [user, activateChat, refreshChats]);
 
   const createChat = useCallback(async () => {
-    const agent = activeAgentRef.current;
+    const ask = askAiRef.current;
+    const agent = ask ? ASK_AI_AGENT : activeAgentRef.current;
     if (!user || !agent || creatingChat) return null;
     setCreatingChat(true);
     setCreateChatError(null);
     try {
-      const res = await fetch(`${API}/agent/${user.user_id}/${agent.id}/chats`, {
+      const res = await fetch(`${agentBase(agent.id)}/chats`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: '{}',
@@ -327,8 +370,13 @@ export function useAgentChat({ user, onNoteSaved, multiChat = false }) {
         throw new AgentChatHttpError(res.status, code);
       }
       const chat = await res.json();
-      if (activeAgentRef.current?.id !== agent.id) return null;
-      setChats(prev => [chat, ...prev.filter(c => c.id !== chat.id)]);
+      if (!ask && activeAgentRef.current?.id !== agent.id) return null;
+      if (ask && !activeAgentRef.current) { activeAgentRef.current = agent; setActiveAgent(agent); }
+      setChats(prev => {
+        const next = [chat, ...prev.filter(c => c.id !== chat.id)];
+        if (ask) writeAskAiCache(user.user_id, next);
+        return next;
+      });
       messageCacheRef.current.set(chat.id, []);
       setHistoryError(null);
       activeChatRef.current = chat.id;
@@ -340,12 +388,12 @@ export function useAgentChat({ user, onNoteSaved, multiChat = false }) {
     } catch (err) {
       console.error('Failed to create agent chat:', err);
       // Current chat stays active; no chat is invented client-side.
-      setCreateChatError(createChatErrorMessage(err, agent.name || 'this agent'));
+      setCreateChatError(createChatErrorMessage(err, agent.name || 'this assistant', undefined, ask));
       return null;
     } finally {
       setCreatingChat(false);
     }
-  }, [user, creatingChat, connectAgentWS]);
+  }, [user, creatingChat, connectAgentWS, agentBase]);
 
   const retryHistory = useCallback(() => {
     const agent = activeAgentRef.current;
@@ -362,10 +410,14 @@ export function useAgentChat({ user, onNoteSaved, multiChat = false }) {
     historySeqRef.current += 1;
     activeChatRef.current = null;
     messageCacheRef.current = new Map();
-    setChats([]);
-    setChatsLoaded(false);
+    // Ask AI's chat list outlives any one open thread (it is the Messages
+    // section), so only the per-thread state resets there.
+    if (!askAiRef.current) {
+      setChats([]);
+      setChatsLoaded(false);
+      setChatsError(null);
+    }
     setChatsLoading(false);
-    setChatsError(null);
     setActiveChatId(null);
     setCreateChatError(null);
     setHistoryError(null);
@@ -374,7 +426,7 @@ export function useAgentChat({ user, onNoteSaved, multiChat = false }) {
 
   // ── Open / close ──────────────────────────────────────────────────────────
 
-  const openAgentChat = useCallback(async (agent) => {
+  const openAgentChat = useCallback(async (agent, preferredChatId = null) => {
     activeAgentRef.current = agent;
     setActiveAgent(agent);
     setAgentMessages([]);
@@ -404,7 +456,8 @@ export function useAgentChat({ user, onNoteSaved, multiChat = false }) {
       await activateChat(agent, null);
       return;
     }
-    await activateChat(agent, pickInitialChatId(list, readLastChat(user.user_id, agent.id)));
+    const wanted = preferredChatId && list.some(c => c.id === preferredChatId) ? preferredChatId : null;
+    await activateChat(agent, wanted || pickInitialChatId(list, readLastChat(user.user_id, agent.id)));
   }, [user, resetChatState, refreshChats, activateChat, connectAgentWS]);
 
   const closeAgentChat = useCallback(() => {
@@ -489,10 +542,13 @@ export function useAgentChat({ user, onNoteSaved, multiChat = false }) {
   const addHeartbeat = useCallback(async (agentId, heartbeat) => {
     if (!user) return false;
     try {
-      const res = await fetch(`${API}/agent/${user.user_id}/${agentId}/heartbeat`, {
+      const payload = askAiRef.current
+        ? { user_id: user.user_id, ...heartbeat }
+        : { agent_id: agentId, user_id: user.user_id, ...heartbeat };
+      const res = await fetch(`${agentBase(agentId)}/heartbeat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ agent_id: agentId, user_id: user.user_id, ...heartbeat }),
+        body: JSON.stringify(payload),
       });
       if (res.ok || res.status === 201) {
         await loadHeartbeats(agents);
@@ -505,7 +561,7 @@ export function useAgentChat({ user, onNoteSaved, multiChat = false }) {
       message.error('Could not save that scheduled devotion. Check your connection and try again.');
     }
     return false;
-  }, [user, agents, loadHeartbeats]);
+  }, [user, agents, loadHeartbeats, agentBase]);
 
   // Task 20261013-session-call-live-transcript-summary (bounce 2): the server
   // answers {ok: true, deferred: true} (no note yet) while another paid
@@ -515,7 +571,8 @@ export function useAgentChat({ user, onNoteSaved, multiChat = false }) {
   // tab is closed they are simply lost. Retries are silent and never re-flush
   // the transcript tail (that happens before the first call).
   const postSummarize = useCallback(async (userId, agentId, sessionData, groupId) => {
-    const res = await fetch(`${API}/agent/${userId}/${agentId}/summarize`, {
+    const base = askAiRef.current ? `${API}/ask-ai/${userId}` : `${API}/agent/${userId}/${agentId}`;
+    const res = await fetch(`${base}/summarize`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ session: sessionData, group_id: groupId }),

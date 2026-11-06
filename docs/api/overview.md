@@ -392,6 +392,8 @@ screen.
 
 ## Agent (AI Check-ins)
 
+> Flag `ask_ai_default_agent` (default off): clients use the agent-id-free `/ask-ai/{user_id}/...` routes and the `/agent/{user_id}/{agent_id}/...` routes below become compatibility shims for older builds (ownership still enforced; guessed ids `404`). See [Ask AI](../design/ask-ai.md).
+
 | Method | Route | Description |
 |---|---|---|
 | GET | `/agent/{user_id}` | Get agent configuration |

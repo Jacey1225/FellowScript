@@ -290,7 +290,9 @@ private struct OBTour: View {
     let onSkip:   () -> Void
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    private let steps = TourStep.all
+    // Task 20261106-remove-agents-ask-ai: flag-on copy for the AI step.
+    @Environment(\.fsCapabilities) private var capabilities
+    private var steps: [TourStep] { TourStep.all(askAi: capabilities.askAiEnabled) }
 
     var body: some View {
         let current = steps[step]
@@ -597,6 +599,23 @@ private struct TourStep {
     //   - the old EVENTS "Notifications" step (that surface was removed in
     //     20260826-ios-notification-ui-removal; the remaining EVENTS step
     //     below already covers the same ground truthfully)
+    /// Flag `ask_ai_default_agent` on: the AI step describes the built-in Ask AI
+    /// instead of creating an agent. Same asset, section order and count.
+    static func all(askAi: Bool) -> [TourStep] {
+        guard askAi else { return all }
+        return all.map { s in
+            guard s.screenshotAsset == "tour-ai-agent" else { return s }
+            return TourStep(
+                section: "ASK AI",
+                heading: "Your AI study companion",
+                body: "Ask AI: chat with your AI study companion anytime from Messages. It knows your study context and goes deep into the Word.",
+                hint: "Chat → Ask AI",
+                activeTab: s.activeTab,
+                screenshotAsset: s.screenshotAsset
+            )
+        }
+    }
+
     static let all: [TourStep] = [
         // HOME (step 0)
         .init(

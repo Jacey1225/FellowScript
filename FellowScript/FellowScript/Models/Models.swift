@@ -910,6 +910,13 @@ struct FSAgent: Codable, Identifiable {
     var enabled: Bool   = true
     var chats:   [String] = []
 
+    /// Task 20261106-remove-agents-ask-ai: local handle for the server-owned
+    /// default AI. It is never a server agent id: NetworkService+Agents maps it
+    /// to the agent-id-free /ask-ai routes, so clients never learn a real id.
+    static let askAiId = "ask-ai"
+    static let askAi = FSAgent(id: askAiId, name: "Ask AI")
+    var isAskAi: Bool { id == FSAgent.askAiId }
+
     var displayLabel: String {
         if !name.isEmpty { return name }
         if role.isEmpty || role.hasPrefix("You are a spiritual") { return "Spiritual Guide" }
