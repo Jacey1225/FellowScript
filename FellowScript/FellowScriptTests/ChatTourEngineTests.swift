@@ -242,12 +242,26 @@ final class ChatTourOfferTests: XCTestCase {
     private func enable() { defaults.set(true, forKey: ChatTourStore.featureFlagKey) }
     private var clear: ChatTourOfferSuppression { var s = ChatTourOfferSuppression(); s.onChatTab = true; return s }
 
-    func testFlagDefaultsOffAndNothingOffersOrShowsEntry() {
-        XCTAssertFalse(ChatTourStore.featureFlagDefault)
+    func testFlagDefaultsOnWhenNothingStored() {
+        XCTAssertTrue(ChatTourStore.featureFlagDefault)
+        XCTAssertNil(defaults.object(forKey: ChatTourStore.featureFlagKey))
+        XCTAssertTrue(store().isFeatureEnabled)
+        XCTAssertTrue(store().isEntryAvailable)
+        XCTAssertTrue(store().isEligible())
+        XCTAssertTrue(store().shouldOffer(suppression: clear))
+    }
+
+    func testStoredFalseWinsOverDefaultOn() {
+        defaults.set(false, forKey: ChatTourStore.featureFlagKey)
         XCTAssertFalse(store().isFeatureEnabled)
         XCTAssertFalse(store().isEntryAvailable)
         XCTAssertFalse(store().isEligible())
         XCTAssertFalse(store().shouldOffer(suppression: clear))
+    }
+
+    func testDefaultOnStillSuppressedUnderPlainUITesting() {
+        XCTAssertFalse(store(["UI-TESTING"]).isEligible())
+        XCTAssertFalse(store(["UI-TESTING"]).shouldOffer(suppression: clear))
     }
 
     func testFlagOnAndClearOffers() {

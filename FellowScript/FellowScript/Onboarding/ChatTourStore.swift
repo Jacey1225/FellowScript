@@ -62,10 +62,11 @@ struct ChatTourOfferSuppression: Equatable {
 struct ChatTourStore {
     static let offerStateKey = "chatTourOfferState.v1"
 
-    /// Local flag (same pattern as TourPromptStore). Ships DARK: the default is
-    /// off until Jacey approves. An unreadable value reads as off.
+    /// Local flag (same pattern as TourPromptStore). Ships ON: Jacey approved
+    /// on 2026-11-07. A stored explicit value still wins (a stored false keeps it
+    /// off); an unreadable non-Bool value reads as off.
     static let featureFlagKey = "chatTourEnabled"
-    static let featureFlagDefault = false
+    static let featureFlagDefault = true
 
     /// Opt-in launch argument; the offer is otherwise suppressed under "UI-TESTING".
     static let uiTestEnableArgument = "UI-TESTING-CHAT-TOUR"

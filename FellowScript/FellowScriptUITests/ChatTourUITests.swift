@@ -162,10 +162,10 @@ final class ChatTourUITests: XCTestCase {
         label(app, "CHAT TOUR").waitForExistence(timeout: 10) && label(app, step).waitForExistence(timeout: 5)
     }
 
-    // MARK: Flag off (the shipped state)
+    // MARK: Flag explicitly off (stored false wins over the default-on)
 
     func test_flagOff_noOfferAndNoAccountRow() throws {
-        let app = launch(["UI-TESTING", "UI-TESTING-CHAT-TOUR"])   // opt-in arg but NO flag
+        let app = launch(["UI-TESTING", "UI-TESTING-CHAT-TOUR", "-chatTourEnabled", "NO"])   // opt-in arg, flag explicitly off
         goToChat(app)
         RunLoop.current.run(until: Date().addingTimeInterval(3))
         XCTAssertFalse(app.buttons["chatTour.offer.start"].exists, "offer must not show with the flag off")
