@@ -219,6 +219,8 @@ struct MessageGroupRow: View {
     // Task 20261030-profile-everywhere: ids the sender avatar/name need to open a
     // profile (see ChatProfileHookins.swift). Default = nothing tappable.
     var profileLookup: ChatProfileLookup = .none
+    /// Chat tour: the viewer's last message, spotlighted by the "press and hold" step.
+    @Environment(\.chatTourAnchorMessageId) private var tourAnchorMessageId
 
     /// Scroll anchor id for one message. Prefixed so it can never collide with
     /// a MessageDisplayGroup row id (a group's id IS its first message's id).
@@ -412,6 +414,7 @@ struct MessageGroupRow: View {
         )
         .accessibilityLabel(accessibilityLabel(for: message))
         .messageActions(actionsFor?(message) ?? [], reactions: reactionsFor?(message))
+        .onboardingFrameAnchor(message.id == tourAnchorMessageId ? .ownMessage : nil)
     }
 
     /// Extends the pre-existing `"{sender}: {text}"` pattern with a

@@ -916,6 +916,9 @@ final class MockDataService: DataServiceProtocol {
 
     // Contacts + messages
     func fetchContacts(userId: String) async throws -> ([FSContact], [String: FSGroup]) {
+        // UI-TESTING-NO-FRIENDS (additive, task 20261106-chat-tour): the chat
+        // tour's zero-friend path. Without the argument behaviour is unchanged.
+        if ProcessInfo.processInfo.arguments.contains("UI-TESTING-NO-FRIENDS") { return ([], [:]) }
         let group = FSGroup(id: "group-abc", title: "Wednesday Night Study",
                            users: [userId, "friend-001", "friend-002"],
                            creatorId: userId)

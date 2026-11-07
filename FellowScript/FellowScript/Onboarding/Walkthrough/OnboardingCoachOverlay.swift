@@ -20,10 +20,12 @@ import Combine
 
 private struct OnboardingAnchorModifier: ViewModifier {
     let id: OnboardingAnchorID
+    /// False for views that already have their own identity (rows inside a ForEach).
+    var assignsID = true
 
     func body(content: Content) -> some View {
         content
-            .id(id.rawValue)
+            .optionalID(assignsID ? id.rawValue : nil)
             .background(
                 GeometryReader { g in
                     Color.clear
@@ -48,6 +50,18 @@ extension View {
     @ViewBuilder
     func onboardingAnchor(_ id: OnboardingAnchorID?) -> some View {
         if let id { modifier(OnboardingAnchorModifier(id: id)) } else { self }
+    }
+
+    /// Like `onboardingAnchor` but never sets `.id`, for views that live inside a
+    /// ForEach / scroll anchor of their own (e.g. a message bubble).
+    @ViewBuilder
+    func onboardingFrameAnchor(_ id: OnboardingAnchorID?) -> some View {
+        if let id { modifier(OnboardingAnchorModifier(id: id, assignsID: false)) } else { self }
+    }
+
+    @ViewBuilder
+    fileprivate func optionalID(_ id: String?) -> some View {
+        if let id { self.id(id) } else { self }
     }
 
     /// Hosts the coach card for cues whose surface is in `surfaces`.
@@ -210,10 +224,19 @@ struct OnboardingCoachCard: View {
     @ObservedObject private var engine = OnboardingEngine.shared
 
     private var part: OnboardingPart { engine.currentPart ?? .friend }
-    private var cues: [OnboardingCue] { part.cues }
-    private var cueNumber: Int { (cues.firstIndex(where: { $0.id == cue.id }) ?? 0) + 1 }
+    private var cues: [OnboardingCue] { engine.state?.cues(for: part) ?? part.cues }
+    private var isChatTour: Bool { engine.state?.mode == .chatTour }
+    /// Chat tour counts STEPS ("2 of 7"); everything else counts cues.
+    private var progress: (number: Int, total: Int) {
+        if isChatTour, let o = engine.state?.chatOptions {
+            return OnboardingCue.chatStepProgress(for: cue, options: o)
+        }
+        return ((cues.firstIndex(where: { $0.id == cue.id }) ?? 0) + 1, cues.count)
+    }
+    private var cueNumber: Int { progress.number }
     private var partLine: String {
         guard let s = engine.state else { return part.label }
+        if s.mode == .chatTour { return "Chat tour" }
         return "\(part.label) · Part \(s.partNumber) of \(s.totalParts)"
     }
 
@@ -226,7 +249,7 @@ struct OnboardingCoachCard: View {
                     .lineLimit(2)
                 Spacer(minLength: 8)
                 if engine.gate == .open {
-                    Text("\(cueNumber) of \(cues.count)")
+                    Text("\(cueNumber) of \(progress.total)")
                         .font(.fsHelper).foregroundColor(Theme.textSecondary)
                 }
             }
@@ -238,18 +261,37 @@ struct OnboardingCoachCard: View {
             HStack {
                 if engine.gate == .open { dots }
                 Spacer()
-                Button(action: { engine.skipPart() }) {
-                    Text("Skip this step")
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundColor(Theme.textPrimary)
-                        .padding(.horizontal, 16)
+                if engine.gate == .open, let action = cue.actionTitle {
+                    // Informational cue (chat tour): a gold button moves on; no real action behind it.
+                    Button(action: { engine.report(cue.advancesOn) }) {
+                        HStack(spacing: 6) {
+                            Text(action)
+                            Image(systemName: "arrow.right").font(.system(size: 12, weight: .bold))
+                        }
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundColor(Theme.ink)
+                        .padding(.horizontal, 18)
                         .frame(minHeight: 44)
-                        .background(Capsule().fill(Theme.fieldFill))
-                        .overlay(Capsule().strokeBorder(Theme.fieldBorder, lineWidth: 1))
+                        .background(Capsule().fill(Theme.goldGradient))
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(action)
+                    .accessibilityHint(isChatTour ? "Goes to the next step of the chat tour" : "Goes to the next step")
+                } else {
+                    Button(action: { engine.skipPart() }) {
+                        Text("Skip this step")
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundColor(Theme.textPrimary)
+                            .padding(.horizontal, 16)
+                            .frame(minHeight: 44)
+                            .background(Capsule().fill(Theme.fieldFill))
+                            .overlay(Capsule().strokeBorder(Theme.fieldBorder, lineWidth: 1))
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Skip this step")
+                    .accessibilityHint(isChatTour ? "Leaves this step of the chat tour for later and moves on"
+                                                  : "Leaves \(part.label) for later and moves on")
                 }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Skip this step")
-                .accessibilityHint("Leaves \(part.label) for later and moves on")
             }
         }
         .padding(16)
@@ -301,7 +343,7 @@ struct OnboardingCoachCard: View {
 
     private var dots: some View {
         HStack(spacing: 5) {
-            ForEach(cues.indices, id: \.self) { i in
+            ForEach(0..<progress.total, id: \.self) { i in
                 Capsule()
                     .fill(i + 1 == cueNumber ? Theme.gold : Theme.gold.opacity(i + 1 < cueNumber ? 0.45 : 0.18))
                     .frame(width: i + 1 == cueNumber ? 18 : 6, height: 6)
@@ -312,7 +354,7 @@ struct OnboardingCoachCard: View {
 
     private func announce() {
         let text = engine.gate == .open
-            ? "\(partLine), step \(cueNumber) of \(cues.count). \(cue.title). \(cue.hint ?? "")"
+            ? "\(partLine), step \(cueNumber) of \(progress.total). \(cue.title). \(cue.hint ?? "")"
             : "\(partLine). This one needs a subscription."
         UIAccessibility.post(notification: .announcement, argument: text)
     }
@@ -326,6 +368,10 @@ struct OnboardingRecapView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
+        if engine.isChatTour { ChatTourRecapView() } else { walkthroughRecap }
+    }
+
+    private var walkthroughRecap: some View {
         ZStack {
             Color.clear.warmBloomBackground()
             VStack(spacing: 0) {

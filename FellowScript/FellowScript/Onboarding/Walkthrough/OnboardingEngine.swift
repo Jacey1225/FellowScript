@@ -31,6 +31,10 @@ final class OnboardingEngine: ObservableObject {
 
     static let uiTestEnableArgument = "UI-TESTING-WALKTHROUGH"
     private var store: OnboardingProgressStore
+    /// Chat tour progress slot (task 20261106-chat-tour); separate from `store`.
+    private var chatStore: OnboardingProgressStore
+    /// Offer lifecycle for the chat tour. The only prompt-ish store the chat tour writes.
+    private let chatTourStore: ChatTourStore
     /// Records the first-run outcome for the "Take a quick tour" prompt (task
     /// 20261105-take-tour-prompt). Written only when a FIRST-RUN flow ends.
     private let tourPromptStore: TourPromptStore
@@ -41,11 +45,27 @@ final class OnboardingEngine: ObservableObject {
 
     init(store: OnboardingProgressStore = OnboardingProgressStore(),
          tourPromptStore: TourPromptStore = TourPromptStore(),
+         chatTourStore: ChatTourStore = ChatTourStore(),
          arguments: [String] = ProcessInfo.processInfo.arguments) {
         self.store = store
         self.tourPromptStore = tourPromptStore
         self.arguments = arguments
-        self.state = store.load()
+        self.chatTourStore = chatTourStore
+        var chat = store
+        chat.slot = OnboardingProgressStore.chatTourKey
+        self.chatStore = chat
+        // First-run data wins; a chat-tour slot is only read when nothing else is live.
+        if let first = store.load() {
+            self.state = first
+        } else if let saved = chat.load() {
+            var normalized = saved
+            normalized.normalizeChatResume()
+            self.state = normalized
+            // Re-save only when the resume normalization actually changed something.
+            if normalized != saved { chat.save(normalized) }
+        } else {
+            self.state = nil
+        }
     }
 
     // MARK: Derived
@@ -58,6 +78,7 @@ final class OnboardingEngine: ObservableObject {
     var currentPart: OnboardingPart? { state?.currentPart }
     var isRecap: Bool { state?.phase == .recap }
     var isReplay: Bool { state?.mode == .replay }
+    var isChatTour: Bool { state?.mode == .chatTour }
 
     /// Prefilled prompt for the devotion form while that part is running.
     var starterPromptIfActive: String? {
@@ -106,6 +127,17 @@ final class OnboardingEngine: ObservableObject {
         commit(s)
     }
 
+    /// Chat tour from the Chat tab offer or Account. `options` describes this
+    /// user's real friends and capabilities (build it fail-closed). Never touches
+    /// TourPromptStore or PostTourPromptsStore. No-ops while any flow exists.
+    func startChatTour(options: ChatTourOptions) {
+        guard state == nil else { return }
+        var s = OnboardingFlowState(chatTour: options)
+        s.begin()
+        commit(s)
+        chatTourStore.recordStarted()
+    }
+
     /// Recap "Continue": ends the flow. First run: ContentView then runs the
     /// existing push and subscribe prompts (the engine never arms or clears them).
     func finishRecap() {
@@ -113,6 +145,7 @@ final class OnboardingEngine: ObservableObject {
         // First run only: remember whether anything was finished so a skipper can
         // be offered the tour later. Replay never writes the marker.
         if s.mode == .firstRun { tourPromptStore.recordFirstRunOutcome(completedParts: s.completed.count) }
+        if s.mode == .chatTour, s.completed.contains(.chat) { chatTourStore.recordCompleted() }
         commit(nil)
     }
 
@@ -127,7 +160,8 @@ final class OnboardingEngine: ObservableObject {
 
     /// A step's real action failed: keep the step open and show why.
     func reportFailure(_ event: OnboardingEvent, message: String) {
-        guard let s = state, s.phase == .walking, s.currentPart?.cues.contains(where: { $0.advancesOn == event }) == true else { return }
+        guard let s = state, s.phase == .walking, let part = s.currentPart,
+              s.cues(for: part).contains(where: { $0.advancesOn == event }) else { return }
         errorMessage = message
     }
 
@@ -143,6 +177,13 @@ final class OnboardingEngine: ObservableObject {
     func surfaceDismissed(_ surface: OnboardingSurface) {
         guard let cue = state?.currentCue, cue.surface == surface else { return }
         surfaceDismissed(cueIDs: [cue.id])
+    }
+
+    /// Escape hatch for a chat tour the user cannot continue: ends it without a
+    /// recap and keeps the offer state as-is. Never touches a first-run flow.
+    func endChatTour() {
+        guard state?.mode == .chatTour else { return }
+        commit(nil)
     }
 
     func skipPart() {
@@ -166,8 +207,15 @@ final class OnboardingEngine: ObservableObject {
     // MARK: Internals
 
     private func commit(_ new: OnboardingFlowState?) {
+        let previousMode = state?.mode
         state = new
-        store.save(new)
+        if let new {
+            if new.mode == .chatTour { chatStore.save(new) } else { store.save(new) }
+        } else if previousMode == .chatTour {
+            chatStore.save(nil)   // ending a chat tour never touches the first-run slot
+        } else {
+            store.save(nil)
+        }
         if new == nil { anchorFrames = [:]; errorMessage = nil }
         refreshGate()
     }

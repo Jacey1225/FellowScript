@@ -89,6 +89,13 @@ struct ChatRootView: View {
                     .padding(.horizontal, 20)
                     .padding(.top, 18)
 
+                // Task 20261106-chat-tour: one-time dismissible offer (Friends/Groups only).
+                if selectedSegment < 2 {
+                    ChatTourOfferCard()
+                        .padding(.horizontal, 20)
+                        .padding(.top, 12)
+                }
+
                 // Task 20261001-ios-explorer-entry: Groups segment only, and
                 // only when /app/capabilities enables explorer_browse with a
                 // valid link (hidden on any failure).
@@ -197,7 +204,7 @@ struct ChatRootView: View {
             .onDisappear { OnboardingEngine.shared.surfaceDismissed(.addFriendSheet) }
         }
         // Task 20261105-onboarding-redo: coach signals and cue-driven segment.
-        .modifier(ChatOnboardingRouting(selectedSegment: $selectedSegment))
+        .modifier(ChatOnboardingRouting(selectedSegment: $selectedSegment, activeContact: $activeContact))
         .sheet(item: $profileContact) { contact in
             ProfileView(viewerId: appState.currentUser?.user_id ?? "", targetId: contact.id,
                         service: appState.service)
@@ -207,6 +214,10 @@ struct ChatRootView: View {
                 let uid = appState.currentUser?.user_id ?? ""
                 Task { await vm.createGroup(title: title, memberIds: memberIds, userId: uid, service: appState.service) }
             }
+            // Task 20261106-chat-tour: coach card on the sheet, opened/dismissed signals.
+            .onboardingCoach(surfaces: [.addGroupSheet])
+            .onAppear { OnboardingEngine.shared.report(.addGroupSheetOpened) }
+            .onDisappear { OnboardingEngine.shared.surfaceDismissed(.addGroupSheet) }
         }
         .sheet(isPresented: $showNewAgent) {
             NewAgentSheet(role: $newAgentRole) {
@@ -323,8 +334,10 @@ struct ChatRootView: View {
     private var embeddedList: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 4) {
+                ChatTourOfferCard().padding(.bottom, 8)   // task 20261106-chat-tour
                 collapsibleHeader(.friends, title: "FRIENDS") {
                     sectionIconButton("person.badge.plus", label: "Add friend") { showAddFriend = true }
+                        .onboardingAnchor(.friendsPlusButton)
                 }
                 if !collapsedSections.contains(.friends) {
                     if vm.friends.isEmpty {
@@ -334,11 +347,13 @@ struct ChatRootView: View {
                     }
                     ForEach(vm.friends) { contact in
                         embeddedRow(contact)
+                            .onboardingFrameAnchor(contact.id == vm.friends.first?.id ? .firstFriendRow : nil)
                     }
                 }
 
                 collapsibleHeader(.groups, title: "GROUPS") {
                     sectionIconButton("plus", label: "New group") { showAddGroup = true }
+                        .onboardingAnchor(.groupsPlusButton)
                 }
                 .padding(.top, 14)
                 if !collapsedSections.contains(.groups) {
@@ -353,6 +368,7 @@ struct ChatRootView: View {
                     }
                     ForEach(vm.groups) { contact in
                         embeddedRow(contact)
+                            .onboardingFrameAnchor(contact.id == vm.groups.first?.id ? .firstGroupRow : nil)
                     }
                 }
             }
@@ -506,7 +522,7 @@ struct ChatRootView: View {
                     .overlay(Image(systemName: "plus").font(.system(size: 16, weight: .bold)).foregroundColor(Color(hex: "#24170A")))
                     .shadow(color: .black.opacity(0.4), radius: 10, x: 0, y: 6)
             }
-            .onboardingAnchor(selectedSegment == 0 ? .friendsPlusButton : nil)
+            .onboardingAnchor(selectedSegment == 0 ? .friendsPlusButton : selectedSegment == 1 ? .groupsPlusButton : nil)
             .accessibilityLabel(selectedSegment == 0 ? "Add friend" : selectedSegment == 1 ? "New group" : (askAiOn ? "New AI chat" : "New agent"))
         }
         .padding(.horizontal, 20)
@@ -589,6 +605,7 @@ struct ChatRootView: View {
                         .listRowSeparator(.hidden)
                         .listRowInsets(EdgeInsets(top: 5, leading: 20, bottom: 5, trailing: 20))
                         .onTapGesture { activeContact = contact }
+                        .onboardingFrameAnchor(contact.id == filteredFriends.first?.id ? .firstFriendRow : nil)
                         .swipeActions(edge: .trailing) {
                             Button(role: .destructive) {
                                 vm.removeFriend(id: contact.id, userId: appState.currentUser?.user_id ?? "")
@@ -748,6 +765,7 @@ struct ChatRootView: View {
                         .listRowBackground(Color.clear)
                         .listRowSeparator(.hidden)
                         .listRowInsets(EdgeInsets(top: 5, leading: 20, bottom: 5, trailing: 20))
+                        .onboardingFrameAnchor(contact.id == filteredGroups.first?.id ? .firstGroupRow : nil)
                         .swipeActions(edge: .trailing) {
                             Button(role: .destructive) {
                                 vm.leaveGroup(id: contact.id, userId: appState.currentUser?.user_id ?? "")
@@ -1057,9 +1075,11 @@ final class ChatViewModel: ObservableObject {
                 users: [userId] + memberIds
             )
             await load(service: service, userId: userId)
+            OnboardingEngine.shared.report(.groupCreated)   // chat tour: the server accepted it
         } catch {
             groupErrorFromHome = fromHome
             groupError = (error as? LocalizedError)?.errorDescription ?? "Could not create group."
+            OnboardingEngine.shared.reportFailure(.groupCreated, message: "We couldn't create that group. Try again.")
         }
     }
     // Same pattern for createAgent — NetworkService.createAgent now uses
@@ -1770,6 +1790,8 @@ struct AddGroupSheet: View {
 /// show the segment each cue is about (an already-satisfied cue advances).
 private struct ChatOnboardingRouting: ViewModifier {
     @Binding var selectedSegment: Int
+    /// Chat tour: closing the open conversation when a cue is about the lists again.
+    @Binding var activeContact: FSContact?
     @ObservedObject private var onboarding = OnboardingEngine.shared
 
     func body(content: Content) -> some View {
@@ -1783,7 +1805,11 @@ private struct ChatOnboardingRouting: ViewModifier {
 
     private func route(_ cueID: String?) {
         switch cueID {
-        case "friend.open": if selectedSegment != 0 { selectedSegment = 0 }
+        case "friend.open", "chat.openDM", "chat.needFriend": if selectedSegment != 0 { selectedSegment = 0 }
+        case "chat.groupPlus":
+            if selectedSegment != 1 { selectedSegment = 1 }
+            if activeContact != nil { activeContact = nil }   // leave the DM from step 5
+        case "chat.groupOpen": if selectedSegment != 1 { selectedSegment = 1 }
         case "learn.agents": if selectedSegment == 2 { OnboardingEngine.shared.report(.agentsSegmentShown) }
         case "learn.open": if selectedSegment != 2 { selectedSegment = 2 }
         default: break

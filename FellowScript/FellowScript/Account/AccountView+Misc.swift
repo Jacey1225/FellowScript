@@ -34,7 +34,9 @@ extension AccountView {
     /// Task 20261012-notification-settings: entry row to the Notifications sub-page.
     /// Task 20261105-onboarding-redo: replay the guided walkthrough. Hidden while one is running.
     @ViewBuilder var replayOnboardingSection: some View {
-        if !OnboardingEngine.shared.isActive && !OnboardingEngine.shared.blocksPostTourPrompts {
+        if OnboardingEngine.shared.isChatTour {
+            ChatTourEndRow()   // task 20261106-chat-tour: always a way out of a stuck chat tour
+        } else if !OnboardingEngine.shared.isActive && !OnboardingEngine.shared.blocksPostTourPrompts {
             VStack(alignment: .leading, spacing: Theme.spacingSM) {
                 sectionLabel("Guided tour")
                 Button(action: { showReplaySurvey = true }) {
@@ -52,6 +54,7 @@ extension AccountView {
                 }
                 .accessibilityLabel("Replay onboarding")
                 .accessibilityHint("Pick what you want help with and walk through it again")
+                ChatTourReplayRow()   // task 20261106-chat-tour; empty unless the flag is on
                 Text("Walk through the parts of the app you want help with, step by step.")
                     .font(.system(size: Theme.fontXS))
                     .foregroundColor(Theme.textMuted)

@@ -42,6 +42,8 @@ enum OnboardingTopic: String, CaseIterable, Codable, Identifiable {
 /// One walkthrough unit. Topics map 1:1; `.friend` is fixed for everyone.
 enum OnboardingPart: String, CaseIterable, Codable, Identifiable {
     case devotion, prayer, learn, remember, friend
+    /// Standalone chat tour (task 20261106-chat-tour). Never part of a survey plan.
+    case chat
     var id: String { rawValue }
 
     var label: String {
@@ -51,6 +53,7 @@ enum OnboardingPart: String, CaseIterable, Codable, Identifiable {
         case .learn:    return "Learn the Bible"
         case .remember: return "Remember what you learn"
         case .friend:   return "Friends"
+        case .chat:     return "Chat"
         }
     }
 
@@ -62,6 +65,7 @@ enum OnboardingPart: String, CaseIterable, Codable, Identifiable {
         case .learn:    return "Asked your study partner a question"
         case .remember: return "First note, highlight, and chapter jump"
         case .friend:   return "Sent a friend request"
+        case .chat:     return "Took the chat tour"
         }
     }
 
@@ -73,6 +77,7 @@ enum OnboardingPart: String, CaseIterable, Codable, Identifiable {
         case .learn:    return "Study partner"
         case .remember: return "Notes and highlights"
         case .friend:   return "Add a friend"
+        case .chat:     return "Chat tour"
         }
     }
 
@@ -83,6 +88,7 @@ enum OnboardingPart: String, CaseIterable, Codable, Identifiable {
         case .learn:    return "Chat → Agents"
         case .remember: return "Notes and Bible tabs"
         case .friend:   return "Chat → Friends → +"
+        case .chat:     return "Account → Chat tour"
         }
     }
 
@@ -105,6 +111,11 @@ enum OnboardingEvent: String, Codable {
     case noteEditorOpened, noteSaved, highlightSaved, chapterMenuOpened, chapterNavigated
     // friend
     case addFriendSheetOpened, friendRequestSent
+    // chat tour (task 20261106-chat-tour). Reported only after the real action succeeded.
+    case friendAvailable, dmOpened, dmMessageSent, messageActionUsed, attachMenuOpened
+    case groupsSegmentShown, addGroupSheetOpened, groupCreated, groupThreadOpened, groupInfoOpened
+    /// Informational "Next" / "Finish" taps on a coach card (no app action behind them).
+    case callIntroSeen, groupInfoReviewed
 }
 
 /// Where a cue's coach card is drawn. Sheets and covers sit above the root
@@ -115,6 +126,10 @@ enum OnboardingSurface: String, Codable {
     /// The Account screen (a tab on phone, a sheet on iPad).
     case accountScreen
     case devotionSheet, agentChatSheet, noteEditor, addFriendSheet
+    /// Chat tour: a DM or group conversation sheet, and the new-group sheet.
+    case chatThreadSheet, addGroupSheet
+    /// Chat tour: the Group info sheet (phone sheet, or inline on iPad).
+    case groupInfoSheet
 }
 
 /// Which main destination a cue wants showing behind its card.
@@ -128,6 +143,10 @@ enum OnboardingAnchorID: String, Codable {
     case agentsSegment, studyPartnerRow
     case newNoteButton, bibleVerses, chapterTitle
     case friendsPlusButton
+    // chat tour
+    case firstFriendRow, groupsSegment, groupsPlusButton, firstGroupRow
+    case composerSend, composerAttach, ownMessage, callPill
+    case groupNameField, groupHeaderTitle, hostToolsRow
 }
 
 struct OnboardingCue: Equatable, Identifiable {
@@ -140,9 +159,19 @@ struct OnboardingCue: Equatable, Identifiable {
     let hint: String?
     /// The event that completes this cue. The last cue's event completes the part.
     let advancesOn: OnboardingEvent
+    /// Chat tour only: which of the tour's steps this cue belongs to (one step can
+    /// span several cues, e.g. the + button and the New Group sheet). Skip and the
+    /// "n of N" counter work on steps.
+    var step: Int? = nil
+    /// Chat tour only: a gold button on the card ("Next", "Finish") that reports
+    /// `advancesOn` for informational cues. Replaces "Skip this step".
+    var actionTitle: String? = nil
 
     static func cues(for part: OnboardingPart) -> [OnboardingCue] {
         switch part {
+        case .chat:
+            // Fail closed: with no known options the optional features are omitted.
+            return chatCues(options: .none)
         case .devotion:
             return [
                 .init(id: "devotion.open", surface: .accountScreen, destination: .account, anchor: .newDevotionButton,
@@ -227,5 +256,150 @@ struct OnboardingCue: Equatable, Identifiable {
                       hint: "Then tap Send Request", advancesOn: .friendRequestSent),
             ]
         }
+    }
+}
+
+// MARK: Chat tour cues (task 20261106-chat-tour)
+
+/// What this user and server actually have, captured when the tour starts and
+/// persisted with it so a kill-and-resume shows the same cues. `.none` (every
+/// field false) is the fail-closed default: optional features are omitted, and
+/// with no friends the tour offers a skippable "come back" card instead of
+/// fabricating a conversation.
+struct ChatTourOptions: Codable, Equatable {
+    var hasFriends: Bool
+    var threads: Bool
+    var inviteLink: Bool
+    var joinRequests: Bool
+    var announcements: Bool
+    /// Reactions, replies or pins is on: the "press and hold" step only runs then.
+    var messageActions: Bool = false
+
+    static let none = ChatTourOptions(hasFriends: false, threads: false, inviteLink: false,
+                                      joinRequests: false, announcements: false, messageActions: false)
+}
+
+extension ChatTourOptions {
+    private enum CodingKeys: String, CodingKey {
+        case hasFriends, threads, inviteLink, joinRequests, announcements, messageActions
+    }
+
+    /// Tolerant decode: a key that is missing reads as off (fail closed).
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        hasFriends = try c.decode(Bool.self, forKey: .hasFriends)
+        threads = try c.decodeIfPresent(Bool.self, forKey: .threads) ?? false
+        inviteLink = try c.decodeIfPresent(Bool.self, forKey: .inviteLink) ?? false
+        joinRequests = try c.decodeIfPresent(Bool.self, forKey: .joinRequests) ?? false
+        announcements = try c.decodeIfPresent(Bool.self, forKey: .announcements) ?? false
+        messageActions = try c.decodeIfPresent(Bool.self, forKey: .messageActions) ?? false
+    }
+}
+
+/// One recap row of the chat tour: done when `cueID` completed, else open with
+/// where to find it later (approved frame E4).
+struct ChatTourRecapRow: Equatable {
+    let cueID: String
+    let title: String
+    let whereToFind: String
+}
+
+extension OnboardingCue {
+    /// Copy and layout follow the Jacey-approved SQUIDWARD frames
+    /// (design-approval.md): 7 steps, "n of 7".
+    static func chatCues(options o: ChatTourOptions) -> [OnboardingCue] {
+        guard o.hasFriends else {
+            return [
+                .init(id: "chat.needFriend", surface: .root, destination: .chat, anchor: .friendsPlusButton,
+                      title: "Add a friend to start chatting",
+                      body: "Messages and calls need someone on the other end. Add a friend by username, then we will pick the tour back up.",
+                      hint: "Tap + to add a friend", advancesOn: .friendAvailable, step: 1),
+            ]
+        }
+        var infoDoes = ["mute alerts"]
+        if o.announcements { infoDoes.append("post announcements") }
+        if o.threads { infoDoes.append("keep side conversations in threads") }
+        if o.inviteLink { infoDoes.append("create an invite link in Host tools") }
+        let infoList = infoDoes.count > 1
+            ? infoDoes.dropLast().joined(separator: ", ") + ", and " + infoDoes[infoDoes.count - 1]
+            : infoDoes[0]
+        let toolsBody = (o.inviteLink
+            ? "Create an invite link in Host tools so friends can join with one tap."
+            : "Host tools holds your member limit and more.")
+            + (o.joinRequests ? " Review join requests there too." : "")
+            + " You can mute this chat any time."
+
+        var cues: [OnboardingCue] = [
+            .init(id: "chat.openDM", surface: .root, destination: .chat, anchor: .firstFriendRow,
+                  title: "Message a friend",
+                  body: "Your friends and groups live in Chat. Tap a friend to open your conversation.",
+                  hint: "Tap a friend", advancesOn: .dmOpened, step: 1),
+            .init(id: "chat.send", surface: .chatThreadSheet, destination: nil, anchor: .composerSend,
+                  title: "Say hello",
+                  body: "Type a message and send it. It reaches them right away.",
+                  hint: "Type a message, then tap send", advancesOn: .dmMessageSent, step: 2),
+        ]
+        if o.messageActions {
+            cues.append(.init(id: "chat.actions", surface: .chatThreadSheet, destination: nil, anchor: .ownMessage,
+                              title: "Press and hold a message",
+                              body: "React with an emoji, reply to that exact message, or pin it so it is easy to find later.",
+                              hint: "Press and hold your message, then pick one", advancesOn: .messageActionUsed, step: 3))
+        }
+        cues += [
+            .init(id: "chat.attach", surface: .chatThreadSheet, destination: nil, anchor: .composerAttach,
+                  title: "Share more than words",
+                  body: "Tap + to send a photo, a video, a file, or a GIF. Nothing is sent until you choose something.",
+                  hint: "Tap +", advancesOn: .attachMenuOpened, step: 4),
+            .init(id: "chat.call", surface: .chatThreadSheet, destination: nil, anchor: .callPill,
+                  title: "Talk face to face",
+                  body: "Tap Call to ring a friend for a voice or video call. We will not ring anyone during the tour.",
+                  hint: nil, advancesOn: .callIntroSeen, step: 5, actionTitle: "Next"),
+            .init(id: "chat.groupPlus", surface: .root, destination: .chat, anchor: .groupsPlusButton,
+                  title: "Start a group",
+                  body: "Study with several friends in one conversation. Tap + on the Groups tab to make one.",
+                  hint: "Tap +", advancesOn: .addGroupSheetOpened, step: 6),
+            .init(id: "chat.groupCreate", surface: .addGroupSheet, destination: nil, anchor: .groupNameField,
+                  title: "Start a group",
+                  body: "Name it and choose who to invite from your friends. You can add more people later.",
+                  hint: "Name it, then tap Create", advancesOn: .groupCreated, step: 6),
+            .init(id: "chat.groupOpen", surface: .root, destination: .chat, anchor: .firstGroupRow,
+                  title: "Open your group",
+                  body: "Your group is in the Groups list. Tap it to open the conversation.",
+                  hint: "Tap your group", advancesOn: .groupThreadOpened, step: 7),
+            .init(id: "chat.groupInfo", surface: .chatThreadSheet, destination: nil, anchor: .groupHeaderTitle,
+                  title: "Open Group info",
+                  body: "Tap the group name. You can \(infoList).",
+                  hint: "Tap the group name", advancesOn: .groupInfoOpened, step: 7),
+            .init(id: "chat.groupTools", surface: .groupInfoSheet, destination: nil, anchor: .hostToolsRow,
+                  title: "Make it a home for your group",
+                  body: toolsBody,
+                  hint: nil, advancesOn: .groupInfoReviewed, step: 7, actionTitle: "Finish"),
+        ]
+        return cues
+    }
+
+    /// "n of N" for a chat-tour cue. N is the length of the full tour for this
+    /// user's capabilities, so the no-friends card reads "1 of 7" like the frames.
+    static func chatStepProgress(for cue: OnboardingCue, options o: ChatTourOptions) -> (number: Int, total: Int) {
+        var full = o
+        full.hasFriends = true
+        let steps = Array(Set(chatCues(options: full).compactMap(\.step))).sorted()
+        let n = (cue.step.flatMap { steps.firstIndex(of: $0) } ?? 0) + 1
+        return (n, max(steps.count, 1))
+    }
+
+    /// Recap rows (frame E4) present for these options.
+    static func chatRecapRows(options o: ChatTourOptions) -> [ChatTourRecapRow] {
+        var full = o
+        full.hasFriends = true
+        let ids = Set(chatCues(options: full).map(\.id))
+        let all: [ChatTourRecapRow] = [
+            .init(cueID: "chat.send", title: "Messaged a friend", whereToFind: "Chat → Friends"),
+            .init(cueID: "chat.actions", title: "Reacted, replied or pinned", whereToFind: "Press and hold a message"),
+            .init(cueID: "chat.attach", title: "Shared a photo, file or GIF", whereToFind: "The + beside the message box"),
+            .init(cueID: "chat.groupCreate", title: "Started a group", whereToFind: "Chat → Groups → +"),
+            .init(cueID: "chat.groupTools", title: "Set up Group info", whereToFind: "Tap the group name"),
+        ]
+        return all.filter { ids.contains($0.cueID) }
     }
 }

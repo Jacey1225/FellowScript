@@ -1509,6 +1509,10 @@ struct ChatThreadView: View {
             .modifier(SessionEndedWiring(
                 appEnded: appState.sessionEnded, vmEnded: vm.sessionEnded,
                 onAppEnded: { vm.noteSessionEnded() }, onVmEnded: { appState.markSessionEnded() }))
+            // Task 20261106-chat-tour: coach card on this screen and real-action signals.
+            .chatTourThreadWiring(contact: contact, ackRevision: vm.ackRevision,
+                                  failedCount: vm.failedMessageIds.count, inThread: vm.isThreadOpen,
+                                  anchorMessageId: ChatTourAnchors.lastOwnMessageId(vm.messages))
     }
 
     private var content: some View {
@@ -2069,6 +2073,7 @@ struct ChatThreadView: View {
         Task {
             do {
                 try await vm.toggleReaction(emoji, on: message, service: appState.service, userId: uid)
+                OnboardingEngine.shared.report(.messageActionUsed)   // chat tour
             } catch {
                 // Rolled back by the view model; explicit, non-silent failure.
                 if (error as? FSReactionError) == .termsReacceptRequired { appState.refreshCapabilities(force: true) }
@@ -2131,6 +2136,7 @@ struct ChatThreadView: View {
         Task {
             do {
                 try await vm.togglePin(message, service: appState.service, userId: uid)
+                OnboardingEngine.shared.report(.messageActionUsed)   // chat tour
             } catch {
                 if (error as? FSPinError) == .termsReacceptRequired { appState.refreshCapabilities(force: true) }
                 showToast((error as? LocalizedError)?.errorDescription ?? FSPinError.fallback, seconds: 4)
@@ -2232,6 +2238,7 @@ struct ChatThreadView: View {
         switch kind {
         case .reply:
             startReply(to: message)
+            OnboardingEngine.shared.report(.messageActionUsed)   // chat tour
         case .goToOriginal:
             if let id = message.reply?.id { jumpTarget = id }
         case .pin, .unpin:
@@ -2240,6 +2247,7 @@ struct ChatThreadView: View {
             if let text = message.copyableText {
                 UIPasteboard.general.string = text
                 showToast("Copied", seconds: 1.5)
+                OnboardingEngine.shared.report(.messageActionUsed)   // chat tour
             }
         case .startThread:
             startThread(from: message)
@@ -2459,6 +2467,7 @@ struct ChatThreadView: View {
             showGroupInfo = false
             openThread(summary)
         })
+        .chatTourGroupInfoWiring()
     }
 
     private var inlineGroupInfo: some View {
@@ -2516,6 +2525,7 @@ struct ChatThreadView: View {
             .accessibilityLabel(contact.type == .group ? "Group info, \(displayName)" : contact.name)
             .accessibilityHint(contact.type == .group ? "Opens group settings, members, and shared media" : "")
             .dmHeaderProfileTap(contact: contact)
+            .onboardingAnchor(contact.type == .group ? .groupHeaderTitle : nil)
 
             if contact.type == .group {
                 // Sessions lives in the group info chip row (20261023-group-info-row).
@@ -2523,7 +2533,7 @@ struct ChatThreadView: View {
                 RoundIconButton(systemIcon: "chevron.left") {}.hidden().accessibilityHidden(true)
             } else {
                 Spacer(minLength: 8)
-                callPill
+                callPill.onboardingAnchor(.callPill)
             }
         }
         // Join-request push tap (task 20261016-push-notifications-and-ui).
@@ -2820,7 +2830,7 @@ struct ChatThreadView: View {
                                  compact: !embedded, badges: infoBadges)
             }
             HStack(spacing: 10) {
-                attachButton
+                attachButton.onboardingAnchor(.composerAttach)
 
                 TextField("", text: $text,
                           prompt: Text(vm.isThreadOpen ? "Reply in thread…" : "Type a message…").foregroundColor(Theme.textSecondary), axis: .vertical)
@@ -2846,6 +2856,7 @@ struct ChatThreadView: View {
                         .clipShape(Circle())
                 }
                 .disabled(!canSend)
+                .onboardingAnchor(.composerSend)
                 .accessibilityLabel("Send message")
             }
             .padding(.horizontal, Theme.spacingMD)
@@ -3015,6 +3026,7 @@ struct ChatThreadView: View {
             if on { infoCategory = nil }
             showAttachSheet = on
         }
+        if on { OnboardingEngine.shared.report(.attachMenuOpened) }   // chat tour
         UIAccessibility.post(notification: .layoutChanged, argument: nil)
     }
 

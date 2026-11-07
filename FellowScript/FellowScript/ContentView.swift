@@ -54,6 +54,18 @@ struct ContentView: View {
             await pushPrompt.evaluate()
             tourPrompt.evaluate(suppression: tourPromptSuppression)
         }
+        // Task 20261106-chat-tour: lowest priority. The Chat tab offer card reads
+        // these inputs; the coordinator never shows it over anything above it.
+        .task(id: chatTourSuppression) {
+            ChatTourOfferCoordinator.shared.suppression = chatTourSuppression
+        }
+        .onAppear {
+            let chatVM = startup.chatVM
+            let state = appState
+            ChatTourOfferCoordinator.shared.optionsProvider = {
+                ChatTourOptions.make(friendCount: chatVM.friends.count, capabilities: state.capabilities)
+            }
+        }
         .sheet(isPresented: Binding(
             get: { tourPrompt.isPresented },
             set: { if !$0 { tourPrompt.dismiss() } }
@@ -417,6 +429,31 @@ struct ContentView: View {
                 || appState.needsProfileCompletion
                 || appState.pendingInviteToken != nil
                 || startup.updateAvailable != nil
+        )
+    }
+
+    /// Inputs for the chat tour offer, in strict priority order (see ChatTourOfferSuppression).
+    private var chatTourSuppression: ChatTourOfferSuppression {
+        let phone = WorkspaceLayoutMode.resolve(sizeClass: horizontalSizeClass,
+                                                flagEnabled: WorkspaceLayout.isFeatureEnabled()) == .phoneTabs
+        return ChatTourOfferSuppression(
+            walkthroughActive: onboarding.state != nil || showTourSurvey,
+            firstRunBlocking: onboarding.blocksPostTourPrompts || tourFlowSeenThisSession,
+            postTourOwed: postTour.current != nil || PostTourPromptsStore().nextPrompt() != nil,
+            postTourSeenThisSession: postTourSeenThisSession,
+            pushPromptActive: pushPrompt.state != .hidden,
+            pushPromptShownThisSession: pushPromptShownThisSession,
+            tourPromptPresented: tourPrompt.isPresented,
+            tourPromptEligible: TourPromptStore().isEligible(),
+            inCall: call.inCall || call.isExpanded,
+            loadingScreen: !startup.isReady,
+            otherPresentationActive: !appState.isAuthenticated
+                || !hasCompletedOnboarding
+                || appState.termsReacceptRequired
+                || appState.needsProfileCompletion
+                || appState.pendingInviteToken != nil
+                || startup.updateAvailable != nil,
+            onChatTab: phone ? selectedTab == .chat : true
         )
     }
 
