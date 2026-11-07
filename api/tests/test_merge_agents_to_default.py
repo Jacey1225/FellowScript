@@ -130,10 +130,18 @@ def main():
     check("dry run: keys untouched", sql("SELECT COUNT(*) FROM agent_heartbeats WHERE user_id=%s AND idempotency_key='k1'", (um,))[0][0] == 3)
 
     print("== apply refused off-scratch")
+    # The script treats 5432 as scratch when GITHUB_ACTIONS=true (CI's throwaway
+    # service container), so clear it here or this refusal check passes locally
+    # but actually applies on CI.
     orig = M._server_port
+    orig_gha = os.environ.pop("GITHUB_ACTIONS", None)
     M._server_port = lambda cur: "5432"
-    rc, recs, _ = run(um, "--apply")
-    M._server_port = orig
+    try:
+        rc, recs, _ = run(um, "--apply")
+    finally:
+        M._server_port = orig
+        if orig_gha is not None:
+            os.environ["GITHUB_ACTIONS"] = orig_gha
     check("apply on non-scratch port without --backup-confirmed returns 2", rc == 2, str(rc))
     check("refusal changed nothing", counts(um) == before and sql(
         "SELECT COUNT(*) FROM agents WHERE user_id=%s AND is_default", (um,))[0][0] == 0)
