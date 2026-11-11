@@ -113,7 +113,7 @@ describe('hand-off uniform uH and the iso-contour veil', () => {
   });
   test('the light leaves by a spatial iso-contour of a key field: veil = smoothstep(T - w, T + w, key), never an opacity ramp on the layer', () => {
     const src = fragmentSource(LIQUID_RES.desktop);
-    expect(src).toMatch(/float veil = smoothstep\(T - 0\.20, T \+ 0\.20, key\);/);
+    expect(src).toMatch(/float veil = smoothstep\(T - vw, T \+ vw, key\);/); // vw = the edge softness, see the width test below
     expect(src).toMatch(/float key = Lf \+ 0\.80 \* \(0\.5 \* \(q\.x \+ q\.y\) - 0\.5\) \+ 0\.12 \* \(fc - 0\.5\) \+ 0\.12 \* I;/); // radial falloff, coarse warp q, folds f, ribbon intensity I
     expect(src).toContain('(1.0 - rr)'); // radial falloff
     expect(src).not.toMatch(/float key = [^;]*ray/); // no spokes in the key: the contour is smooth, no spiky blob
@@ -122,19 +122,32 @@ describe('hand-off uniform uH and the iso-contour veil', () => {
     expect(src).not.toMatch(/gl_FragColor\s*=[^;]*uH/);
     expect(src).not.toMatch(/\bal\s*\*=\s*[^;]*uH|\brgb\s*\*=\s*[^;]*uH/);
   });
-  // JS mirror of the shader's piecewise-linear threshold sweep T(h): [h knot, T at that knot].
-  const T_KNOTS = [[0, -0.40], [0.04, 0.30], [0.15, 0.47], [0.26, 0.63], [0.37, 0.75], [0.48, 0.85], [0.59, 0.94], [0.70, 1.04], [0.81, 1.17], [0.92, 1.50], [1, 2.25]];
-  const Tof = (h) => { for (let i = 1; i < T_KNOTS.length; i += 1) { if (h <= T_KNOTS[i][0]) { const [h0, t0] = T_KNOTS[i - 1]; const [h1, t1] = T_KNOTS[i]; return t0 + (t1 - t0) * (h - h0) / (h1 - h0); } } return 2.25; };
-  test('threshold sweep T(h): the shader text carries the same knots as the JS mirror; T(0) = -0.40, T(1) = 2.25, monotone', () => {
+  // JS mirror of the shader's threshold sweep T(h) and veil edge half-width vw(h) (polish pass 20261111).
+  // T = -0.40 + 0.70 ss(0, .03, h) + .22 lin(.03, .12) + .13 lin(.12, .24) + .215 lin(.24, .50) + .205 lin(.50, .70) + .33 lin(.70, .85) + 1.33 ss(.85, 1, h).
+  // The rates were fitted from measured frames (mean luminance per 0.005 of scroll progress) so the white leaves at an even pace:
+  // a fast first 3% crosses the empty band where no key is low enough to show anything yet, then 0.8 to 2.4 per unit of h through the body,
+  // and an eased tail that carries the white core out slowly (the core used to vanish inside 20 px of scroll).
+  const lin = (a, b, h) => Math.min(1, Math.max(0, (h - a) / (b - a)));
+  const Tof = (h) => -0.40 + 0.70 * smoothstep(0, 0.03, h) + 0.22 * lin(0.03, 0.12, h) + 0.13 * lin(0.12, 0.24, h) + 0.215 * lin(0.24, 0.50, h)
+    + 0.205 * lin(0.50, 0.70, h) + 0.33 * lin(0.70, 0.85, h) + 1.33 * smoothstep(0.85, 1.0, h);
+  const vwOf = (h) => 0.20 + 0.45 * smoothstep(0.55, 1.0, h);
+  test('threshold sweep T(h): the shader text carries the same terms as the JS mirror; T(0) = -0.40, T(1) = 2.73, monotone, no step bigger than the eased rates allow', () => {
     const src = fragmentSource(LIQUID_RES.desktop);
-    expect(src).toContain('float T = -0.40 + 0.70 * clamp(uH / 0.04, 0.0, 1.0)');
-    expect(src).toContain('+ 0.75 * clamp((uH - 0.92) / 0.08, 0.0, 1.0);');
-    // the per-segment increments in the shader are the differences of the mirror knots
-    const incs = [...src.matchAll(/([\d.]+) \* clamp\(\(?uH(?: - [\d.]+\)| \/ [\d.]+)?/g)].map((m) => parseFloat(m[1]));
-    expect(incs.length).toBe(10);
-    incs.forEach((v, i) => expect(v).toBeCloseTo(T_KNOTS[i + 1][1] - T_KNOTS[i][1], 2));
-    expect(Tof(0)).toBeCloseTo(-0.40, 6); expect(Tof(1)).toBeCloseTo(2.25, 6);
-    let prev = -Infinity; for (let h = 0; h <= 1.0001; h += 0.01) { const t = Tof(h); expect(t).toBeGreaterThanOrEqual(prev); prev = t; }
+    expect(src).toContain('float T = -0.40 + 0.70 * smoothstep(0.0, 0.03, uH) + 0.22 * clamp((uH - 0.03) / 0.09, 0.0, 1.0) + 0.13 * clamp((uH - 0.12) / 0.12, 0.0, 1.0)');
+    expect(src).toContain('+ 0.215 * clamp((uH - 0.24) / 0.26, 0.0, 1.0) + 0.205 * clamp((uH - 0.50) / 0.20, 0.0, 1.0) + 0.33 * clamp((uH - 0.70) / 0.15, 0.0, 1.0)');
+    expect(src).toContain('+ 1.33 * smoothstep(0.85, 1.0, uH);');
+    expect(src).toContain('float vw = 0.20 + 0.45 * smoothstep(0.55, 1.0, uH);');
+    expect(Tof(0)).toBeCloseTo(-0.40, 9);
+    expect(Tof(1)).toBeCloseTo(2.73, 9); // -0.40 + 0.70 + 0.22 + 0.13 + 0.215 + 0.205 + 0.33 + 1.33
+    let prev = Tof(0); let maxStep = 0;
+    for (let h = 0.005; h <= 1.0001; h += 0.005) { const t = Tof(h); expect(t).toBeGreaterThanOrEqual(prev); if (h > 0.035) maxStep = Math.max(maxStep, t - prev); prev = t; }
+    // 0.005 of h is about 0.001 of scroll progress p: the steepest part is the eased tail (peak about 1.5 * 1.33 / 0.15 = 13 per unit h)
+    expect(maxStep).toBeLessThan(13.5 * 0.005 + 1e-9);
+    // The fast first 3% (peak 35 per unit h, about 19 px of scroll) only crosses the band where no key is low enough to show a pixel change.
+    // After it the body never moves faster than 2.4 per unit h (the old design pushed 0.70 of T through the first 4%, which popped the frame border).
+    for (let h = 0.04; h <= 0.60; h += 0.005) expect(Tof(h + 0.005) - Tof(h)).toBeLessThan(2.5 * 0.005);
+    expect(Tof(0.03)).toBeCloseTo(0.30, 9);
+    expect(vwOf(0)).toBeCloseTo(0.20, 9); expect(vwOf(1)).toBeCloseTo(0.65, 9);
   });
   test('threshold range: every key sits above T(0) + w at h = 0 (all veil, so the first GL frame is the lens frame) and below T(1) - w at h = 1 (no veil)', () => {
     // Hand-derived bounds of key. Lf = 1.15 - rr + 0.35 (1 - rr)^2, rr in [0, 1]; q.x, q.y, fc, I in [0, 1]:
@@ -152,12 +165,12 @@ describe('hand-off uniform uH and the iso-contour veil', () => {
       rMin = Math.min(rMin, key); rMax = Math.max(rMax, key);
     }
     expect(kMin).toBeLessThan(rMin); expect(kMax).toBeGreaterThan(rMax);
-    expect(smoothstep(Tof(0) - 0.20, Tof(0) + 0.20, rMin)).toBe(1);
-    expect(smoothstep(Tof(1) - 0.20, Tof(1) + 0.20, rMax)).toBe(0);
+    expect(smoothstep(Tof(0) - vwOf(0), Tof(0) + vwOf(0), rMin)).toBe(1);
+    expect(smoothstep(Tof(1) - vwOf(1), Tof(1) + vwOf(1), rMax)).toBe(0);
     // in between the contour sweeps through: high-key pixels are still lit while low-key ones are already bare marble
-    const mid = Tof(0.5);
-    expect(smoothstep(mid - 0.20, mid + 0.20, rMax)).toBeGreaterThan(0.9);
-    expect(smoothstep(mid - 0.20, mid + 0.20, rMin)).toBeLessThan(0.1);
+    const mid = Tof(0.5); const w = vwOf(0.5);
+    expect(smoothstep(mid - w, mid + w, rMax)).toBeGreaterThan(0.9);
+    expect(smoothstep(mid - w, mid + w, rMin)).toBeLessThan(0.1);
   });
   test('the light survives on fold crests and bright ribbons: key rises with f, I and the warp q at fixed radius (spatial structure, not a flat fade)', () => {
     const key = (rr, qm, fc, I) => 1.15 - rr + 0.35 * (1 - rr) ** 2 + 0.80 * (qm - 0.5) + 0.12 * (fc - 0.5) + 0.12 * I;
@@ -177,11 +190,16 @@ describe('hand-off uniform uH and the iso-contour veil', () => {
     expect(sh(0.3)).toBeGreaterThan(0.7); expect(sh(0.3)).toBeLessThan(0.85); // lens ring mean at rc .3 is about s .76
     expect(sh(0.6)).toBeLessThan(0.4); expect(sh(1)).toBeLessThan(0.1); // the corners are honey, not cream
   });
-  test('the resolve to cream is gated by (1 - veil), so the lens frame owns the stage edge until the veil leaves it', () => {
+  test('the resolve to cream is gated by the veil only at h = 0 (the lens frame owns the stage edge), then forms uniformly under it as h grows', () => {
     const src = fragmentSource(LIQUID_RES.desktop);
     expect(src).toContain('float vl = 0.0;');
     expect(src).toContain('vl = veil;');
-    expect(src).toContain('* (1.0 - vl);');
+    expect(src).toContain('* (1.0 - vl * (1.0 - smoothstep(0.03, 0.30, uH)));');
+    // gate(h): 1 - vl (1 - ss(.03, .3, h)): at h = 0 it is 1 - vl (pixel-equal to the lens frame while veil = 1), and for h >= 0.30 it is exactly 1
+    const gate = (vl, h) => 1 - vl * (1 - smoothstep(0.03, 0.30, h));
+    expect(gate(1, 0)).toBe(0); expect(gate(0, 0)).toBe(1);
+    expect(gate(1, 0.30)).toBe(1); expect(gate(0.7, 0.5)).toBe(1);
+    for (let h = 0; h < 0.3; h += 0.01) expect(gate(1, h + 0.01)).toBeGreaterThanOrEqual(gate(1, h) - 1e-12);
   });
 });
 
@@ -196,16 +214,23 @@ describe('resolve to cream: no honey strip', () => {
     expect(src).not.toContain('0.9216,0.7686,0.5020'); // LEAK_HONEY / #EBC480
     expect(LEAK_HONEY).toBe('#EBC480');
   });
-  test('m is exactly 1 for the last ~3% of the stage (yb >= 0.97) whatever the ribbon intensity, and 0 above yb = 0.86 when I = 0', () => {
-    expect(src).toContain('float rz = smoothstep(0.86, 1.0, yb);');
-    expect(src).toContain('float m = clamp(rz * (0.55 + 0.9 * I) + smoothstep(0.90, 0.97, yb), 0.0, 1.0) * (1.0 - vl);');
-    const m = (yb, I) => Math.min(1, Math.max(0, smoothstep(0.86, 1, yb) * (0.55 + 0.9 * I) + smoothstep(0.90, 0.97, yb)));
-    for (const I of [0, 0.3, 0.7, 1]) { expect(m(0.97, I)).toBe(1); expect(m(1, I)).toBe(1); }
-    expect(m(0.86, 0)).toBe(0); expect(m(0.5, 1)).toBe(0);
-    // monotone down the stage for any fixed I: it only ever brightens toward cream
-    for (const I of [0, 0.5, 1]) { let prev = 0; for (let yb = 0.8; yb <= 1; yb += 0.005) { const v = m(yb, I); expect(v).toBeGreaterThanOrEqual(prev - 1e-12); prev = v; } }
-    // bright ribbons reach cream first
-    expect(m(0.92, 1)).toBeGreaterThan(m(0.92, 0));
+  test('the cream band is a smooth gradient of the stage row (no dependence on the fine ribbon intensity I, which made the top edge ragged): exactly 1 for the last 3%, exactly 0 above the band, monotone', () => {
+    expect(src).toContain('float qm = 0.5 * (q.x + q.y);');
+    expect(src).toContain('float rz = smoothstep(0.80 + 0.07 * (0.5 - qm), 0.985, yb);');
+    expect(src).toContain('float m = clamp(rz * rz * (3.0 - 2.0 * rz) + smoothstep(0.96, 0.985, yb), 0.0, 1.0) * (1.0 - vl * (1.0 - smoothstep(0.03, 0.30, uH)));');
+    // I must not appear in the resolve expression any more
+    const line = src.split('\n').find((l) => l.includes('float m = clamp('));
+    expect(line).not.toMatch(/\bI\b/);
+    const m = (yb, qm) => Math.min(1, Math.max(0, (() => { const r = smoothstep(0.80 + 0.07 * (0.5 - qm), 0.985, yb); return r * r * (3 - 2 * r); })() + smoothstep(0.96, 0.985, yb)));
+    for (const qm of [0.15, 0.5, 0.85]) {
+      expect(m(0.985, qm)).toBe(1); expect(m(1, qm)).toBe(1); expect(m(0.5, qm)).toBe(0); expect(m(0.72, qm)).toBe(0);
+      let prev = 0; for (let yb = 0.7; yb <= 1; yb += 0.0025) { const v = m(yb, qm); expect(v).toBeGreaterThanOrEqual(prev - 1e-12); prev = v; }
+    }
+    // the edge position only moves by the coarse warp: +-0.0245 of the stage height between the extreme qm values, never a per-pixel wobble
+    expect(0.07 * (0.5 - 0.15)).toBeCloseTo(0.0245, 6);
+    // smoothness: the largest step between neighbouring rows (0.1% of height) stays small, so no ragged or stepped edge
+    let maxStep = 0; for (let yb = 0.78; yb <= 1; yb += 0.001) maxStep = Math.max(maxStep, m(yb + 0.001, 0.5) - m(yb, 0.5));
+    expect(maxStep).toBeLessThan(0.06);
   });
 });
 

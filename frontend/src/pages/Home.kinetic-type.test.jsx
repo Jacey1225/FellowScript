@@ -14,6 +14,7 @@ import { KINETIC_UNITS, STAGGER, unitCss, circleP } from '../lib/kineticType.js'
 import { KINETIC_SPAN_VH } from '../lib/adamHands/driver.js';
 import { LIGHT_BG, FIELD_UNDER } from '../lib/adamHands/field.js';
 import { LIQUID_CSS } from '../components/LiquidField.jsx';
+import { ADAM_CSS } from '../components/AdamHands.jsx';
 
 vi.mock('../context/AuthContext.jsx', () => ({ useAuth: () => ({ user: null }) }));
 
@@ -256,5 +257,48 @@ describe('no honey strip and no verse symbols', () => {
     for (const f of ['../components/VerseDescent.jsx', '../lib/verseDescent.js', '../lib/communityVerses.js']) {
       await expect(import(/* @vite-ignore */ f)).rejects.toThrow();
     }
+  });
+});
+
+// Polish pass (Jacey: "polish first"): the stage's own eyebrow and the head's eyebrow carry the same words. They used to sit about
+// 150-300 px apart, so the text seemed to jump at the hand-off. Pinned, the head's eyebrow now sits exactly where the stage's does.
+describe('one continuous eyebrow: the head eyebrow sits where the stage eyebrow sits', () => {
+  mm();
+  const { container } = render(home());
+  const css = [...container.querySelectorAll('style')].map((s) => s.textContent).join('\n');
+  cleanup();
+  const PIN = '.adam-pin[data-live="true"]:not([data-stack="true"]) + .hm-fam';
+  const rule = (src, sel) => { const i = src.indexOf(`${sel} {`); return i < 0 ? '' : src.slice(i, src.indexOf('}', i)); };
+  test('desktop: left 11.5% and vertical centre 11.9% of the head, the same numbers as .adam-eyebrow in the live stage; text line centred via 0.8em (line-height 1.6)', () => {
+    const stage = rule(ADAM_CSS, '.adam-pin[data-live="true"] .adam-eyebrow');
+    expect(stage).toMatch(/left: 11\.5cqw; top: 11\.9cqh/);
+    const head = rule(css, `${PIN} .hm-fam-eyebrow`);
+    expect(head).toMatch(/position: absolute; left: 11\.5%;/);
+    expect(head).toMatch(/top: calc\(11\.9% - 0\.8em\)/);
+    expect(head).toMatch(/margin: 0;/);
+    expect(head).toMatch(/font-size: clamp\(11\.5px, 0\.8vw, 14px\)/); // the stage uses clamp(11.5px, 0.8cqw, 14px)
+    expect(rule(ADAM_CSS, '.adam-eyebrow')).toMatch(/font-size: clamp\(11\.5px, 0\.8cqw, 14px\)/);
+    expect(rule(ADAM_CSS, '.adam-eyebrow')).toMatch(/line-height: 1\.6/);
+    expect(css).toMatch(/\.hm-fam-eyebrow \{[^}]*line-height: 1\.6/);
+  });
+  test('the h2 is left-aligned to the same edge (inner is static so the eyebrow resolves against the sticky head, and its left padding lands on 11.5vw)', () => {
+    const inner = rule(css, `${PIN} .hm-fam-inner`);
+    expect(inner).toMatch(/position: static;/);
+    expect(inner).toMatch(/padding-left: calc\(11\.5vw - clamp\(20px, 5vw, 64px\)\)/);
+  });
+  test('phones: the same continuity with the phone numbers (9.33% / 5.6% + safe area / max(2.89vw, 12px)) from the stage', () => {
+    expect(ADAM_CSS).toMatch(/\.adam-pin\[data-live="true"\] \.adam-eyebrow \{ left: 9\.33cqw; top: calc\(5\.6cqh \+ env\(safe-area-inset-top, 0px\)\)/);
+    const at = css.indexOf('@media (max-width: 899px), (pointer: coarse) {', css.indexOf(`${PIN} .hm-fam-eyebrow`));
+    const block = css.slice(at, css.indexOf('\n        }', at));
+    expect(block).toMatch(/left: 9\.33%; top: calc\(5\.6% \+ env\(safe-area-inset-top, 0px\) - 0\.8em\); font-size: max\(2\.89vw, 12px\)/);
+    expect(block).toMatch(/padding-left: calc\(9\.33vw - clamp\(20px, 5vw, 64px\)\)/);
+  });
+  test('static modes (no JS, reduced motion, stacked landscape) keep the eyebrow in normal flow: the absolute rule only exists under the pinned live selector', () => {
+    const all = css.split('.hm-fam-eyebrow {').slice(1);
+    for (const chunk of css.matchAll(/([^{}]*\.hm-fam-eyebrow)\s*\{[^}]*position: absolute/g)) expect(chunk[1]).toContain(PIN);
+    expect(all.length).toBeGreaterThan(0);
+    const html = renderToStaticMarkup(home());
+    expect(html).toContain('class="hm-fam-eyebrow" data-k="eyebrow"');
+    expect(html).not.toMatch(/hm-fam-eyebrow[^>]*style=/); // no inline positioning in the markup
   });
 });

@@ -428,6 +428,15 @@ export default function Home() {
         .adam-pin[data-live="true"]:not([data-stack="true"]) + .hm-fam .hm-fam-scene { min-height: 0; height: calc((100 + var(--k-span)) * 1vh); }
         .adam-pin[data-live="true"]:not([data-stack="true"]) + .hm-fam .hm-fam-backdrop { display: none; }
         .adam-pin[data-live="true"]:not([data-stack="true"]) + .hm-fam .hm-fam-head { position: sticky; top: 0; height: 100vh; height: 100svh; box-sizing: border-box; display: grid; align-content: center; padding: 18svh clamp(20px, 5vw, 64px) 16svh; }
+        /* One continuous eyebrow: pinned, the head's eyebrow sits exactly where the stage's own "// NOT JUST ONCE A WEEK" eyebrow sits
+           (same left, same vertical centre, same size as .adam-eyebrow in AdamHands), so the words never jump: the stage copy has faded
+           out long before this one arrives, at the same spot. The h2 is left-aligned to the same edge. */
+        .adam-pin[data-live="true"]:not([data-stack="true"]) + .hm-fam .hm-fam-eyebrow { position: absolute; left: 11.5%; right: clamp(20px, 5vw, 64px); top: calc(11.9% - 0.8em); margin: 0; font-size: clamp(11.5px, 0.8vw, 14px); }
+        .adam-pin[data-live="true"]:not([data-stack="true"]) + .hm-fam .hm-fam-inner { position: static; max-width: none; margin: 0; padding-left: calc(11.5vw - clamp(20px, 5vw, 64px)); }
+        @media (max-width: 899px), (pointer: coarse) {
+          .adam-pin[data-live="true"]:not([data-stack="true"]) + .hm-fam .hm-fam-eyebrow { left: 9.33%; top: calc(5.6% + env(safe-area-inset-top, 0px) - 0.8em); font-size: max(2.89vw, 12px); }
+          .adam-pin[data-live="true"]:not([data-stack="true"]) + .hm-fam .hm-fam-inner { padding-left: calc(9.33vw - clamp(20px, 5vw, 64px)); }
+        }
         .hm-fam[data-kinetic="on"] .kw { display: inline-block; will-change: transform, opacity; }
         .hm-fam[data-kinetic="on"] .hm-fam-eyebrow { will-change: transform, opacity; }
         .hm-fam[data-kinetic="on"] .hm-fam-head .hm-draw-path { stroke-dashoffset: calc(1 - var(--k-circle, 1)); }

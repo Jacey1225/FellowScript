@@ -179,22 +179,23 @@ ${warp2 ? `  vec2 r = vec2(fbm(uv + 1.7 * q + vec2(1.7, 9.2) + t * 0.5), fbm(uv 
     // Threshold sweep: piecewise linear in h, knots measured so the mean frame luminance falls at an even rate (most key
     // values sit between 0.3 and 1.5, so a plain linear T would sit still, then collapse in a few frames). Edges go first
     // (h < 0.04), the body over h 0.04 .. 0.92, the white core last. T runs -0.40 .. 2.25.
-    float T = -0.40 + 0.70 * clamp(uH / 0.04, 0.0, 1.0) + 0.17 * clamp((uH - 0.04) / 0.11, 0.0, 1.0) + 0.16 * clamp((uH - 0.15) / 0.11, 0.0, 1.0)
-      + 0.12 * clamp((uH - 0.26) / 0.11, 0.0, 1.0) + 0.10 * clamp((uH - 0.37) / 0.11, 0.0, 1.0) + 0.09 * clamp((uH - 0.48) / 0.11, 0.0, 1.0)
-      + 0.10 * clamp((uH - 0.59) / 0.11, 0.0, 1.0) + 0.13 * clamp((uH - 0.70) / 0.11, 0.0, 1.0) + 0.33 * clamp((uH - 0.81) / 0.11, 0.0, 1.0)
-      + 0.75 * clamp((uH - 0.92) / 0.08, 0.0, 1.0);
-    float veil = smoothstep(T - 0.20, T + 0.20, key);
+    float T = -0.40 + 0.70 * smoothstep(0.0, 0.03, uH) + 0.22 * clamp((uH - 0.03) / 0.09, 0.0, 1.0) + 0.13 * clamp((uH - 0.12) / 0.12, 0.0, 1.0)
+      + 0.215 * clamp((uH - 0.24) / 0.26, 0.0, 1.0) + 0.205 * clamp((uH - 0.50) / 0.20, 0.0, 1.0) + 0.33 * clamp((uH - 0.70) / 0.15, 0.0, 1.0)
+      + 1.33 * smoothstep(0.85, 1.0, uH);
+    float vw = 0.20 + 0.45 * smoothstep(0.55, 1.0, uH); // the veil edge softens as the white core leaves, so it never snaps out
+    float veil = smoothstep(T - vw, T + vw, key);
     float rim = 4.0 * veil * (1.0 - veil);
     lcol += ${f3(LEAK_GOLD)} * rim * 0.30;
     vl = veil;
     rgb = rgb * (1.0 - veil) + lcol * veil;
     al = al * (1.0 - veil) + veil;
   }
-  // Resolve: the bottom of the pinned stage brightens into cream through the marble's own highlights (bright
-  // ribbons reach cream first), so the cream .hm-fam-rest rises from the stage edge with no seam and no flat strip.
+  // Resolve: the bottom of the pinned stage brightens into cream along a smooth, fold-flowing gradient (no dependence on the
+  // fine ribbon intensity, which made the edge ragged), so the cream .hm-fam-rest rises from the stage edge with no seam and no flat strip.
   float yb = 1.0 - uvn.y;
-  float rz = smoothstep(0.86, 1.0, yb);
-  float m = clamp(rz * (0.55 + 0.9 * I) + smoothstep(0.90, 0.97, yb), 0.0, 1.0) * (1.0 - vl); // the lens frame still owns the edge while veil = 1
+  float qm = 0.5 * (q.x + q.y); // coarse warp only: the resolve edge follows the fold flow smoothly, never the fine ribbon noise
+  float rz = smoothstep(0.80 + 0.07 * (0.5 - qm), 0.985, yb);
+  float m = clamp(rz * rz * (3.0 - 2.0 * rz) + smoothstep(0.96, 0.985, yb), 0.0, 1.0) * (1.0 - vl * (1.0 - smoothstep(0.03, 0.30, uH))); // the lens frame owns the edge at h = 0; the cream band then forms uniformly under the veil (not along its ragged contour)
   rgb = mix(rgb, ${f3(LIGHT_BG)}, m);
   al = mix(al, 1.0, m);
   gl_FragColor = vec4(rgb, al);
