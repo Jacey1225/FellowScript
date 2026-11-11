@@ -15,9 +15,9 @@ import {
   clamp, lerp, smooth, cubicBezier, floodCurve, easingB, getRows, lookupRow, handsPose,
   floodDrivers, lightParams, fanWeights, bloomIntensity, ignite, beatGlow, typeReveal,
   warmGlowAlpha, eyebrowColor, scrubProgress, smoothStep, coverScale,
-  BASE_SPAN_VH, WHITE_HOLD_P, FILL2_START_P, FILL2_DELAY_P, FILL2_SPAN_P, FILL2_END_P,
-  SETTLE_SPAN_P, SETTLE_END_P, FAMILY_REVEAL_P, FAMILY_HIDE_P, VERSE_START_P, VERSE_SPAN_P, P_END, P_END_STACK,
-  RUNWAY_VH_STACK, fill2Drivers, familyOpacity, lensDrivers, LENS_LOBES, LENS_GHOSTS, LENS_ORIGIN, LENS_MOBILE_LOBES, LENS_START_P, LENS_FULL_P, LENS_RECEDE_P, LEAKS_END_P
+  BASE_SPAN_VH, WHITE_HOLD_P, HANDOFF_START_P, HANDOFF_SPAN_P, HANDOFF_END_P, TYPE_START_P, KINETIC_SPAN_VH,
+  handoffH, P_END, P_END_STACK,
+  RUNWAY_VH_STACK, runwayVh, fill2Drivers, lensDrivers, LENS_LOBES, LENS_GHOSTS, LENS_ORIGIN, LENS_MOBILE_LOBES, LENS_START_P, LENS_FULL_P
 } from './driver.js';
 import { DESKTOP_ROWS, MOBILE_ROWS, TABLE_COLUMNS } from './table.js';
 
@@ -316,10 +316,25 @@ describe('scrub progress and smoothing', () => {
     expect(scrubProgress(0, 900, 900)).toBe(0);                  // no runway guard
   });
 
-  test('runway constants follow 100 + P_END * baseSpanVh: 980vh desktop, 900vh mobile', () => {
-    expect(RUNWAY_VH).toEqual({ desktop: 980, mobile: 900 });
-    expect(RUNWAY_VH_STACK).toEqual({ desktop: 408, mobile: 324 });
-    expect(P_END.desktop).toBeCloseTo(4.0, 9); expect(P_END.mobile).toBeCloseTo(5.0, 9);
+  test('runway constants follow 100 + P_END * baseSpanVh: 538vh desktop, 473vh mobile', () => {
+    // Hand-derived (task 20261111-kinetic-type-marble): HANDOFF_START_P = FLOOD_END_P 0.97 + WHITE_HOLD_P 0.05 = 1.02;
+    // TYPE_START_P = 1.02 + HANDOFF_SPAN_P 0.18 / 3 = 1.08; P_END = 1.08 + KINETIC_SPAN_VH 200 / baseSpan.
+    expect(TYPE_START_P).toBeCloseTo(1.08, 9);
+    expect(P_END.desktop).toBeCloseTo(1.08 + 200 / 220, 5); expect(P_END.desktop).toBeCloseTo(1.989091, 6);
+    expect(P_END.mobile).toBeCloseTo(2.33, 9);
+    // desktop 100 + 1.989091 * 220 = 537.6 -> 538; mobile 100 + 2.33 * 160 = 472.8 -> 473
+    expect(RUNWAY_VH).toEqual({ desktop: 538, mobile: 473 });
+    // stack ends at HANDOFF_END_P 1.20: 100 + 1.2 * 220 = 364; 100 + 1.2 * 160 = 292
+    expect(RUNWAY_VH_STACK).toEqual({ desktop: 364, mobile: 292 });
+    // and every value goes through the one formula
+    expect(RUNWAY_VH.desktop).toBe(runwayVh(P_END.desktop, BASE_SPAN_VH.desktop));
+    expect(RUNWAY_VH.mobile).toBe(runwayVh(P_END.mobile, BASE_SPAN_VH.mobile));
+    expect(RUNWAY_VH_STACK.mobile).toBe(runwayVh(P_END_STACK, BASE_SPAN_VH.mobile));
+    // the kinetic scene scrolls exactly KINETIC_SPAN_VH of the viewport: (P_END - TYPE_START_P) * base = 200vh
+    expect((P_END.desktop - TYPE_START_P) * BASE_SPAN_VH.desktop).toBeCloseTo(KINETIC_SPAN_VH, 3);
+    expect((P_END.mobile - TYPE_START_P) * BASE_SPAN_VH.mobile).toBeCloseTo(KINETIC_SPAN_VH, 3);
+    // the runway got shorter than the old 935 / 867 / 363 / 291 because the verse stack is gone
+    expect(RUNWAY_VH.desktop).toBeLessThan(935); expect(RUNWAY_VH.mobile).toBeLessThan(867);
   });
 
   test('scrubProgress with baseSpanVh/pEnd extends past 1 and is clamped to pEnd', () => {
@@ -362,22 +377,16 @@ describe('second fill, settle and family timeline (scrub domain past 1)', () => 
   test('named timeline table and monotonic ordering', () => {
     expect(BASE_SPAN_VH).toEqual({ desktop: 220, mobile: 160 });
     expect(LENS_START_P).toBe(0.86); expect(WHITE_HOLD_P).toBe(0.05);
-    near(FILL2_START_P, 1.02, 9); near(FILL2_END_P, 1.11, 9); near(SETTLE_END_P, 1.23, 9);
-    near(FILL2_DELAY_P, 0.22, 9); near(FILL2_SPAN_P, 0.09, 9); near(SETTLE_SPAN_P, 0.12, 9);
-    const seq = [TOUCH_P, LENS_START_P, FLOOD_END_P, FILL2_START_P, FILL2_END_P, SETTLE_END_P,
-      FAMILY_REVEAL_P[0], FAMILY_REVEAL_P[1], FAMILY_HIDE_P[0], VERSE_START_P];
-    // wash starts after the touch; settle ends after family begins to reveal
-    expect(LENS_START_P).toBeGreaterThan(TOUCH_P);
-    expect(FLOOD_END_P).toBeLessThan(FILL2_START_P);
-    expect(FILL2_START_P).toBeLessThan(FILL2_END_P);
-    expect(FILL2_END_P).toBeLessThan(SETTLE_END_P);
-    expect(FAMILY_REVEAL_P[0]).toBeLessThan(FAMILY_REVEAL_P[1]);
-    expect(FAMILY_REVEAL_P[1]).toBeLessThanOrEqual(FAMILY_HIDE_P[0]);
-    expect(FAMILY_HIDE_P[0]).toBeLessThan(FAMILY_HIDE_P[1]);
-    expect(FAMILY_HIDE_P[0]).toBeLessThanOrEqual(VERSE_START_P);
-    expect(seq.length).toBe(10);
-    expect(P_END_STACK).toBe(VERSE_START_P);
-    expect(VERSE_SPAN_P).toEqual({ desktop: 2.6, mobile: 3.6 });
+    near(HANDOFF_START_P, 1.02, 9); near(HANDOFF_SPAN_P, 0.18, 9); near(HANDOFF_END_P, 1.20, 9);
+    near(TYPE_START_P, 1.08, 9);
+    // the type pins a third of the way into the hand-off, i.e. while the marble is still being revealed
+    expect(TYPE_START_P).toBeGreaterThan(HANDOFF_START_P);
+    expect(TYPE_START_P).toBeLessThan(HANDOFF_END_P);
+    near(TYPE_START_P, HANDOFF_START_P + HANDOFF_SPAN_P / 3, 9);
+    const seq = [TOUCH_P, LENS_START_P, FLOOD_END_P, HANDOFF_START_P, TYPE_START_P, HANDOFF_END_P, P_END.desktop];
+    for (let i = 1; i < seq.length; i++) expect(seq[i]).toBeGreaterThan(seq[i - 1]);
+    expect(P_END.mobile).toBeGreaterThan(P_END.desktop);
+    expect(P_END_STACK).toBe(HANDOFF_END_P);
   });
 
   test('original hands/flood drivers are unchanged and saturate beyond 1', () => {
@@ -391,12 +400,10 @@ describe('second fill, settle and family timeline (scrub domain past 1)', () => 
   test('lensDrivers: windows are ordered, off outside them, mobile keeps a subset', () => {
     expect(LENS_ORIGIN).toEqual({ x: 0.5, y: 0.5 });
     expect(LENS_START_P).toBeGreaterThan(TOUCH_P); expect(LENS_FULL_P).toBe(FLOOD_END_P);
-    expect(LENS_RECEDE_P[0]).toBe(FILL2_START_P); expect(LENS_RECEDE_P[0]).toBeLessThan(LENS_RECEDE_P[1]);
-    expect(LEAKS_END_P).toBe(1.16); expect(LEAKS_END_P).toBeGreaterThan(LENS_RECEDE_P[1]);
-    expect(LEAKS_END_P).toBeLessThan(FAMILY_REVEAL_P[0]);
     expect(lensDrivers(0.5).on).toBe(false); expect(lensDrivers(0.5).lobes.every((l) => l.g === 0 && l.o === 0)).toBe(true);
     expect(lensDrivers(LENS_START_P + 0.001).on).toBe(true);
-    expect(lensDrivers(1.159).on).toBe(true); expect(lensDrivers(LEAKS_END_P).on).toBe(false);
+    // the white beat holds up to HANDOFF_START_P and the lens is switched off in one step there (no recede)
+    expect(lensDrivers(HANDOFF_START_P - 0.001).on).toBe(true); expect(lensDrivers(HANDOFF_START_P).on).toBe(false);
     expect(lensDrivers(2).lobes.every((l) => l.o === 0 && l.g === 0)).toBe(true);
     expect(lensDrivers(2).core.o).toBe(0); expect(lensDrivers(2).rays.o).toBe(0);
     // six distinct lobes: not one circle
@@ -418,14 +425,22 @@ describe('second fill, settle and family timeline (scrub domain past 1)', () => 
     const mid = lensDrivers(0.9).lobes.map((l) => l.g);
     expect(mid[0]).toBeGreaterThan(mid[5]);
     expect(new Set(mid.map((g) => g.toFixed(3))).size).toBeGreaterThan(3);
-    // full-screen beat: flat white solid inside the hold, off before the recede
+    // full-screen beat: flat white solid inside the hold, and it stays solid (no recede) until the one-step cut
     expect(lensDrivers(0.99).flat).toBe(1); expect(lensDrivers(0.9).flat).toBe(0);
-    expect(lensDrivers(LENS_RECEDE_P[0] + 0.08).flat).toBe(0);
-    // lobes pull back toward the centre and fade, never a bottom-up wipe (no y-travel field exists)
-    expect(lensDrivers(1.1).lobes[0].g).toBeLessThan(lensDrivers(LENS_FULL_P).lobes[0].g);
-    expect(lensDrivers(1.14).lobes.every((l) => l.o < 0.01)).toBe(true);
+    for (let p = 0.99; p < HANDOFF_START_P; p += 0.002) {
+      const d = lensDrivers(p);
+      expect(d.flat).toBe(1);
+      expect(d.lobes.every((l) => l.g > 0.99 && l.o > 0.99)).toBe(true); // no fade-out: pixel-equal to the GL veil at h = 0
+    }
+    // from the hand-off on, every lens layer is zero: the light is withdrawn by the shader (handoffH), never by alpha
+    for (let p = HANDOFF_START_P; p <= 2.3; p += 0.01) {
+      const d = lensDrivers(p);
+      expect(d.on).toBe(false); expect(d.flat).toBe(0);
+      expect(d.lobes.every((l) => l.g === 0 && l.o === 0)).toBe(true);
+      expect(d.core.o).toBe(0); expect(d.rays.o).toBe(0); expect(d.flare.o).toBe(0);
+    }
     // no abrupt pop: adjacent 0.005-p samples never step flat or a lobe opacity by more than 0.25
-    for (let p = 0.86; p < 1.2; p += 0.005) {
+    for (let p = 0.86; p < HANDOFF_START_P - 0.006; p += 0.005) {
       const a = lensDrivers(p); const b = lensDrivers(p + 0.005);
       expect(Math.abs(a.flat - b.flat)).toBeLessThan(0.25);
       a.lobes.forEach((l, i) => expect(Math.abs(l.o - b.lobes[i].o)).toBeLessThan(0.25));
@@ -441,24 +456,29 @@ describe('second fill, settle and family timeline (scrub domain past 1)', () => 
     expect(Object.keys(lensDrivers(0.93)).sort()).toEqual(['core', 'flare', 'flat', 'ghosts', 'lobes', 'on', 'rays']);
   });
 
-  test('fill2Drivers: field on just before the band lifts, settle ramps, hands hidden from the lift-off', () => {
-    expect(fill2Drivers(1.0).fieldOn).toBe(false);
-    expect(fill2Drivers(FILL2_START_P - 0.004).fieldOn).toBe(true);
-    expect(fill2Drivers(FILL2_END_P).settle).toBe(0);
-    expect(fill2Drivers(SETTLE_END_P).settle).toBe(1);
-    expect(fill2Drivers(1.2).settle).toBeGreaterThan(0.5);
-    expect(fill2Drivers(FILL2_START_P - 0.001).handsHidden).toBe(false);
-    expect(fill2Drivers(FILL2_START_P).handsHidden).toBe(true);
+  test('fill2Drivers: field draws under the white lens just before the hand-off, hands hidden from it', () => {
+    expect(Object.keys(fill2Drivers(0.99)).sort()).toEqual(['fieldOn', 'handsHidden']);
+    expect(fill2Drivers(0.99).fieldOn).toBe(false);
+    // HANDOFF_START_P - 0.02 = 1.00: first drawn under the lens, where the veil is pixel-equal white
+    expect(fill2Drivers(1.0).fieldOn).toBe(true); expect(fill2Drivers(1.0 - 1e-6).fieldOn).toBe(false);
+    expect(fill2Drivers(2).fieldOn).toBe(true);
+    expect(fill2Drivers(HANDOFF_START_P - 0.001).handsHidden).toBe(false);
+    expect(fill2Drivers(HANDOFF_START_P).handsHidden).toBe(true);
     expect(fill2Drivers(0.9).handsHidden).toBe(false);
-    expect(fill2Drivers(FILL2_START_P).u).toBe(0); expect(fill2Drivers(FILL2_END_P).u).toBe(1);
   });
 
-  test('familyOpacity reveals 1.19-1.26, holds, hides 1.38-1.46; keep never hides', () => {
-    expect(familyOpacity(1.0)).toBe(0); expect(familyOpacity(1.19)).toBe(0);
-    expect(familyOpacity(1.26)).toBe(1); expect(familyOpacity(1.3)).toBe(1);
-    expect(familyOpacity(1.225)).toBeGreaterThan(0.4); expect(familyOpacity(1.225)).toBeLessThan(0.6);
-    expect(familyOpacity(1.38)).toBe(1); expect(familyOpacity(1.46)).toBe(0); expect(familyOpacity(2.5)).toBe(0);
-    expect(familyOpacity(2.5, true)).toBe(1); expect(familyOpacity(1.4, true)).toBe(1);
+  test('handoffH: 0 through the white hold, eased 0..1 over HANDOFF_START_P..HANDOFF_END_P, monotone, saturates', () => {
+    expect(handoffH(0)).toBe(0); expect(handoffH(HANDOFF_START_P)).toBe(0);
+    expect(handoffH(HANDOFF_END_P)).toBeCloseTo(1, 9); expect(handoffH(5)).toBe(1);
+    // flood curve is symmetric: exactly half way through the span is h = 0.5
+    expect(handoffH(HANDOFF_START_P + HANDOFF_SPAN_P / 2)).toBeCloseTo(0.5, 6);
+    // eased (not linear): slow at both ends
+    expect(handoffH(HANDOFF_START_P + HANDOFF_SPAN_P * 0.1)).toBeLessThan(0.1);
+    expect(handoffH(HANDOFF_START_P + HANDOFF_SPAN_P * 0.9)).toBeGreaterThan(0.9);
+    let prev = 0;
+    for (let p = HANDOFF_START_P; p <= HANDOFF_END_P; p += 0.002) { const h = handoffH(p); expect(h).toBeGreaterThanOrEqual(prev - 1e-12); prev = h; }
+    // pure function of p (reverse scroll is exact)
+    expect(handoffH(1.1)).toBe(handoffH(1.1));
   });
 
   test('P_END and runway stay in the formula', () => {

@@ -5,8 +5,11 @@
 // Pure data and small helpers are exported for tests; the GL object code is in createLiquidGl.
 import {
   FIELD_DARK, FIELD_DEEP, FIELD_LO, FIELD_ZONE_MAX, ADAM_ZONE, hexRgb,
+  LEAK_GOLD, LIGHT_BG,
 } from './field.js';
 
+// Lens edge colour at the frame corners (measured from the lens at p = 1.00: about 246,212,150).
+const LENS_EDGE = '#F6D496';
 export const LIQUID_SCALE = 1.35;
 export const LIQUID_T0 = 37; // frozen / start flow time
 export const LIQUID_FLOW = 0.045; // flow clock to warp time
@@ -109,6 +112,7 @@ precision mediump float;
 uniform vec2 uRes;
 uniform float uTime;
 uniform vec4 uZone;
+uniform float uH;
 float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123); }
 float vnoise(vec2 p) {
   vec2 i = floor(p); vec2 f = fract(p); vec2 u = f * f * (3.0 - 2.0 * f);
@@ -147,7 +151,53 @@ ${warp2 ? `  vec2 r = vec2(fbm(uv + 1.7 * q + vec2(1.7, 9.2) + t * 0.5), fbm(uv 
   vec3 deep = ${f3(FIELD_DEEP)};
   vec3 col = mix(deep, ramp(I), clamp(I * 3.0, 0.0, 1.0));
   float a = clamp(0.15 * (1.0 - env) + I * 0.95, 0.0, 1.0);
-  gl_FragColor = vec4(col * a, a);
+  vec3 rgb = col * a; // premultiplied marble
+  float al = a;
+  // Hand-off (task 20261111-kinetic-type-marble): the lens light is withdrawn along the marble's own folds.
+  // veil = 1 is the white hold (same pixels as the lens), veil = 0 is bare marble; the veil edge is an iso-contour of
+  // key, which mixes the light falloff, the warped spokes, the fold field f and the ribbon intensity I, so the light
+  // survives longest on fold crests and bright ribbons and ends as gold rims. No opacity ramp anywhere.
+  float vl = 0.0;
+  if (uH < 0.999) {
+    vec2 c = (uvn - 0.5) * vec2(uRes.x / uRes.y, 1.0);
+    float rr = clamp(length(c) / (0.5 * length(vec2(uRes.x / uRes.y, 1.0))), 0.0, 1.0); // 1 at the frame corners, any aspect
+    float an = atan(c.y, c.x);
+    float ra = 7.0 * (an + 2.4 * uH * (q.x - 0.5) + 1.4 * uH * (q.y - 0.5)) + 1.3 * sin(3.0 * an);
+    float ray = pow(abs(cos(ra)), 16.0);
+    // Veil colour = the lens frame (honey edge falling to the white hold, spokes lifted), so veil = 1 at h = 0 is
+    // pixel-close to the lens everywhere, not only at the centre. Nothing here is a flat fill.
+    float ax = min(uRes.x / uRes.y, 1.0); // portrait: the lens lobes spread across the width, so the glow is wider than round in pixels
+    float gx = ax < 1.0 ? ax * 0.45 : 1.0; // landscape: the lens glow is round in screen fractions (x scale 1)
+    float rc = clamp(length((uvn - 0.5) * vec2(gx, 1.0)) / (0.5 * length(vec2(gx, 1.0))), 0.0, 1.0);
+    float sh = clamp(exp(-pow(max(rc - 0.12, 0.0) / 0.45, 1.5)) + 0.12 * ray * smoothstep(0.9, 1.0, ax) * smoothstep(0.25, 0.5, rc) * (1.0 - 0.5 * rr), 0.0, 1.0); // radial fit to the lens ring means
+    vec3 lcol = mix(${f3(LENS_EDGE)}, vec3(1.0), sh);
+    // Key field for the contour: smooth radial falloff + fold field + ribbon intensity (no spokes in the key, so the
+    // edge follows the coarse fold flow and never forms spikes).
+    float Lf = 1.15 - rr + 0.35 * (1.0 - rr) * (1.0 - rr);
+    float fc = clamp(f, 0.0, 1.0);
+    float key = Lf + 0.80 * (0.5 * (q.x + q.y) - 0.5) + 0.12 * (fc - 0.5) + 0.12 * I; // coarse warp q gives smooth fold-scale contours
+    // Threshold sweep: piecewise linear in h, knots measured so the mean frame luminance falls at an even rate (most key
+    // values sit between 0.3 and 1.5, so a plain linear T would sit still, then collapse in a few frames). Edges go first
+    // (h < 0.04), the body over h 0.04 .. 0.92, the white core last. T runs -0.40 .. 2.25.
+    float T = -0.40 + 0.70 * clamp(uH / 0.04, 0.0, 1.0) + 0.17 * clamp((uH - 0.04) / 0.11, 0.0, 1.0) + 0.16 * clamp((uH - 0.15) / 0.11, 0.0, 1.0)
+      + 0.12 * clamp((uH - 0.26) / 0.11, 0.0, 1.0) + 0.10 * clamp((uH - 0.37) / 0.11, 0.0, 1.0) + 0.09 * clamp((uH - 0.48) / 0.11, 0.0, 1.0)
+      + 0.10 * clamp((uH - 0.59) / 0.11, 0.0, 1.0) + 0.13 * clamp((uH - 0.70) / 0.11, 0.0, 1.0) + 0.33 * clamp((uH - 0.81) / 0.11, 0.0, 1.0)
+      + 0.75 * clamp((uH - 0.92) / 0.08, 0.0, 1.0);
+    float veil = smoothstep(T - 0.20, T + 0.20, key);
+    float rim = 4.0 * veil * (1.0 - veil);
+    lcol += ${f3(LEAK_GOLD)} * rim * 0.30;
+    vl = veil;
+    rgb = rgb * (1.0 - veil) + lcol * veil;
+    al = al * (1.0 - veil) + veil;
+  }
+  // Resolve: the bottom of the pinned stage brightens into cream through the marble's own highlights (bright
+  // ribbons reach cream first), so the cream .hm-fam-rest rises from the stage edge with no seam and no flat strip.
+  float yb = 1.0 - uvn.y;
+  float rz = smoothstep(0.86, 1.0, yb);
+  float m = clamp(rz * (0.55 + 0.9 * I) + smoothstep(0.90, 0.97, yb), 0.0, 1.0) * (1.0 - vl); // the lens frame still owns the edge while veil = 1
+  rgb = mix(rgb, ${f3(LIGHT_BG)}, m);
+  al = mix(al, 1.0, m);
+  gl_FragColor = vec4(rgb, al);
 }`;
 }
 
@@ -186,6 +236,7 @@ export function createLiquidGl(canvas, { mobile = false, onLost } = {}) {
   const uRes = gl.getUniformLocation(prog, 'uRes');
   const uTime = gl.getUniformLocation(prog, 'uTime');
   const uZone = gl.getUniformLocation(prog, 'uZone');
+  const uH = gl.getUniformLocation(prog, 'uH');
   gl.uniform4fv(uZone, liquidZone(mobile));
   gl.disable(gl.BLEND);
   const lost = (e) => { if (e && e.preventDefault) e.preventDefault(); if (onLost) onLost(); };
@@ -198,10 +249,11 @@ export function createLiquidGl(canvas, { mobile = false, onLost } = {}) {
       w = nw; h = nh; canvas.width = w; canvas.height = h;
       gl.viewport(0, 0, w, h); gl.uniform2f(uRes, w, h);
     },
-    draw(time) {
+    draw(time, h = 0) {
       if (!w || gl.isContextLost()) return;
       gl.clearColor(0, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT);
       gl.uniform1f(uTime, time);
+      gl.uniform1f(uH, h);
       gl.drawArrays(gl.TRIANGLES, 0, 3);
     },
     destroy() {

@@ -5,7 +5,6 @@
 // underlay, swirls, drifting blobs, top highlight washes) recoloured to the warm brown /
 // honey palette by luminance rank. The LEAK_* constants belong to the lens bloom.
 export const FIELD_BASE = '#5C3509'; // deep umber (L .0486)
-export const FIELD_END = '#EBC480'; // honey; join colour handed to .hm-fam
 export const FIELD_INK = '#FBF7F1'; // cream text on the field (L .934)
 export const FIELD_WHITE = '#FFF4DC'; // warm white hold (continues the hand-touch bloom)
 export const FIELD_CAP = FIELD_WHITE; // canvas darken-cap: keeps the bloom white end stop unclamped
@@ -17,15 +16,15 @@ export const LEAK_HONEY = '#EBC480';
 export const LEAK_PEACH = '#F3C48B';
 export const FIELD_ZONE_MAX = '#8A5217'; // lightest colour allowed at full alpha under text (L .115)
 
-// Static underlayer (135deg, top-left lit). The first layer pins the bottom edge to
-// FIELD_END so the join with .hm-fam is exact (repeated as .adam-liquid::before above the blobs).
+// Static underlayer (135deg, top-left lit). There is no flat join colour any more: the bottom edge resolves to cream
+// through the marble's own light (GL resolve block in liquidGl.js, .adam-resolve for the CSS marble).
 export const FIELD_HI = '#A8682A';
 export const FIELD_MID = '#96591F';
 export const FIELD_LO = '#7C4A1A';
 export const FIELD_DARK = '#402508';
 export const FIELD_DEEP = '#2C1706';
-export const FIELD_BOTTOM_FADE = `linear-gradient(180deg, rgba(235,196,128,0) 80%, ${FIELD_END} 100%)`;
-export const FIELD_UNDER = `${FIELD_BOTTOM_FADE}, linear-gradient(135deg, ${FIELD_HI} 0%, ${FIELD_MID} 12%, ${FIELD_LO} 20%, ${FIELD_BASE} 48%, ${FIELD_DARK} 70%, ${FIELD_DEEP} 92%, ${FIELD_END} 100%)`;
+export const LIGHT_BG = '#FBF7F1'; // the cream .hm-fam-rest block the marble resolves into
+export const FIELD_UNDER = `linear-gradient(135deg, ${FIELD_HI} 0%, ${FIELD_MID} 12%, ${FIELD_LO} 20%, ${FIELD_BASE} 48%, ${FIELD_DARK} 70%, ${FIELD_DEEP} 100%)`;
 export const FIELD_UNDER_MOBILE = FIELD_UNDER.replace('135deg', '160deg');
 export const FIELD_GRAIN_OPACITY = 0.55;
 // Monochrome (colourless) grain tile, opaque grey from the noise red channel,
@@ -49,8 +48,7 @@ export const SWIRL_LIGHT_LOBES = [
 // SSR and client (no PRNG during render).
 // x,y = centre in % of the field; w,h = size in % of the field; r = rotation deg;
 // a = peak alpha; t = half-cycle drift seconds; dx (cqw), dy (cqh), dr (deg) = drift;
-// m = shown on mobile; g = mobile size multiplier; s = top highlight (fades in with the
-// settle beat); l = optional second lobe [px, py, rx, ry] in % of the element box.
+// m = shown on mobile; g = mobile size multiplier; l = optional second lobe [px, py, rx, ry] in % of the element box.
 export const ADAM_LOBE_K = 0.6;
 export const FIELD_BLOBS = [
   // static dark, zone-safe (no lighter than FIELD_BASE, or a tiny lift)
@@ -60,17 +58,12 @@ export const FIELD_BLOBS = [
   { c: '#744618', a: 0.20, x: 14, y: 66, w: 36, h: 22, r: 12, t: 21, dx: 10, dy: -10, dr: 10, m: false, g: 1.25 },
   { c: '#1C0E03', a: 0.95, x: 92, y: 84, w: 80, h: 66, r: -20, t: 26, dx: -9, dy: -7, dr: 14, m: true, g: 1.2 },
   { c: FIELD_LO, a: 0.45, x: 3, y: 58, w: 16, h: 30, r: 20, t: 14, dx: 5, dy: -8, dr: 12, m: false, g: 1 },
-  // warm highlights (s): kept out of the text zone so the lift budget holds
-  { c: '#D4963A', a: 0.95, x: 46, y: 1, w: 62, h: 36, r: -6, t: 27, dx: 14, dy: 5, dr: 8, m: true, g: 1, s: true },
-  { c: '#B87530', a: 0.90, x: 6, y: 3, w: 34, h: 20, r: 12, t: 23, dx: 7, dy: 4, dr: -10, m: false, g: 1, s: true },
-  { c: '#9A5C20', a: 0.80, x: 92, y: 9, w: 34, h: 20, r: -14, t: 25, dx: -9, dy: 4, dr: 12, m: true, g: 1, s: true },
-  { c: '#F3C48B', a: 0.30, x: 60, y: 6, w: 22, h: 7, r: -12, t: 15, dx: -26, dy: 3, dr: 6, m: false, g: 1, s: true }, // sheen, desktop only
 ];
 
 // Text-zone luminance rule (stage %). Any blob whose full drift envelope can reach the
 // zone is dark (no lighter than FIELD_BASE) or a low-alpha lift, the summed lift stays
 // under ADAM_ZONE_L_MAX - L(FIELD_BASE), and nothing lighter than FIELD_ZONE_MAX reaches it.
-export const ADAM_ZONE = { desktop: { x: [18, 82], y: [30, 72] }, mobile: { x: [0, 100], y: [34, 66] } };
+export const ADAM_ZONE = { desktop: { x: [3, 97], y: [16, 86] }, mobile: { x: [0, 100], y: [14, 88] } };
 export const ADAM_ZONE_L_MAX = 0.13;
 // Stage pixel basis used for the extent maths (desktop, mobile portrait, landscape phone).
 export const ADAM_STAGES = { desktop: [1600, 900], mobile: [390, 844], landscape: [844, 390] };

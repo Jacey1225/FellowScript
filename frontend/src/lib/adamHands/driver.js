@@ -21,26 +21,27 @@ export const CANVAS = {
 // 0 .. P_END; every constant above 1.0 is new, everything at or below 1.0 is the
 // original hands/flood timeline and is unchanged (its drivers clamp, so they hold
 // their old end state for p > 1).
-export const BASE_SPAN_VH = { desktop: 220, mobile: 160 };
 export const WHITE_HOLD_P = 0.05;
-export const FILL2_START_P = FLOOD_END_P + WHITE_HOLD_P; // 1.02: the lens bloom starts to recede, revealing the field
-export const FILL2_DELAY_P = FILL2_START_P - TOUCH_P; // touch -> second fill (about 2 s of the mov)
-export const FILL2_SPAN_P = 0.09;
-export const FILL2_END_P = FILL2_START_P + FILL2_SPAN_P; // 1.11: bloom edge gone
 export const LENS_START_P = 0.86; // the star burst owns .80-.86; the lens swells from its core
 export const LENS_FULL_P = FLOOD_END_P; // every lobe fully grown
-export const LENS_RECEDE_P = [1.02, 1.14]; // fall back toward the centre
-export const LEAKS_END_P = 1.16; // lens hard off here, before the Family reveal
-export const SETTLE_SPAN_P = 0.12;
-export const SETTLE_END_P = FILL2_END_P + SETTLE_SPAN_P; // 1.23
-export const FAMILY_REVEAL_P = [1.19, 1.26];
-export const FAMILY_HIDE_P = [1.38, 1.46];
-export const VERSE_START_P = 1.40;
-export const VERSE_SPAN_P = { desktop: 2.60, mobile: 3.60 };
+// Hand-off (task 20261111-kinetic-type-marble): the lens holds its full white beat until HANDOFF_START_P, then
+// it is switched off in ONE step (it is already pixel-equal to the GL veil, which is white at h = 0). From there
+// the light is withdrawn spatially by the marble shader (uniform uH = handoffH(p)), never by an alpha fade.
+export const HANDOFF_START_P = FLOOD_END_P + WHITE_HOLD_P; // 1.02
+export const HANDOFF_SPAN_P = 0.18;
+export const HANDOFF_END_P = HANDOFF_START_P + HANDOFF_SPAN_P; // 1.20
 const r6 = (x) => Math.round(x * 1e6) / 1e6;
-export const P_END = { desktop: r6(VERSE_START_P + VERSE_SPAN_P.desktop), mobile: r6(VERSE_START_P + VERSE_SPAN_P.mobile) };
-// Landscape-phone / stacked-verse mode: the pinned stage stops where the verses would start.
-export const P_END_STACK = VERSE_START_P;
+// Kinetic type scene: the head (eyebrow + h2) is pinned over the marble for KINETIC_SPAN_VH of scroll, starting
+// a third of the way into the hand-off. ONE formula: P_END and the runway both derive from these three numbers.
+export const TYPE_START_P = r6(HANDOFF_START_P + HANDOFF_SPAN_P / 3); // 1.08
+export const KINETIC_SPAN_VH = 200;
+export const BASE_SPAN_VH = { desktop: 220, mobile: 160 };
+export const P_END = {
+  desktop: r6(TYPE_START_P + KINETIC_SPAN_VH / BASE_SPAN_VH.desktop),
+  mobile: r6(TYPE_START_P + KINETIC_SPAN_VH / BASE_SPAN_VH.mobile),
+};
+// Landscape-phone / stacked mode: the pinned stage stops once the marble is revealed.
+export const P_END_STACK = HANDOFF_END_P;
 // Runway = one stage plus P_END base spans. Single place for the formula.
 export const runwayVh = (pEnd, baseSpanVh) => Math.round(100 + pEnd * baseSpanVh);
 export const RUNWAY_VH = {
@@ -225,7 +226,7 @@ export const handsOpacity = (p) => 1 - smooth((p - HANDS_FADE_P[0]) / (HANDS_FAD
 // boundary has a different radius at every angle (no circle, no band, no vertical
 // direction). It holds a full-screen overexposed beat, then pulls back toward its own
 // centre, bright core last. Everything is a pure function of p (scrub-reversible).
-const lensEase = cubicBezier(0.2, 0.6, 0.3, 1);
+export const lensEase = cubicBezier(0.2, 0.6, 0.3, 1);
 // Origin: the stage centre (Jacey's brief: light grows from the centre of the screen).
 export const LENS_ORIGIN = { x: 0.5, y: 0.5 };
 // dx, dy = offset and rx, ry = radii in u% (u = max(1cqw, 1cqh)); rot, rotDrift in deg; delay in w.
@@ -254,60 +255,55 @@ const lensZero = (n, ng) => ({
   rays: { rot: 0, o: 0 },
 });
 
+// Growth only (LENS_START_P .. LENS_FULL_P), then the full white beat holds until HANDOFF_START_P and the lens is
+// switched off in one step: there is no recede / fade-out here by design (see handoffH below).
 export function lensDrivers(p, mobile = false) {
   const n = mobile ? LENS_MOBILE_LOBES : LENS_LOBES.length;
   const ng = mobile ? 0 : LENS_GHOSTS.length;
-  if (p <= LENS_START_P || p >= LEAKS_END_P) {
+  if (p <= LENS_START_P || p >= HANDOFF_START_P) {
     const z = lensZero(n, ng);
-    z.on = p > LENS_START_P - 0.005 && p < LEAKS_END_P;
+    z.on = p > LENS_START_P - 0.005 && p < HANDOFF_START_P;
     return z;
   }
   const w = clamp((p - LENS_START_P) / LENS_GROW_SPAN);
-  const [r0, r1] = LENS_RECEDE_P;
-  const outer = 1 - smooth((p - r0) / 0.12);
-  const shrink = lerp(1, 0.82, smooth((p - r0) / (r1 - r0)));
   const grow = (delay) => lensEase(clamp((w - delay) / (1 - delay)));
   const lobes = LENS_LOBES.slice(0, n).map((l) => {
     const g = grow(l.delay);
     // opacity ramps on the lobe's own linear progress (not the fast-start ease), so a lobe fades in while it grows instead of popping in
-    return { g: g * shrink, rot: l.rotDrift * g, o: outer * smooth(clamp((w - l.delay) / (1 - l.delay)) / 0.5) };
+    return { g, rot: l.rotDrift * g, o: smooth(clamp((w - l.delay) / (1 - l.delay)) / 0.5) };
   });
   const g0 = grow(0);
-  const coreO = (1 - smooth((p - 1.035) / 0.08)) * smooth(w / 0.3);
-  const flareO = (1 - smooth((p - 1.06) / 0.08)) * smooth((p - LENS_START_P) / 0.04);
-  const flat = Math.min(smooth((p - 0.94) / 0.04), 1 - smooth((p - r0) / 0.08));
+  const coreO = smooth(w / 0.3);
+  const flareO = smooth((p - LENS_START_P) / 0.04);
+  const flat = smooth((p - 0.94) / 0.04);
   const ghosts = LENS_GHOSTS.slice(0, ng).map((gh, i) => ({
     g: grow(0.1 + 0.06 * i),
-    o: (1 - smooth((p - 1.06) / 0.08)) * smooth((p - 0.88 - 0.01 * i) / 0.05),
+    o: smooth((p - 0.88 - 0.01 * i) / 0.05),
   }));
-  const raysO = (1 - smooth((p - 1.03) / 0.07)) * smooth((p - 0.88) / 0.05);
+  const raysO = smooth((p - 0.88) / 0.05);
   return {
     on: true,
     flat,
     lobes,
-    core: { g: g0 * shrink, o: coreO },
+    core: { g: g0, o: coreO },
     flare: { sx: lerp(0.05, 1, grow(0.04)), o: flareO },
     ghosts,
     rays: mobile ? { rot: 0, o: 0 } : { rot: lerp(-8, 10, w), o: raysO },
   };
 }
 
-// Field timing: the opaque field sits above the canvas once the lens hold is solid.
+// Hand-off progress h in [0, 1]: 0 = the GL veil is still pure white (same pixels as the lens), 1 = marble fully
+// revealed. Eased with the flood curve over HANDOFF_START_P .. HANDOFF_END_P. Written to the field as data-h.
+export const handoffCurve = cubicBezier(0.25, 0.1, 0.75, 0.9); // near-linear: the frame-to-frame change stays even through the middle
+export const handoffH = (p) => handoffCurve(clamp((p - HANDOFF_START_P) / HANDOFF_SPAN_P));
+
+// Field timing: the marble GL canvas first draws UNDER the white lens (0.02 before the hand-off), and the cut-out
+// hands stop compositing once the lens is the only thing on screen.
 export function fill2Drivers(p) {
   return {
-    u: clamp((p - FILL2_START_P) / FILL2_SPAN_P),
-    settle: smooth((p - FILL2_END_P) / SETTLE_SPAN_P),
-    fieldOn: p >= FILL2_START_P - 0.005,
-    handsHidden: p >= FILL2_START_P,
+    fieldOn: p >= HANDOFF_START_P - 0.02,
+    handsHidden: p >= HANDOFF_START_P,
   };
-}
-
-// "Family" headline: reveal then hide before the first verse reaches mid-stage.
-// keep = true (stacked mode, no verses on the stage) never hides it.
-export function familyOpacity(p, keep = false) {
-  const [r0, r1] = FAMILY_REVEAL_P; const [h0, h1] = FAMILY_HIDE_P;
-  const reveal = smooth((p - r0) / (r1 - r0));
-  return keep ? reveal : reveal * (1 - smooth((p - h0) / (h1 - h0)));
 }
 
 // Scrub progress for a pinned section: distance scrolled into the runway over

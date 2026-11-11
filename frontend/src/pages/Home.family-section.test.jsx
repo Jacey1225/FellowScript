@@ -125,18 +125,32 @@ describe('Home — "Not just once a week" family section', () => {
     expect(document.querySelector('.hm-fam-eyebrow').textContent).toBe('// NOT JUST ONCE A WEEK');
   });
 
-  test('family block is a section continuing the pin FIELD_END gradient into #FBF7F1, with #1A1512 text and sits right after the Adam pin', () => {
+  test('family block is a transparent section right after the Adam pin: head over the marble, cream rest block with #1A1512 text', () => {
     const { container } = renderHome();
     const fam = container.querySelector('section.hm-fam');
     const pin = container.querySelector('[data-testid="adam-hands"]');
     expect(pin.nextElementSibling).toBe(fam);
     const css = [...container.querySelectorAll('style')].map((s) => s.textContent).join('\n');
-    expect(css).toMatch(/\.hm-fam \{[^}]*background-color: #FBF7F1;[^}]*linear-gradient\(180deg, #EBC480 0, #FBF7F1 var\(--fam-settle\)\)[^}]*color: #1A1512/);
-    // Fade the divider: no hard border under the eyebrow, a gradient-masked ::after rule instead.
+    // no honey gradient join and no flat background on the section any more: the marble resolves into cream by itself
+    const famRule = css.match(/\.hm-fam \{[^}]*\}/)[0];
+    expect(famRule).not.toMatch(/background/);
+    expect(famRule).toMatch(/color: #1A1512/);
+    expect(css).not.toMatch(/--fam-settle|FIELD_END|#EBC480/);
+    // structure: scene (head + backdrop) then the cream rest block carrying the body copy
+    const scene = fam.querySelector(':scope > .hm-fam-scene');
+    const rest = fam.querySelector(':scope > .hm-fam-rest');
+    expect(scene).toBeTruthy(); expect(rest).toBeTruthy();
+    expect(scene.nextElementSibling).toBe(rest);
+    expect(scene.querySelector('.hm-fam-head h2')).toBeTruthy();
+    expect(rest.querySelector('.hm-fam-body')).toBeTruthy(); expect(rest.querySelector('.hm-fam-card')).toBeTruthy();
+    expect(css).toMatch(/\.hm-fam-rest \{[^}]*background: #FBF7F1/);
+    // head type is cream (it sits on the dark marble); body ink on cream is the dark ink
+    expect(css).toMatch(/\.hm-fam-h2 \{[^}]*color: #FBF7F1/);
+    expect(css).toMatch(/\.hm-fam-eyebrow \{[^}]*color: #FBF7F1/);
+    expect(css).toMatch(/\.hm-fam-body \{[^}]*rgba\(26,21,18,0\.86\)/);
+    // the divider under the eyebrow is a fading gold hairline (no hard border), drawn by --fs-thread (now local to the eyebrow)
     const eb = css.match(/\.hm-fam-eyebrow \{[^}]*\}/)[0];
     expect(eb).not.toMatch(/border-bottom/);
-    expect(eb).toMatch(/color: #5C3509/);
-    expect(css).toMatch(/\.hm-fam-eyebrow::after \{[^}]*linear-gradient\(90deg, rgba\(26,21,18,0\) 0%[^}]*rgba\(26,21,18,0\) 100%\)/);
-    expect(css).toMatch(/\.hm-fam-body \{[^}]*rgba\(26,21,18,0\.86\)/);
+    expect(css).toMatch(/\.hm-fam-eyebrow::after \{[^}]*rgba\(224,154,48,0\.55\)[^}]*clip-path: inset\(0 calc\(\(1 - var\(--fs-thread, 1\)\) \* 100%\) 0 0\)/);
   });
 });

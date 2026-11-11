@@ -254,7 +254,8 @@ describe('Home problem section: reduced motion and SSR', () => {
     expect(html).toContain('Barna Group &amp; The Navigators, 2022');
     expect(html).toContain('Hartford Institute, Faith Communities Today, 2020');
     expect(html).toContain('LifeWay Research, 2019');
-    expect(html).not.toMatch(/\b(61|66|69)\s?%/);
+    // visible copy only: the inlined <style> blocks legitimately contain gradient stops such as `66%`
+    expect(html.replace(/<style>[\s\S]*?<\/style>/g, '')).not.toMatch(/\b(61|66|69)\s?%/);
   });
 
   test('ProblemCarousel is data-driven for a different slide count', () => {

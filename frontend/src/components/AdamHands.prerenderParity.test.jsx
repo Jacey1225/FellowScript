@@ -1,7 +1,7 @@
 // Task 20261022-hands-scroll-grain-gradient, testing gate: the reduced-motion
 // and mobile first client renders must produce the same markup as the
 // server/prerender render (identical hydration markup, no flash, no mismatch),
-// and the verse stack must be present in that markup for no-JS readers.
+// (the community-verse stack was removed in task 20261111-kinetic-type-marble).
 //
 // Run with: cd frontend && npx vitest run src/components/AdamHands.prerenderParity.test.jsx
 import React from 'react';
@@ -9,7 +9,6 @@ import { describe, test, expect, vi, afterEach } from 'vitest';
 import { render, cleanup } from '@testing-library/react';
 import { renderToString } from 'react-dom/server';
 import AdamHands from './AdamHands.jsx';
-import { COMMUNITY_VERSES } from '../lib/communityVerses.js';
 
 afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 
@@ -43,15 +42,6 @@ describe('prerender parity', () => {
     const { container } = render(<AdamHands />);
     expect(shape(container)).toEqual(shape(parse(ssr)));
     expect(container.innerHTML).toContain('data-live="false"');
-  });
-
-  test('prerender markup carries every community verse as real text (readable without JS)', () => {
-    expect(COMMUNITY_VERSES.length).toBeGreaterThanOrEqual(3);
-    const text = ssr.replace(/<style>[\s\S]*?<\/style>/g, '').replace(/&#x27;/g, "'").replace(/&quot;/g, '"');
-    for (const v of COMMUNITY_VERSES) {
-      expect(text).toContain(v.ref);
-      expect(text).toContain(v.text.slice(0, 40).replace(/'/g, "'"));
-    }
   });
 
   test('prerender is deterministic (two renders identical, no random or time-based values)', () => {

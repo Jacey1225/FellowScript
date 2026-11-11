@@ -11,8 +11,9 @@ import { describe, test, expect, vi, afterEach } from 'vitest';
 import { render, cleanup, act } from '@testing-library/react';
 import { renderToString, renderToStaticMarkup } from 'react-dom/server';
 import { LENS_CSS, LOBE_GRAD } from './LensBloom.jsx';
-import { LENS_LOBES } from '../lib/adamHands/driver.js';
-import AdamHands, { ADAM_CSS, ADAM_EYEBROW, ADAM_KEY_FILTER_ID, ADAM_FINAL_SUBTITLE, FIELD_END, FIELD_INK, FIELD_BASE, FIELD_CAP, FIELD_UNDER, FIELD_BLOBS, ADAM_FINAL_FONT, FALLBACK_GRADIENT, ADAM_ZONE, ADAM_ZONE_L_MAX, ADAM_STAGES, FIELD_ZONE_MAX, relLuminance, blobLift, blobInZone, zoneLift, swirlLift, adamPhase, FIELD_WHITE } from './AdamHands.jsx';
+import { LENS_LOBES, P_END, P_END_STACK, HANDOFF_START_P, HANDOFF_END_P, handoffH, RUNWAY_VH, RUNWAY_VH_STACK, floodCurve } from '../lib/adamHands/driver.js';
+import LiquidField, { LIQUID_CSS } from './LiquidField.jsx';
+import AdamHands, { ADAM_CSS, ADAM_EYEBROW, ADAM_KEY_FILTER_ID, FIELD_INK, LIGHT_BG, FIELD_BASE, FIELD_CAP, FIELD_UNDER, FIELD_BLOBS, FALLBACK_GRADIENT, ADAM_ZONE, ADAM_ZONE_L_MAX, ADAM_STAGES, FIELD_ZONE_MAX, relLuminance, blobLift, blobInZone, zoneLift, swirlLift, adamPhase, FIELD_WHITE } from './AdamHands.jsx';
 
 afterEach(() => {
   cleanup();
@@ -51,14 +52,20 @@ describe('AdamHands server / no-JS markup', () => {
     expect(body).not.toContain(ADAM_KEY_FILTER_ID);
   });
 
-  test('fallback shows real text: Family + the exact subtitle (typo preserved) on the honey block', () => {
-    expect(ADAM_FINAL_SUBTITLE).toBe('Welcoming scripture into a deeper comunity.');
-    expect(html).toContain('data-testid="adam-fallback-field"');
-    expect(html).toContain('>Family</span>');
-    expect(html).toContain('>Welcoming scripture into a deeper comunity.</span>');
+  test('fallback keeps the eyebrow text, has no Family headline, no verses, and no frozen field (the marble backdrop lives in Home .hm-fam-backdrop)', () => {
+    expect(html).toContain(ADAM_EYEBROW);
+    expect(html).not.toContain('Family');
+    expect(html).not.toContain('Welcoming scripture');
+    expect(html).not.toContain('data-adam="final"');
+    expect(html).not.toContain('adam-final');
     expect(html).not.toContain('Brothers and sisters show up');
-    const block = html.match(/<div class="adam-fbfield-in"[\s\S]*$/)[0];
-    expect(block).not.toMatch(/aria-hidden/);
+    // removed by task 20261111-kinetic-type-marble: the frozen marble under the still, and the whole verse stack
+    expect(html).not.toContain('adam-fbfield');
+    expect(html).not.toContain('adam-fallback-field');
+    const body = html.replace(/<style>[\s\S]*?<\/style>/, '');
+    expect(body).not.toContain('adam-liquid');
+    expect(body).not.toContain('verse-stack');
+    expect(html).not.toMatch(/blockquote/);
   });
 
   test('still is decorative (alt empty, aria-hidden), lazy and low priority so the hero stays LCP', () => {
@@ -75,17 +82,17 @@ describe('AdamHands server / no-JS markup', () => {
     expect(a).toBe(html);
   });
 
-  test('CSS: runway only under data-live, 24svh gradient ending on FIELD_END, stage 100svh with 100vh fallback', () => {
-    expect(ADAM_CSS).toMatch(/\.adam-pin\[data-live="true"\] \{ height: 980vh; \}/);
-    expect(ADAM_CSS).toMatch(/height: 900vh/);
-    expect(ADAM_CSS).toMatch(/\[data-stack="true"\] \{ height: 408vh; \}/);
+  test('CSS: runway only under data-live (538vh / 364vh stack from the one formula), 24svh gradient, stage 100svh with 100vh fallback, no honey join', () => {
+    // Hand-derived from driver.js: 100 + P_END * base. desktop 100 + 1.989091 * 220 = 537.6 -> 538; stack 100 + 1.2 * 220 = 364.
+    expect(RUNWAY_VH.desktop).toBe(538); expect(RUNWAY_VH_STACK.desktop).toBe(364);
+    expect(ADAM_CSS).toMatch(/\.adam-pin\[data-live="true"\] \{ height: 538vh; \}/);
+    expect(ADAM_CSS).toMatch(/\.adam-pin\[data-live="true"\]\[data-stack="true"\] \{ height: 364vh; \}/);
+    expect(ADAM_CSS).not.toMatch(/height: (935|980|900|408|363|324)vh/); // old runways are gone
     expect(ADAM_CSS).toMatch(/\.adam-grad \{ position: relative; height: 24svh;/);
-    expect(FIELD_END).toBe('#EBC480');
-    expect(FIELD_UNDER).toMatch(/#EBC480 100%\)$/);
-    expect(FIELD_UNDER).toMatch(/rgba\(235,196,128,0\) 80%, #EBC480 100%\)/);
+    // FIELD_UNDER is the dark marble underlay: it ends on FIELD_DEEP, not on a honey join colour
+    expect(FIELD_UNDER).toMatch(/#2C1706 100%\)$/);
+    expect(FIELD_UNDER).not.toMatch(/#EBC480/);
     expect(FIELD_CAP).toBe('#FFF4DC'); // warm white: the bloom's white end stop is never clamped
-    expect(ADAM_CSS).toMatch(/\.adam-final-h \{[^}]*Schibsted Grotesk[^}]*font-weight: 600/);
-    expect(ADAM_CSS).toContain(`color: ${FIELD_INK}`);
     expect(ADAM_CSS).toMatch(/height: 100vh; height: 100svh;/);
     expect(ADAM_CSS).not.toMatch(/\.adam-pin \{[^}]*height:\s*\d+vh/);
     expect(ADAM_CSS).toMatch(/position: sticky; top: 0/);
@@ -119,10 +126,10 @@ describe('AdamHands client behaviour', () => {
     const kr = container.querySelector('[data-adam="kr"]');
     expect(parseFloat(kr.getAttribute('slope'))).toBeCloseTo(0.682, 4);
     expect(container.querySelector('[data-adam="field"]').style.opacity).toBe('0');
-    expect(parseFloat(container.querySelector('[data-adam="final"]').style.opacity)).toBe(0);
+    expect(container.querySelector('[data-adam="final"]')).toBeNull();
   });
 
-  test('live: scrolling to the end of the runway paints the flat plane and the final type; scrolling back restores', () => {
+  test('live: scrolling to the end of the runway holds the hand-off end state; scrolling back restores', () => {
     mm();
     const rafQ = [];
     vi.stubGlobal('requestAnimationFrame', (cb) => { rafQ.push(cb); return rafQ.length; });
@@ -132,39 +139,34 @@ describe('AdamHands client behaviour', () => {
     const stage = container.querySelector('.adam-stage');
     Object.defineProperty(stage, 'clientHeight', { configurable: true, value: 900 });
     let top = 0;
-    const H = 8820; // 980vh on a 900px stage
+    const H = (RUNWAY_VH.desktop / 100) * 900; // 538vh on a 900px stage
     section.getBoundingClientRect = () => ({ top, height: H, bottom: top + H, left: 0, right: 0, width: 0, x: 0, y: top });
     const run = (frames) => { let t = 0; for (let i = 0; i < frames; i++) { t += 100; const q = rafQ.splice(0); q.forEach((cb) => cb(t)); } };
+    const field = () => container.querySelector('[data-adam="field"]');
 
-    top = -(1.3 * 1980); // p = 1.3: settled warm field, Family fully revealed
+    top = -(1.3 * 1980); // p = 1.3: past HANDOFF_END_P, marble fully revealed
     act(() => { document.dispatchEvent(new Event('scroll')); run(80); });
     expect(parseFloat(stage.dataset.p)).toBeCloseTo(1.3, 2);
-    expect(stage.dataset.flat).toBe('true'); // hands hidden under the opaque field
-    expect(container.querySelector('[data-adam="field"]').style.opacity).toBe('1');
-    expect(container.querySelector('[data-adam="field"]').dataset.live).toBe('true');
-    expect(parseFloat(container.querySelector('[data-adam="hilite"]').style.opacity)).toBeCloseTo(1, 2);
+    expect(stage.dataset.flat).toBe('true'); // hands hidden under the field
+    expect(field().style.opacity).toBe('1');
+    expect(field().dataset.live).toBe('true');
+    expect(field().dataset.h).toBe('1.000'); // hand-off complete
+    expect(container.querySelector('[data-adam="hilite"]')).toBeNull(); // the hilite wash was removed
     expect(container.querySelector('[data-adam="lens"]').style.visibility).toBe('hidden');
-    expect(parseFloat(container.querySelector('[data-adam="final"]').style.opacity)).toBeCloseTo(1, 2);
     expect(container.querySelector('[data-adam="eyebrow"]').style.visibility).toBe('hidden');
 
-    top = -(9999); // end of runway: p clamps to P_END, verses have all passed, Family is gone
+    top = -(9999); // end of runway: p clamps to P_END
     act(() => { document.dispatchEvent(new Event('scroll')); run(80); });
-    expect(parseFloat(stage.dataset.p)).toBeCloseTo(4.0, 2);
-    expect(parseFloat(container.querySelector('[data-adam="final"]').style.opacity)).toBe(0);
-    container.querySelectorAll('[data-adam="verse"]').forEach((el) => expect(el.style.visibility).toBe('hidden'));
-
-    top = -(1.8 * 1980); // mid verse phase: at least one widget on screen, in the stage's pixel space
-    act(() => { document.dispatchEvent(new Event('scroll')); run(80); });
-    const shown = [...container.querySelectorAll('[data-adam="verse"]')].filter((el) => el.style.visibility === 'visible');
-    expect(shown.length).toBeGreaterThanOrEqual(1);
-    shown.forEach((el) => expect(el.style.transform).toMatch(/translate3d\(/));
+    expect(parseFloat(stage.dataset.p)).toBeCloseTo(P_END.desktop, 2); // 1.989
+    expect(container.querySelector('[data-adam="verse"]')).toBeNull(); // no verse layer exists any more
+    expect(field().dataset.h).toBe('1.000');
 
     top = 0; // fully reversible
     act(() => { document.dispatchEvent(new Event('scroll')); run(60); });
     expect(parseFloat(stage.dataset.p)).toBeLessThan(0.01);
     expect(stage.dataset.flat).toBe('false');
-    expect(parseFloat(container.querySelector('[data-adam="final"]').style.opacity)).toBe(0);
-    expect(container.querySelector('[data-adam="field"]').dataset.live).toBe('false');
+    expect(field().dataset.live).toBe('false');
+    expect(field().dataset.h).toBe('0.000');
   }, 30000);
 
   test('live: scroll is smoothed, not instant (one frame after a jump is short of the target)', () => {
@@ -176,7 +178,7 @@ describe('AdamHands client behaviour', () => {
     const section = container.querySelector('section');
     const stage = container.querySelector('.adam-stage');
     Object.defineProperty(stage, 'clientHeight', { configurable: true, value: 900 });
-    section.getBoundingClientRect = () => ({ top: -(1980 * 0.5), height: 6048, bottom: 0, left: 0, right: 0, width: 0, x: 0, y: 0 });
+    section.getBoundingClientRect = () => ({ top: -(1980 * 0.5), height: 4842, bottom: 0, left: 0, right: 0, width: 0, x: 0, y: 0 });
     act(() => { document.dispatchEvent(new Event('scroll')); rafQ.splice(0).forEach((cb) => cb(16)); });
     const p1 = parseFloat(stage.dataset.p);
     expect(p1).toBeGreaterThan(0);
@@ -206,48 +208,6 @@ describe('rev 2: centred text, font constant, exact subtitle, reduced-motion no-
   const rule = (sel) => { const m = css.match(new RegExp('^' + sel.replace(/[.[\]]/g, '\\$&') + ' \\{([^}]*)\\}', 'm')); return m ? m[1] : ''; };
   const html = renderToStaticMarkup(<AdamHands />);
 
-  test('live .adam-final is flex-centred on both axes with text-align center; old left/top anchoring is gone', () => {
-    const r = rule('.adam-final');
-    expect(r).toMatch(/inset: 0/);
-    expect(r).toMatch(/display: flex/);
-    expect(r).toMatch(/flex-direction: column/);
-    expect(r).toMatch(/align-items: center/);
-    expect(r).toMatch(/justify-content: center/);
-    expect(r).toMatch(/text-align: center/);
-    expect(r).not.toMatch(/\bleft:\s*10cqw|top:\s*31\.5cqh|top:\s*34svh/);
-    expect(css).not.toMatch(/left: 10cqw; top: 31\.5cqh/);
-    expect(css).not.toMatch(/top: 34svh/);
-  });
-
-  test('fallback block centres its content (grid place-items center, text-align center, inner centred)', () => {
-    const r = rule('.adam-fbfield');
-    expect(r).toMatch(/place-items: center/);
-    expect(r).toMatch(/text-align: center/);
-    expect(rule('.adam-fbfield-in')).toMatch(/text-align: center/);
-    expect(rule('.adam-fbfield .adam-final-b')).toMatch(/margin-inline: auto/);
-  });
-
-  test('headline is a single line and subtitle wraps balanced', () => {
-    expect(rule('.adam-final-h')).toMatch(/white-space: nowrap/);
-    expect(rule('.adam-final-b')).toMatch(/text-wrap: balance/);
-  });
-
-  test('ADAM_FINAL_FONT is Schibsted Grotesk and is the only face used for the headline (live + fallback)', () => {
-    expect(ADAM_FINAL_FONT).toBe("'Schibsted Grotesk', sans-serif");
-    expect(rule('.adam-final-h')).toContain(`font-family: ${ADAM_FINAL_FONT}`);
-    expect(rule('.adam-final-h')).toMatch(/font-weight: 600/);
-    expect(rule('.adam-final-b')).toContain(`font-family: ${ADAM_FINAL_FONT}`);
-    // fallback headline only overrides size, so it inherits the same family/weight rule
-    expect(rule('.adam-fbfield .adam-final-h')).not.toMatch(/font-family/);
-    expect(css).not.toMatch(/Playfair|Georgia|Times|Inter\b/);
-  });
-
-  test('exact subtitle (typo kept) and headline in prerender markup', () => {
-    expect(ADAM_FINAL_SUBTITLE).toBe('Welcoming scripture into a deeper comunity.');
-    expect(html).toContain('>Welcoming scripture into a deeper comunity.</span>');
-    expect(html).toContain('>Family</span>');
-  });
-
   test('palette: warm brown base, fields share the exported constants', () => {
     expect(FIELD_BASE).toBe('#5C3509');
     expect(FIELD_UNDER).toContain(FIELD_BASE);
@@ -267,19 +227,23 @@ describe('rev 2: centred text, font constant, exact subtitle, reduced-motion no-
     expect(css).toMatch(/@media \(prefers-reduced-motion: reduce\) \{ \.adam-blob, \.adam-swirl \{ animation: none; \} \}/);
   });
 
-  test('fallback markup: liquid field is the frozen copy (no drift class), aria-hidden', () => {
-    const block = html.match(/<div class="adam-fbfield"[\s\S]*$/)[0];
-    expect(block).toContain('adam-liquid-frozen');
-    expect(block).not.toMatch(/class="adam-liquid adam-field"/);
-    const liquid = block.match(/<div[^>]*adam-liquid-frozen[^>]*>/)[0];
-    expect(liquid).toMatch(/aria-hidden="true"/);
+  test('fallback markup: AdamHands renders no liquid field at all (the frozen copy is the .hm-fam-backdrop LiquidField)', () => {
+    expect(html.replace(/<style>[\s\S]*?<\/style>/, '')).not.toMatch(/adam-liquid/);
+    // the frozen LiquidField (used by Home's backdrop) has no drift class and is aria-hidden
+    const frozen = renderToStaticMarkup(<LiquidField />);
+    expect(frozen).toContain('adam-liquid-frozen');
+    expect(frozen).not.toMatch(/class="adam-liquid adam-field"/);
+    expect(frozen.match(/<div[^>]*adam-liquid-frozen[^>]*>/)[0]).toMatch(/aria-hidden="true"/);
+    expect(frozen).not.toContain('<canvas'); // no WebGL canvas in the frozen copy
+    expect(frozen).toContain('adam-resolve'); // CSS resolve into cream
   });
 
-  test('client reduced motion: no live field, no running drift element', () => {
+  test('client reduced motion: AdamHands renders no live field and no frozen field of its own', () => {
     mm({ reduce: true });
     const { container } = render(<AdamHands />);
     expect(container.querySelector('.adam-field')).toBeNull();
-    expect(container.querySelector('.adam-liquid-frozen')).not.toBeNull();
+    expect(container.querySelector('.adam-liquid')).toBeNull();
+    expect(container.querySelector('.adam-blob')).toBeNull();
   });
 
   test('live: drift is on the field element only, and gets data-live once the field is visible', () => {
@@ -305,10 +269,12 @@ describe('rev 2 contrast (WCAG AA), cream ink on the brown field, worst-case gra
     expect(ratio(ink, scale(rgb(FIELD_BASE), 1.15))).toBeGreaterThanOrEqual(4.5);
   });
 
-  test('.hm-fam eyebrow and body ink sit on the cream (#FBF7F1), on the honey ramp', () => {
-    expect(FIELD_END).toBe('#EBC480');
-    expect(ratio(rgb('#5C3509'), rgb('#FBF7F1'))).toBeGreaterThanOrEqual(4.5);
-    expect(ratio(rgb('#1A1512'), rgb('#FBF7F1'))).toBeGreaterThanOrEqual(4.5);
+  test('.hm-fam body ink sits on the cream (#FBF7F1) rest block; the marble resolves to that same LIGHT_BG', () => {
+    expect(LIGHT_BG).toBe('#FBF7F1');
+    expect(ratio(rgb('#1A1512'), rgb(LIGHT_BG))).toBeGreaterThanOrEqual(4.5);
+    expect(ratio(rgb('#5C3509'), rgb(LIGHT_BG))).toBeGreaterThanOrEqual(4.5);
+    // the kinetic head type is cream: it must clear AA on the DARK marble stops it sits on (FIELD_BASE .. FIELD_DEEP), not the cream
+    expect(ratio(ink, rgb(FIELD_BASE))).toBeGreaterThanOrEqual(4.5);
   });
 });
 
@@ -330,11 +296,11 @@ describe('rev 3: no halo, luminance rule from the blob table, variety, client-on
     expect(container.querySelector('.adam-liquid-calm')).toBeNull();
   });
 
-  test('table size: 10 desktop (blue-era geometry), 5 on mobile, sizes in the spec ranges', () => {
-    expect(FIELD_BLOBS.length).toBe(10);
-    expect(subset(true).length).toBe(5);
-    expect(FIELD_BLOBS.filter((b) => b.s).length).toBeGreaterThanOrEqual(3);
-    expect(FIELD_BLOBS.length).toBeGreaterThanOrEqual(8);
+  test('table size: 6 blobs (the 4 s:true highlight blobs were removed), 3 on mobile, sizes in the spec ranges', () => {
+    // Derived from the table in lib/adamHands/field.js: 6 entries, of which m:true are #2A1606, #6E4214, #1C0E03.
+    expect(FIELD_BLOBS.length).toBe(6);
+    expect(subset(true).length).toBe(3);
+    expect(FIELD_BLOBS.filter((b) => b.s).length).toBe(0); // no highlight blobs remain
   });
 
   test('luminance rule: every blob that can reach the text zone is dark or a low lift, summed lift stays in the bound', () => {
@@ -380,13 +346,14 @@ describe('rev 3: no halo, luminance rule from the blob table, variety, client-on
     expect(zoneLift(false, W, H, [...FIELD_BLOBS, bad])).toBeGreaterThan(ADAM_ZONE_L_MAX - LB);
   });
 
-  test('some blobs do cross behind the text and some sit off-centre', () => {
+  test('some blobs do cross behind the text and some centres sit well off-centre', () => {
     const [W, H] = ADAM_STAGES.desktop;
     expect(FIELD_BLOBS.filter((b) => blobInZone(b, false, W, H)).length).toBeGreaterThanOrEqual(2);
-    expect(FIELD_BLOBS.filter((b) => !blobInZone(b, false, W, H)).length).toBeGreaterThanOrEqual(3);
+    // off-centre by blob centre (x offsets 12, 22, 8, 36, 42, 47 -> four are 20 or more from the middle)
+    expect(FIELD_BLOBS.filter((b) => Math.abs(b.x - 50) >= 20).length).toBeGreaterThanOrEqual(3);
   });
 
-  test('asymmetric and varied: no mirrored pairs, wide size range, distinct periods and colours, varied drift', () => {
+  test('asymmetric and varied: no mirrored pairs, wide size range, distinct periods, colours and rotations, varied drift', () => {
     for (let i = 0; i < FIELD_BLOBS.length; i++) {
       for (let j = i + 1; j < FIELD_BLOBS.length; j++) {
         const a = FIELD_BLOBS[i]; const b = FIELD_BLOBS[j];
@@ -401,29 +368,29 @@ describe('rev 3: no halo, luminance rule from the blob table, variety, client-on
     expect(new Set(ts).size).toBe(ts.length);
     expect(Math.min(...ts)).toBeGreaterThanOrEqual(12); // r2 drift is about 0.45x the original half-cycle
     expect(Math.max(...ts)).toBeLessThanOrEqual(27);
-    expect(new Set(FIELD_BLOBS.map((b) => b.c.toUpperCase())).size).toBeGreaterThanOrEqual(7);
+    // every blob has its own colour and rotation (was >= 7 colours / >= 8 rotations of 10 blobs; all-distinct is the same rule on 6)
+    expect(new Set(FIELD_BLOBS.map((b) => b.c.toUpperCase())).size).toBe(FIELD_BLOBS.length);
+    expect(new Set(FIELD_BLOBS.map((b) => b.r)).size).toBe(FIELD_BLOBS.length);
     const amp = FIELD_BLOBS.map((b) => Math.max(Math.abs(b.dx), Math.abs(b.dy)));
     expect(Math.max(...amp)).toBeGreaterThanOrEqual(12);
-    expect(Math.min(...amp)).toBeLessThanOrEqual(7);
+    // drift amplitudes vary (smallest is 8, largest 18: the old <= 7 floor belonged to the removed small highlight blobs)
+    expect(Math.min(...amp)).toBe(8);
+    expect(Math.max(...amp) / Math.min(...amp)).toBeGreaterThanOrEqual(1.5);
     expect(Math.max(...FIELD_BLOBS.map((b) => Math.abs(b.dr)))).toBeGreaterThanOrEqual(20);
-    expect(FIELD_BLOBS.filter((b) => b.l).length).toBeGreaterThanOrEqual(3); // non-elliptical silhouettes
-    expect(new Set(FIELD_BLOBS.map((b) => b.r)).size).toBeGreaterThanOrEqual(8);
+    expect(FIELD_BLOBS.filter((b) => b.l).length).toBeGreaterThanOrEqual(2); // non-elliptical silhouettes (3 -> 2 with the highlight blobs gone)
   });
 
-  test('dark umber dominates by area; gold highlights are the accent', () => {
-    const area = (b) => b.w * b.h;
-    const dark = (b) => !b.s;
-    const d = FIELD_BLOBS.filter(dark).reduce((s, b) => s + area(b), 0);
-    const total = FIELD_BLOBS.reduce((s, b) => s + area(b), 0);
-    expect(d / total).toBeGreaterThan(0.6);
-    expect(d / total).toBeLessThan(0.95);
+  test('no light highlight blobs remain: every blob is dark umber or a low lift, none lighter than FIELD_ZONE_MAX', () => {
+    for (const b of FIELD_BLOBS) expect(lum(b.c)).toBeLessThanOrEqual(lum(FIELD_ZONE_MAX) + 1e-9);
+    expect(FIELD_BLOBS.some((b) => 's' in b)).toBe(false);
   });
 
-  test('highlights sit in the top band, clear of the headline zone and the join', () => {
-    for (const b of FIELD_BLOBS.filter((x) => x.s)) expect(b.y).toBeLessThanOrEqual(12);
-    expect(css).toMatch(/transparent 84%/);
-    expect(css).toMatch(/\.adam-liquid::before/); // blue-era bottom fade layer restored
-    expect(css).not.toMatch(/adam-teal|#7CC3D4/);
+  test('no honey strip: no ::before bottom fade, no 84% mask on the gl or blobs, no #EBC480 join anywhere in the stage CSS', () => {
+    const stageCss = ADAM_CSS; // includes LIQUID_CSS and LENS_CSS
+    expect(stageCss).not.toMatch(/\.adam-liquid::before/);
+    expect(stageCss).not.toMatch(/mask-image: linear-gradient\(180deg, #000 0, #000 60%/);
+    expect(stageCss).not.toMatch(/#EBC480|EBC480/i);
+    expect(stageCss).not.toMatch(/adam-hilite|adam-fbfield|adam-teal|#7CC3D4/);
   });
 
   test('adamPhase maps a unit random to [0, 2t] and is deterministic', () => {
@@ -438,12 +405,12 @@ describe('rev 3: no halo, luminance rule from the blob table, variety, client-on
     const rnd = vi.spyOn(Math, 'random');
     const html = renderToStaticMarkup(<AdamHands />);
     renderToString(<AdamHands />);
+    renderToStaticMarkup(<LiquidField />);
     expect(rnd).not.toHaveBeenCalled();
     expect(html.replace(/<style>[\s\S]*?<\/style>/, '')).not.toContain('--ph');
-    expect(html).toContain('adam-liquid-frozen');
   });
 
-  test('client reduced motion: frozen block has no --ph, random never used, blobs not animated', () => {
+  test('client reduced motion: no field, random never used, no blob animated by AdamHands', () => {
     mm({ reduce: true });
     const rnd = vi.spyOn(Math, 'random');
     const { container } = render(<AdamHands />);
@@ -453,45 +420,35 @@ describe('rev 3: no halo, luminance rule from the blob table, variety, client-on
     expect(css).toMatch(/@media \(prefers-reduced-motion: reduce\) \{ \.adam-blob, \.adam-swirl \{ animation: none; \} \}/);
   });
 
-  test('live client: --ph is set only after mount on the live field blobs, within [0, 2t]; frozen block untouched', () => {
+  test('live client: --ph is set only after mount on the live field blobs (random 0.5 -> exactly t)', () => {
     mm();
     vi.spyOn(Math, 'random').mockReturnValue(0.5);
     const { container } = render(<AdamHands />);
     const live = container.querySelectorAll('.adam-field .adam-blob');
     expect(live.length).toBe(FIELD_BLOBS.length);
-    const domOrder = [...FIELD_BLOBS.filter((b) => !b.s), ...FIELD_BLOBS.filter((b) => b.s)];
-    live.forEach((el, i) => expect(parseFloat(el.style.getPropertyValue('--ph'))).toBeCloseTo(domOrder[i].t, 1));
-    container.querySelectorAll('.adam-liquid-frozen .adam-blob').forEach((el) => expect(el.style.getPropertyValue('--ph')).toBe(''));
+    live.forEach((el, i) => expect(parseFloat(el.style.getPropertyValue('--ph'))).toBeCloseTo(FIELD_BLOBS[i].t, 1));
   });
 
-  test('text: centred, ADAM_FINAL_FONT headline/subtitle, exact subtitle, ink colour', () => {
-    expect(ADAM_FINAL_SUBTITLE).toBe('Welcoming scripture into a deeper comunity.');
-    const html = renderToStaticMarkup(<AdamHands />);
-    expect(html).toContain('>Welcoming scripture into a deeper comunity.</span>');
-    const r = (sel) => { const m = css.match(new RegExp('^' + sel.replace(/[.[\]]/g, '\\$&') + ' \\{([^}]*)\\}', 'm')); return m ? m[1] : ''; };
-    expect(r('.adam-final')).toMatch(/align-items: center/);
-    expect(r('.adam-final')).toMatch(/justify-content: center/);
-    expect(r('.adam-final')).toMatch(/text-align: center/);
-    expect(r('.adam-final-h')).toContain(`font-family: ${ADAM_FINAL_FONT}`);
-    expect(r('.adam-final-b')).toContain(`font-family: ${ADAM_FINAL_FONT}`);
-    expect(css).toContain(`color: ${FIELD_INK}`);
+  test('text: the stage carries the eyebrow only (its own colour), no headline CSS; the cream ink belongs to Home .hm-fam', () => {
+    expect(css).toMatch(/\.adam-eyebrow \{[^}]*color: #F0C08A/);
+    expect(css).not.toMatch(/\.adam-final/);
+    expect(css).not.toContain(`color: ${FIELD_INK}`); // the stage CSS no longer styles any cream text
   });
 
-  test('all surfaces share one blob table: live and frozen render the same geometry', () => {
+  test('live and frozen LiquidField render the same blob geometry from the one table', () => {
     mm();
     const { container } = render(<AdamHands />);
     const geo = (el) => ['--x', '--y', '--w', '--h', '--r', '--t'].map((k) => el.style.getPropertyValue(k)).join();
     const live = [...container.querySelectorAll('.adam-field .adam-blob')].map(geo);
     cleanup();
-    mm({ reduce: true });
-    const r2 = render(<AdamHands />);
+    const r2 = render(<LiquidField />);
     const frozen = [...r2.container.querySelectorAll('.adam-liquid-frozen .adam-blob')].map(geo);
     expect(frozen.length).toBe(FIELD_BLOBS.length);
     expect(frozen).toEqual(live);
   });
 });
 
-describe('lens bloom, onscreen pause and landscape-stack verses', () => {
+describe('lens bloom, hand-off, onscreen pause and landscape stack', () => {
   const setup = (opts) => {
     mm(opts);
     const rafQ = [];
@@ -503,15 +460,17 @@ describe('lens bloom, onscreen pause and landscape-stack verses', () => {
     Object.defineProperty(stage, 'clientHeight', { configurable: true, value: 900 });
     Object.defineProperty(stage, 'clientWidth', { configurable: true, value: 1600 });
     let top = 0;
-    section.getBoundingClientRect = () => ({ top, height: 6048, bottom: top + 6048, left: 0, right: 0, width: 0, x: 0, y: top });
+    section.getBoundingClientRect = () => ({ top, height: 4842, bottom: top + 4842, left: 0, right: 0, width: 0, x: 0, y: top });
     const goto = (p) => { top = -p * 1980; act(() => { document.dispatchEvent(new Event('scroll')); for (let i = 0; i < 80; i++) rafQ.splice(0).forEach((cb) => cb(i * 100 + 100)); }); };
     return { ...r, stage, goto };
   };
 
-  test('lens bloom: centre-origin lobes grow from p .86, full beat at 1.0 (field hidden), recede and are off by 1.16', () => {
+  test('lens bloom: centre-origin lobes grow from p .86 and HOLD the full white beat to HANDOFF_START_P, then one-step off (no recede)', () => {
     const { container, goto } = setup();
     const lens = container.querySelector('[data-adam="lens"]');
     const lobe = (i) => container.querySelector(`[data-adam="lens-lobe-${i}"]`);
+    const field = () => container.querySelector('[data-adam="field"]');
+    const flat = () => parseFloat(container.querySelector('[data-adam="lens-flat"]').style.opacity);
     const scaleOf = (el) => parseFloat(el.style.transform.match(/scale\(([\d.]+)\)/)[1]);
     goto(0.5);
     expect(lens.style.visibility).toBe('hidden');
@@ -522,25 +481,75 @@ describe('lens bloom, onscreen pause and landscape-stack verses', () => {
     expect(lens.dataset.on).toBe('true');
     const s9 = scaleOf(lobe(0));
     expect(s9).toBeGreaterThan(0.05);
-    expect(container.querySelector('[data-adam="field"]').dataset.live).toBe('false');
+    expect(field().dataset.live).toBe('false');
     goto(0.95);
     expect(scaleOf(lobe(0))).toBeGreaterThan(s9); // grows outward
-    goto(1.0);
-    expect(container.querySelector('[data-adam="field"]').dataset.live).toBe('false');
-    expect(parseFloat(container.querySelector('[data-adam="lens-flat"]').style.opacity)).toBe(1);
-    const s10 = scaleOf(lobe(0));
-    goto(1.1);
-    expect(scaleOf(lobe(0))).toBeLessThan(s10); // pulls back toward the centre
-    expect(container.querySelector('[data-adam="field"]').dataset.live).toBe('true');
-    expect(container.querySelector('.adam-stage').dataset.flat).toBe('true');
-    goto(1.2);
+    // white hold: fully grown, flat solid, and the marble field is already drawing UNDER it from HANDOFF_START_P - 0.02 = 1.00
+    goto(1.01);
+    expect(lens.dataset.on).toBe('true');
+    expect(flat()).toBe(1);
+    expect(field().dataset.live).toBe('true');
+    expect(field().dataset.h).toBe('0.000'); // GL veil is still pure white: pixel-equal to the lens
+    const s101 = scaleOf(lobe(0));
+    expect(s101).toBeGreaterThan(0.99);
+    goto(1.018); // still inside the hold: the lobes have NOT receded (the old behaviour scaled them down from 1.02)
+    expect(scaleOf(lobe(0))).toBeGreaterThanOrEqual(s101 - 1e-3);
+    expect(flat()).toBe(1);
+    // one step off at HANDOFF_START_P: lens hidden and display none, not faded
+    goto(HANDOFF_START_P + 0.01);
+    expect(lens.dataset.on).toBe('false');
     expect(lens.style.visibility).toBe('hidden');
+    expect(lens.style.display).toBe('none');
+    expect(container.querySelector('.adam-stage').dataset.flat).toBe('true');
+    expect(field().dataset.live).toBe('true');
     // reverse scroll is exact: same p, same transform
     goto(0.9);
     expect(scaleOf(lobe(0))).toBeCloseTo(s9, 3);
+    expect(field().dataset.live).toBe('false');
     // nothing in the lens writes a vertical wipe: no translateY travel, no band element
     expect(container.querySelector('[data-adam="lk-band"]')).toBeNull();
     expect(container.querySelector('[data-adam="leaks"]')).toBeNull();
+  }, 30000);
+
+  test('hand-off: field data-h follows handoffH(p) (0 at the hold, eased, 1 at HANDOFF_END_P) and never an opacity ramp', () => {
+    const { container, goto } = setup();
+    const field = container.querySelector('[data-adam="field"]');
+    const ps = [1.0, 1.02, 1.05, 1.1, 1.15, 1.2, 1.5];
+    let prev = -1;
+    for (const p of ps) {
+      goto(p);
+      const h = parseFloat(field.dataset.h);
+      if (p >= 1.02) expect(field.style.opacity).toBe('1'); // fully opaque for the whole hand-off: light leaves by the shader, not by fading the field
+      expect(h).toBeCloseTo(handoffH(p), 3);
+      expect(h).toBeGreaterThanOrEqual(prev); prev = h;
+    }
+    expect(handoffH(HANDOFF_START_P + (HANDOFF_END_P - HANDOFF_START_P) / 2)).toBeCloseTo(0.5, 6);
+    expect(floodCurve(0.5)).toBeCloseTo(0.5, 6);
+  }, 30000);
+
+  test('no-GL hand-off path: the CSS mask veil + gold rim grow a clear centre (--vr 74% -> 0) over the hand-off and are gone after', () => {
+    const { container, goto } = setup(); // jsdom has no WebGL, so data-gl is never set and the CSS veil is the live path
+    const veil = container.querySelector('[data-adam="veil"]'); const rim = container.querySelector('[data-adam="veil-rim"]');
+    const field = container.querySelector('[data-adam="field"]');
+    expect(field.dataset.gl).toBeUndefined();
+    goto(1.0);
+    expect(veil.style.display).toBe('none'); // before the hold ends the lens itself is the white
+    const vr = (el) => parseFloat(el.style.getPropertyValue('--vr'));
+    let prev = Infinity;
+    for (const p of [1.03, 1.06, 1.1, 1.15, 1.19]) {
+      goto(p);
+      expect(veil.style.display).toBe('block'); expect(rim.style.display).toBe('block');
+      const expected = 74 * (1 - handoffH(p)); // VR_FROM 74% lerped to 0 by the same handoffH the shader reads
+      expect(vr(veil)).toBeCloseTo(expected, 1); expect(vr(rim)).toBeCloseTo(expected, 1);
+      expect(vr(veil)).toBeLessThan(prev); prev = vr(veil);
+    }
+    goto(1.3);
+    expect(veil.style.display).toBe('none'); expect(rim.style.display).toBe('none');
+    // CSS: a spatial radial mask (never an opacity ramp), hidden whenever the GL canvas draws the hand-off itself
+    const css = ADAM_CSS;
+    expect(css).toMatch(/\.adam-veil \{[^}]*mask-image: radial-gradient\(ellipse 100% 100% at 50% 50%, #000 0, #000 var\(--vr\)/);
+    expect(css).toMatch(/\.adam-field\[data-gl="true"\] ~ \.adam-veil, \.adam-field\[data-gl="true"\] ~ \.adam-veil-rim \{ display: none !important; \}/);
+    expect(css).not.toMatch(/\.adam-veil \{[^}]*transition/);
   }, 30000);
 
   test('lens lobes are offset from the centre origin and each is scaled/rotated independently (irregular union, no circle)', () => {
@@ -576,7 +585,7 @@ describe('lens bloom, onscreen pause and landscape-stack verses', () => {
     expect(LENS_CSS).toMatch(/\.lens-wash \{ position: absolute; inset: 0; -webkit-mask-image: radial-gradient/);
     expect(ADAM_CSS).not.toMatch(/adam-wash|adam-cover|lk-band|adam-leaks/);
     const { container, goto } = setup();
-    for (const p of [0.86, 0.92, 1.0, 1.06, 1.11]) {
+    for (const p of [0.86, 0.92, 1.0, 1.01]) {
       goto(p);
       container.querySelectorAll('.adam-lens, .adam-lens *').forEach((el) => {
         // gradients are static (CSS, or the fixed ghost-glint inline fill), never rewritten per frame
@@ -626,20 +635,32 @@ describe('lens bloom, onscreen pause and landscape-stack verses', () => {
     expect(ADAM_CSS).toMatch(/\.adam-blob-d, \.adam-swirl \{ display: none; \}/);
   });
 
-  test('landscape-phone stack mode: live hero, no pinned descent, verses stacked after the section, shorter runway', () => {
+  test('landscape-phone stack mode: live hero, no pinned descent, shorter runway, no verse stack after the section', () => {
     const { container } = setup({ stack: true });
     const section = container.querySelector('section');
     expect(section.dataset.live).toBe('true');
     expect(section.dataset.stack).toBe('true');
     expect(container.querySelector('[data-adam="verses"]')).toBeNull();
-    expect(container.querySelector('[data-testid="verse-stack"]')).not.toBeNull();
-    expect(section.nextElementSibling.dataset.testid).toBe('verse-stack');
+    expect(container.querySelector('[data-testid="verse-stack"]')).toBeNull();
+    expect(section.nextElementSibling).toBeNull(); // AdamHands renders nothing after its own section (Home adds .hm-fam)
   });
 
-  test('stack mode keeps Family visible at the end of the shorter runway', () => {
+  test('stack mode ends the shorter runway at HANDOFF_END_P (1.20) with the hand-off complete and no Family layer', () => {
     const { container, goto } = setup({ stack: true });
     goto(5);
-    expect(parseFloat(container.querySelector('.adam-stage').dataset.p)).toBeCloseTo(1.4, 2);
-    expect(parseFloat(container.querySelector('[data-adam="final"]').style.opacity)).toBeCloseTo(1, 2);
+    expect(P_END_STACK).toBe(HANDOFF_END_P);
+    expect(parseFloat(container.querySelector('.adam-stage').dataset.p)).toBeCloseTo(HANDOFF_END_P, 2);
+    expect(container.querySelector('[data-adam="field"]').dataset.h).toBe('1.000');
+    expect(container.querySelector('[data-adam="final"]')).toBeNull();
   }, 30000);
+
+  test('no verse symbols remain in the AdamHands module, its CSS or its markup', async () => {
+    const mod = await import('./AdamHands.jsx');
+    expect(Object.keys(mod).filter((k) => /verse|thread/i.test(k))).toEqual([]);
+    expect(ADAM_CSS).not.toMatch(/\bverses?\b|verse-|thread|hilite/i);
+    mm();
+    const { container } = render(<AdamHands />);
+    expect(container.innerHTML).not.toMatch(/\bverses?\b|verse-/i);
+    expect(container.querySelector('[data-adam="verses"], [data-adam="verse"], .verse-sr, [data-testid="verse-stack"]')).toBeNull();
+  });
 });

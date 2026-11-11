@@ -84,21 +84,24 @@ describe('Adam section: fallback (first render, reduced motion, no-JS equivalent
     expect(p.querySelector('[data-adam="wash"]')).toBeNull();
     expect(p.querySelector('[data-adam="lens"]')).toBeNull();
     expect(p.querySelector('[data-adam="field"]')).toBeNull();
-    expect(p.querySelector('[data-adam="verses"]')).toBeNull(); // no pinned descent
+    expect(p.querySelector('[data-adam="verses"]')).toBeNull(); // no verse layer at all any more
     const still = p.querySelector('img.adam-fb-img');
     expect(still).toBeTruthy();
     expect(still.getAttribute('src')).toBe('/adam/fallback-touch-desktop-1600x900.webp');
     expect(p.querySelector('picture source').getAttribute('srcset')).toBe('/adam/fallback-touch-mobile-900x1600.webp');
     expect(p.querySelector('.adam-grad')).toBeTruthy();
     const css = p.querySelector('style').textContent;
-    // The runway height is only ever applied under data-live="true".
-    expect(css).toMatch(/\.adam-pin\[data-live="true"\] \{ height: 980vh; \}/);
+    // The runway height is only ever applied under data-live="true": 100 + P_END * 220 = 538vh (task 20261111-kinetic-type-marble).
+    expect(css).toMatch(/\.adam-pin\[data-live="true"\] \{ height: 538vh; \}/);
     expect(css).toMatch(/\.adam-grad \{ position: relative; height: 24svh;/);
     expect(css).toMatch(/#17120F 0%, #2B1B0B 22%, #3F2610 50%, #5C3509 100%/);
-    expect(css).toMatch(/#EBC480 100%/);
-    // verses are readable in normal flow inside the section (reduced motion / no-JS)
-    expect(p.querySelector('[data-testid="verse-stack"]').querySelectorAll('blockquote').length).toBeGreaterThanOrEqual(3);
-    expect(p.querySelector('[data-testid="adam-fallback-field"]').textContent).toBe('FamilyWelcoming scripture into a deeper comunity.');
+    // no honey join, no verses in the section, no frozen field under the still (the marble backdrop is .hm-fam-backdrop in Home)
+    expect(css).not.toMatch(/#EBC480/);
+    expect(p.querySelector('[data-testid="verse-stack"]')).toBeNull();
+    expect(p.querySelector('blockquote')).toBeNull();
+    expect(p.querySelector('[data-testid="adam-fallback-field"]')).toBeNull();
+    expect(p.querySelector('.adam-fbfield')).toBeNull();
+    expect(container.querySelector('.hm-fam-backdrop .adam-liquid-frozen')).toBeTruthy();
   });
 
   test('reduced motion: no scroll listener is registered by the Adam section', () => {
@@ -108,13 +111,15 @@ describe('Adam section: fallback (first render, reduced motion, no-JS equivalent
     expect(add.mock.calls.filter(([t, , o]) => t === 'scroll' && o && o.capture).length).toBe(0);
   });
 
-  test('motion allowed: goes live after mount, with a scroll listener (capture) and a 980vh runway attr', () => {
+  test('motion allowed: goes live after mount, with scroll listeners (capture) for the hero and the kinetic head', async () => {
     mockMotion(false);
     const add = vi.spyOn(document, 'addEventListener');
     const { container } = renderHome();
+    await act(async () => { await Promise.resolve(); }); // the kinetic head attaches from a MutationObserver on the pin's data-live
     expect(pin(container).getAttribute('data-live')).toBe('true');
     expect(pin(container).querySelector('.adam-canvas')).toBeTruthy();
-    expect(add.mock.calls.filter(([t, , o]) => t === 'scroll' && o && o.capture).length).toBe(1);
+    // one for the Adam scrub, one for the kinetic head (Home useKineticType); the marble canvas adds one only with WebGL
+    expect(add.mock.calls.filter(([t, , o]) => t === 'scroll' && o && o.capture).length).toBeGreaterThanOrEqual(2);
   });
 
   test('unmount removes the scroll listener', () => {
@@ -156,30 +161,28 @@ describe('Adam section: live stack is decorative and a11y-safe', () => {
     expect(n('feFuncR', 'intercept')).toBeCloseTo(-0.1, 4);
   });
 
-  test('final-frame type: Schibsted headline "Family" + Schibsted subtitle, grainy field layer, lens bloom layer and #FFF4DC darken cap', () => {
+  test('final-frame type: no Family headline, grainy field layer, lens bloom layer and #FFF4DC darken cap', () => {
     mockMotion(false);
     const { container } = renderHome();
     const p = pin(container);
-    expect(p.querySelector('.adam-final-h').textContent).toBe('Family');
+    expect(p.querySelector('.adam-final-h')).toBeNull();
+    expect(p.querySelector('[data-adam="final"]')).toBeNull();
     expect(p.querySelector('[data-adam="lens"]').getAttribute('aria-hidden')).toBe('true');
     expect(p.querySelector('[data-adam="wash"]')).toBeNull();
     expect(p.querySelector('[data-adam="cover"]')).toBeNull();
     expect(p.querySelector('[data-adam="field"]').getAttribute('aria-hidden')).toBe('true');
-    // pinned verse layer is aria-hidden; the same verses are exposed once via the sr-only list
-    expect(p.querySelector('[data-adam="verses"]').getAttribute('aria-hidden')).toBe('true');
-    expect(p.querySelectorAll('.verse-sr li').length).toBe(5);
+    // no verse layer, sr-only verse list or verse stack exists any more
+    expect(p.querySelector('[data-adam="verses"]')).toBeNull();
+    expect(p.querySelectorAll('.verse-sr li').length).toBe(0);
     expect(p.querySelector('[data-testid="verse-stack"]')).toBeNull();
-    expect(p.querySelector('.adam-final-b').textContent).toBe('Welcoming scripture into a deeper comunity.');
     const cap = p.querySelector('[data-adam="cap"]');
     expect(cap.style.background).toMatch(/rgb\(255, 244, 220\)|#FFF4DC/i);
     expect(cap.style.mixBlendMode).toBe('darken');
     const css = p.querySelector('style').textContent;
-    expect(css).toMatch(/\.adam-final-h \{[^}]*Schibsted Grotesk[^}]*font-weight: 600/);
-    expect(css).toMatch(/\.adam-final-b \{[^}]*Schibsted Grotesk/);
     expect(css).not.toMatch(/Playfair|Inter\b/);
   });
 
-  test('mobile: 9:16 canvas, 1800px layers on 2x srcset, 900vh runway rule', () => {
+  test('mobile: 9:16 canvas, 1800px layers on 2x srcset, 473vh runway rule', () => {
     mockMotion(false, true);
     const { container } = renderHome();
     const p = pin(container);
@@ -189,7 +192,7 @@ describe('Adam section: live stack is decorative and a11y-safe', () => {
     expect(cv.style.height).toBe('1600px');
     const hand = p.querySelector('[data-adam="hand-img"]');
     expect(hand.getAttribute('srcset')).toMatch(/-900x1600\.webp 1x, .*-1800x3200\.webp 2x/);
-    expect(p.querySelector('style').textContent).toMatch(/height: 900vh/);
+    expect(p.querySelector('style').textContent).toMatch(/height: 473vh/);
   });
 
   test('image fallback: eyebrow text stays in the DOM even if the still fails', () => {

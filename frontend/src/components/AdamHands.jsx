@@ -1,16 +1,17 @@
 // Task 20261015-adam-hands-scroll-hero: pinned, scroll-scrubbed "Creation of
 // Adam" hero. Two marble hand layers approach on an ink stage, touch, and a
 // live-drawn light floods the stage white; a lens-gleam bloom of irregular warm lobes grows
-// from the screen centre, holds, and falls back to its centre, revealing a grainy warm brown/honey liquid gradient (task 20261022-hands-scroll-grain-gradient) and
-// community verses descend through it in glass widgets (VerseDescent).
+// from the screen centre and holds white; the light is then withdrawn along the folds of a grainy warm brown/honey
+// marble (task 20261111-kinetic-type-marble: the marble shader's uH uniform, no opacity dissolve), and the stage stays
+// pinned while the .hm-fam headline enters over it with scroll-driven kinetic typography (Home.jsx).
 //
 // Rendering model
 //  - Fallback (SSR / prerender / no-JS / prefers-reduced-motion): the touch-frame
-//    still at 100svh with the live eyebrow, then a static 24svh gradient strip.
-//    No pin, no scrub, no animation. This is also the first client render, so
+//    still at 100svh with the live eyebrow, then a static 24svh ink-to-umber strip (the frozen marble follows
+//    in .hm-fam). No pin, no scrub, no animation. This is also the first client render, so
 //    the markup the prerender emits and the first client render agree.
-//  - Live (client, motion allowed): a 980vh (900vh mobile) runway with a sticky
-//    100svh stage; p runs 0 .. P_END (4.0 / 5.0). Scroll progress p is smoothed (~0.6 s) and painted by writing
+//  - Live (client, motion allowed): a RUNWAY_VH runway with a sticky
+//    100svh stage; p runs 0 .. P_END (driver.js derives both from one formula). Scroll progress p is smoothed (~0.6 s) and painted by writing
 //    styles straight onto the layer elements (no React re-render per frame).
 //    All maths lives in src/lib/adamHands/driver.js.
 //  - All light, the key filter, lens bloom, cap and type are live; only the cut-out
@@ -19,21 +20,19 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
   CANVAS, RUNWAY_VH, RUNWAY_VH_STACK, BASE_SPAN_VH, P_END, P_END_STACK, floodDrivers, lightParams, fanWeights, FAN_REF,
-  handsPose, handsOpacity, bloomIntensity, ignite, beatGlow, warmGlowAlpha, eyebrowColor, fill2Drivers, familyOpacity,
-  scrubProgress, smoothStep, coverScale, smooth, lerp, clamp,
+  handsPose, handsOpacity, bloomIntensity, ignite, beatGlow, warmGlowAlpha, eyebrowColor, fill2Drivers,
+  scrubProgress, smoothStep, coverScale, smooth, lerp, handoffH,
 } from '../lib/adamHands/driver.js';
 import {
-  FIELD_CAP, FIELD_INK, FIELD_UNDER, FIELD_GRAIN_URL, FIELD_BLOBS, FALLBACK_GRADIENT, adamPhase,
+  FIELD_CAP, FIELD_GRAIN_URL, FALLBACK_GRADIENT, FIELD_BLOBS, adamPhase,
 } from '../lib/adamHands/field.js';
 import LiquidField, { LIQUID_CSS } from './LiquidField.jsx';
 import { LensBloom, LENS_CSS, collectLens, paintLens } from './LensBloom.jsx';
-import { VerseDescent, VerseStack, VERSE_CSS, paintVerses, createVerseRig } from './VerseDescent.jsx';
-import { VERSE_STACK_QUERY } from '../lib/verseDescent.js';
 
 // Palette, blob table and the text-contrast luminance rule live in lib/adamHands/field.js
 // (re-exported here: Home.jsx and the tests import them from this module).
 export {
-  FIELD_BASE, FIELD_END, FIELD_CAP, FIELD_INK, FIELD_UNDER, FIELD_GRAIN_URL, FIELD_BLOBS, FALLBACK_GRADIENT, adamPhase,
+  FIELD_BASE, FIELD_CAP, FIELD_INK, FIELD_UNDER, FIELD_GRAIN_URL, LIGHT_BG, FIELD_BLOBS, FALLBACK_GRADIENT, adamPhase,
   FIELD_WHITE, FIELD_ZONE_MAX, ADAM_ZONE, ADAM_ZONE_L_MAX, ADAM_STAGES, ADAM_LOBE_K, relLuminance, blobAlpha, blobLift, blobExtent,
   blobInZone, zoneLift, swirlLift, FIELD_GRAIN_OPACITY, SWIRL_LIGHT_LOBES,
 } from '../lib/adamHands/field.js';
@@ -41,17 +40,16 @@ export {
 const INK = '#17120F';
 
 // Headline face: Schibsted Grotesk, the same face as the nav wordmark (.fs-wordmark).
-// Change the face in this one place (live .adam-final-h and the fallback block both use it).
+// Change the face in this one place (the eyebrow uses it).
 export const ADAM_FINAL_FONT = "'Schibsted Grotesk', sans-serif";
 const HEAD_FONT = ADAM_FINAL_FONT;
 const BODY_FONT = "'Hanken Grotesk', system-ui, sans-serif";
 
 export const ADAM_MOBILE_QUERY = '(max-width: 899px), (pointer: coarse)';
+// Landscape phones (and reduced motion, where the stage is never live): the pinned stage stops once the marble is revealed.
+export const ADAM_STACK_QUERY = '(prefers-reduced-motion: reduce), (max-height: 520px) and (orientation: landscape)';
 export const ADAM_KEY_FILTER_ID = 'fs-adam-key';
 export const ADAM_EYEBROW = '// NOT JUST ONCE A WEEK';
-export const ADAM_FINAL_HEADLINE = 'Family';
-// Exact string from Jacey, typo ("comunity") kept verbatim.
-export const ADAM_FINAL_SUBTITLE = 'Welcoming scripture into a deeper comunity.';
 
 const A = '/adam/';
 const FILES = {
@@ -102,16 +100,11 @@ export const ADAM_CSS = `
 .adam-pin[data-live="true"] .adam-stage { position: sticky; top: 0; }
 ${LIQUID_CSS}
 ${LENS_CSS}
-${VERSE_CSS}
 .adam-fb-img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: 50% 48%; display: block; }
 .adam-eyebrow { position: absolute; margin: 0; left: 5.25cqw; top: 7cqh; font-family: ${HEAD_FONT}; font-size: clamp(11.5px, 0.8cqw, 14px); letter-spacing: 0.26em; text-transform: uppercase; line-height: 1.6; white-space: nowrap; color: #F0C08A; pointer-events: none; }
 .adam-pin[data-live="true"] .adam-eyebrow { left: 11.5cqw; top: 11.9cqh; transform: translateY(-50%); }
 .adam-grad { position: relative; height: 24svh; min-height: 120px; background: linear-gradient(180deg, ${FALLBACK_GRADIENT}); }
 .adam-grad::after { content: ''; position: absolute; inset: 0; background-image: ${FIELD_GRAIN_URL}; background-size: 220px 220px; mix-blend-mode: soft-light; }
-.adam-fbfield { position: relative; isolation: isolate; display: grid; place-items: center; text-align: center; min-height: clamp(520px, 80svh, 760px); padding: clamp(48px, 9vh, 96px) clamp(20px, 5vw, 64px); background: ${FIELD_UNDER}; color: ${FIELD_INK}; }
-.adam-fbfield-in { position: relative; z-index: 1; max-width: 1240px; margin: 0 auto; text-align: center; }
-.adam-fbfield .adam-final-h { font-size: clamp(48px, 7vw, 88px); }
-.adam-fbfield .adam-final-b { max-width: 34em; margin-inline: auto; }
 .adam-canvas { position: absolute; left: 50%; top: 50%; transform-origin: 50% 50%; isolation: isolate; overflow: hidden; background: ${INK}; pointer-events: none; }
 .adam-stage[data-flat="true"] .adam-canvas { display: none; }
 .adam-layer { position: absolute; left: 0; top: 0; pointer-events: none; }
@@ -121,15 +114,9 @@ ${VERSE_CSS}
 .adam-plus::before, .adam-plus::after { content: ''; position: absolute; background: rgba(255,244,230,0.4); }
 .adam-plus::before { left: 4.5px; top: 0; width: 1px; height: 10px; }
 .adam-plus::after { top: 4.5px; left: 0; height: 1px; width: 10px; }
-.adam-final { position: absolute; inset: 0; margin: 0; padding: 0 6.67cqw; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; opacity: 0; pointer-events: none; color: ${FIELD_INK}; }
-.adam-final-h { display: block; margin: 0; font-family: ${HEAD_FONT}; font-weight: 600; font-size: clamp(48px, 4.5cqw, 88px); letter-spacing: -0.02em; line-height: 1; white-space: nowrap; color: ${FIELD_INK}; }
-.adam-final-b { display: block; margin: clamp(20px, 4cqh, 40px) 0 0; max-width: 34cqw; font-family: ${HEAD_FONT}; font-weight: 400; font-size: clamp(18px, 1.4cqw, 24px); line-height: 1.4; color: ${FIELD_INK}; text-wrap: balance; }
 @supports not (width: 1cqw) {
   .adam-eyebrow { left: 5.25vw; top: 7vh; font-size: 12px; }
   .adam-pin[data-live="true"] .adam-eyebrow { left: 11.5vw; top: 11.9vh; }
-  .adam-final { padding: 0 6.67vw; }
-  .adam-final-h { font-size: clamp(48px, 4.5vw, 88px); }
-  .adam-final-b { max-width: 34vw; font-size: clamp(18px, 1.4vw, 24px); }
 }
 @media (max-width: 899px), (pointer: coarse) {
   .adam-pin[data-live="true"] { height: ${RUNWAY_VH.mobile}vh; }
@@ -137,16 +124,11 @@ ${VERSE_CSS}
   .adam-fb-img { object-position: 50% 46%; }
   .adam-eyebrow { left: 9.33cqw; top: calc(5.6cqh + env(safe-area-inset-top, 0px)); font-size: max(2.89cqw, 12px); }
   .adam-pin[data-live="true"] .adam-eyebrow { left: 9.33cqw; top: calc(5.6cqh + env(safe-area-inset-top, 0px)); transform: translateY(-50%); }
-  .adam-final-h { font-size: clamp(52px, min(17.5vw, 15svh), 96px); white-space: nowrap; letter-spacing: -0.025em; line-height: 0.98; }
-  .adam-final-b { margin-top: 20px; max-width: none; font-size: 19px; line-height: 1.4; }
-  .adam-fbfield .adam-final-h { font-size: clamp(52px, 17.5vw, 96px); }
   @supports not (width: 1cqw) {
     .adam-eyebrow, .adam-pin[data-live="true"] .adam-eyebrow { left: 9.33vw; font-size: 12px; }
   }
 }
 @media (max-height: 500px) {
-  .adam-final-h { font-size: clamp(48px, min(17.5vw, 15svh), 56px); }
-  .adam-final-b { font-size: 16px; }
 }
 `;
 
@@ -281,16 +263,16 @@ function paintFrame(refs, p, mobile, stack) {
     const on = f2.fieldOn ? 'true' : 'false';
     if (refs.field.dataset.live !== on) refs.field.dataset.live = on;
   }
-  if (refs.hilite) refs.hilite.style.opacity = f2.settle.toFixed(3);
-  if (refs.verses.length) paintVerses(refs.verses, p, mobile, refs.w, refs.h, refs.rig);
+  if (refs.field) {
+    // The marble shader reads this each draw (uH); written only when it changes (low power wakes on the attribute).
+    const hs = handoffH(p).toFixed(3);
+    if (refs.field.dataset.h !== hs) refs.field.dataset.h = hs;
+  }
 
   // Type.
   const ec = eyebrowColor(d.c);
   refs.eyebrow.style.color = `rgb(${ec[0]},${ec[1]},${ec[2]})`;
   setOpacity(refs.eyebrow, d.e);
-  const tr = familyOpacity(p, stack);
-  refs.final.style.opacity = tr.toFixed(3);
-  refs.final.style.transform = `translateY(${(12 * (1 - tr)).toFixed(2)}px)`;
 }
 
 function collect(stage) {
@@ -309,8 +291,8 @@ function collect(stage) {
     bloom: q('bloom'), core: q('core'),
     fanWrap: q('fan-wrap'), fan: { a: q('fan-a'), b: q('fan-b'), c: q('fan-c') },
     hair: q('hair'), streak: q('streak'), tip: q('tip'),
-    field: q('field'), hilite: q('hilite'), ...collectLens(q),
-    verses: qa('verse'), eyebrow: q('eyebrow'), final: q('final'),
+    field: q('field'), ...collectLens(q),
+    eyebrow: q('eyebrow'),
     w: 1, h: 1,
     lastKey: null, lastBloom: null,
   };
@@ -338,7 +320,7 @@ function FallbackStage() {
   );
 }
 
-function LiveStage({ mobile, stack }) {
+function LiveStage({ mobile }) {
   const cv = mobile ? CANVAS.mobile : CANVAS.desktop;
   const files = mobile ? FILES.mobile : FILES.desktop;
   const grid = mobile ? GRID.mobile : GRID.desktop;
@@ -427,11 +409,6 @@ function LiveStage({ mobile, stack }) {
       <LensBloom mobile={mobile} />
 
       <p className="adam-eyebrow" data-adam="eyebrow" aria-hidden="true">{ADAM_EYEBROW}</p>
-      <div className="adam-final" data-adam="final">
-        <span className="adam-final-h">{ADAM_FINAL_HEADLINE}</span>
-        <span className="adam-final-b">{ADAM_FINAL_SUBTITLE}</span>
-      </div>
-      {!stack && <VerseDescent />}
     </>
   );
 }
@@ -447,7 +424,7 @@ export default function AdamHands() {
     if (typeof window === 'undefined' || !window.matchMedia) return undefined;
     const rm = window.matchMedia('(prefers-reduced-motion: reduce)');
     const mo = window.matchMedia(ADAM_MOBILE_QUERY);
-    const sq = window.matchMedia(VERSE_STACK_QUERY);
+    const sq = window.matchMedia(ADAM_STACK_QUERY);
     const update = () => setMode((m) => {
       const next = { live: !rm.matches && typeof window.requestAnimationFrame === 'function', mobile: !!mo.matches, stack: !!sq.matches };
       return m.live === next.live && m.mobile === next.mobile && m.stack === next.stack ? m : next;
@@ -466,7 +443,6 @@ export default function AdamHands() {
     if (!section || !stage) return undefined;
     const refs = collect(stage);
     if (!refs.canvas) return undefined;
-    refs.rig = createVerseRig(mode.mobile);
 
     const fit = () => {
       const s = coverScale(stage.clientWidth || 1, stage.clientHeight || 1, mode.mobile);
@@ -481,10 +457,8 @@ export default function AdamHands() {
     };
 
     // Per-visit variety: random drift start phase per blob. Client only, after mount (never in render).
-    // DOM order is the non-highlight blobs, then the highlights (see LiquidField).
     const blobEls = stage.querySelectorAll('.adam-field .adam-blob');
-    const domOrder = [...FIELD_BLOBS.filter((b) => !b.s), ...FIELD_BLOBS.filter((b) => b.s)];
-    blobEls.forEach((el, i) => { if (domOrder[i]) el.style.setProperty('--ph', adamPhase(domOrder[i].t, Math.random())); });
+    blobEls.forEach((el, i) => { if (FIELD_BLOBS[i]) el.style.setProperty('--ph', adamPhase(FIELD_BLOBS[i].t, Math.random())); });
 
     // Pause the drift when the stage is off screen (CSS keys animation-play-state on data-onscreen).
     const fieldEl = refs.field;
@@ -495,69 +469,35 @@ export default function AdamHands() {
         const e = entries[entries.length - 1];
         if (e) {
           fieldEl.dataset.onscreen = e.isIntersecting ? 'true' : 'false';
-          visible = e.isIntersecting;
-          if (!visible) { refs.rig.pointer(null, null); } else pkick();
         }
       });
       io.observe(stage);
     }
 
+    const paint = (pp) => paintFrame(refs, pp, mode.mobile, mode.stack);
     let target = readTarget();
     let cur = target;
     let raf = 0;
     let last = 0;
     fit();
-    paintFrame(refs, cur, mode.mobile, mode.stack);
+    paint(cur);
 
     const tick = (now) => {
       raf = 0;
       const dt = last ? Math.min(0.1, (now - last) / 1000) : 1 / 60;
       last = now;
       cur = smoothStep(cur, target, dt);
-      paintFrame(refs, cur, mode.mobile, mode.stack);
+      paint(cur);
       if (cur !== target) raf = window.requestAnimationFrame(tick);
       else last = 0;
     };
     const kick = () => { if (!raf) raf = window.requestAnimationFrame(tick); };
     const onScroll = () => { target = readTarget(); kick(); };
 
-    // Cursor spring parallax (fine pointer, pinned verses only). Own rAF loop that sleeps once
-    // every card has settled; the scroll tick above also paints with the same spring offsets.
-    let praf = 0;
-    let plast = 0;
-    let visible = true;
-    const ptick = (now) => {
-      praf = 0;
-      const dt = plast ? Math.min(0.1, (now - plast) / 1000) : 1 / 60;
-      plast = now;
-      const active = refs.rig.step(dt);
-      if (refs.verses.length) paintVerses(refs.verses, cur, mode.mobile, refs.w, refs.h, refs.rig);
-      if (active && visible && document.visibilityState !== 'hidden') praf = window.requestAnimationFrame(ptick);
-      else plast = 0;
-    };
-    const pkick = () => { if (!praf) praf = window.requestAnimationFrame(ptick); };
-    const fine = !mode.mobile && !mode.stack && window.matchMedia && window.matchMedia('(pointer: fine)').matches;
-    const onPointerMove = (e) => {
-      const r = stage.getBoundingClientRect();
-      if (!r.width || !r.height) return;
-      const nx = clamp(((e.clientX - r.left) / r.width) * 2 - 1, -1, 1);
-      const ny = clamp(((e.clientY - r.top) / r.height) * 2 - 1, -1, 1);
-      refs.rig.pointer(nx, ny);
-      pkick();
-    };
-    const onPointerOut = (e) => { if (!e.relatedTarget) { refs.rig.pointer(null, null); pkick(); } };
-    const onBlur = () => { refs.rig.pointer(null, null); pkick(); };
-    if (fine) {
-      window.addEventListener('pointermove', onPointerMove, { passive: true });
-      document.addEventListener('pointerout', onPointerOut);
-      window.addEventListener('blur', onBlur);
-    }
     // Debug / test hooks (dev server, or any build opened with ?heroDebug=1):
-    //  window.__verseParallax(nx, ny)  drives the spring without a real pointer (null releases).
     //  window.__adamScrollToP(p)       scrolls the page so the hero scrub target is p (0 .. P_END).
     const debug = (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.DEV) || /[?&]heroDebug=1/.test(window.location.search || '');
     if (debug) {
-      if (fine) window.__verseParallax = (nx, ny) => { refs.rig.pointer(nx, ny); pkick(); };
       window.__adamScrollToP = (pp) => {
         let sc = section.parentElement;
         while (sc && !(sc.scrollHeight > sc.clientHeight + 1 && /(auto|scroll)/.test(getComputedStyle(sc).overflowY))) sc = sc.parentElement;
@@ -580,11 +520,7 @@ export default function AdamHands() {
       window.removeEventListener('resize', onResize);
       if (ro) ro.disconnect();
       if (io) io.disconnect();
-      window.removeEventListener('pointermove', onPointerMove);
-      document.removeEventListener('pointerout', onPointerOut);
-      window.removeEventListener('blur', onBlur);
-      delete window.__verseParallax; delete window.__adamScrollToP;
-      if (praf) window.cancelAnimationFrame(praf);
+      delete window.__adamScrollToP;
       if (raf) window.cancelAnimationFrame(raf);
     };
   }, [mode.live, mode.mobile, mode.stack]);
@@ -594,21 +530,10 @@ export default function AdamHands() {
       <section ref={sectionRef} className="adam-pin" data-live={mode.live ? 'true' : 'false'} data-stack={mode.live && mode.stack ? 'true' : undefined} data-testid="adam-hands">
         <style>{ADAM_CSS}</style>
         <div ref={stageRef} className="adam-stage" data-flat="false">
-          {mode.live ? <LiveStage key={`${mode.mobile ? 'm' : 'd'}${mode.stack ? 's' : ''}`} mobile={mode.mobile} stack={mode.stack} /> : <FallbackStage />}
+          {mode.live ? <LiveStage key={`${mode.mobile ? 'm' : 'd'}${mode.stack ? 's' : ''}`} mobile={mode.mobile} /> : <FallbackStage />}
         </div>
         {!mode.live && <div className="adam-grad" aria-hidden="true" />}
-        {!mode.live && (
-          <div className="adam-fbfield" data-testid="adam-fallback-field">
-            <LiquidField />
-            <div className="adam-fbfield-in">
-              <span className="adam-final-h">{ADAM_FINAL_HEADLINE}</span>
-              <span className="adam-final-b">{ADAM_FINAL_SUBTITLE}</span>
-            </div>
-          </div>
-        )}
-        {!mode.live && <VerseStack />}
       </section>
-      {mode.live && mode.stack && <VerseStack />}
     </>
   );
 }

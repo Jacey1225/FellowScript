@@ -6,7 +6,10 @@ import Seo from '../components/Seo.jsx';
 import ProblemCarousel from '../components/ProblemCarousel.jsx';
 import { useExploreEnabled } from '../hooks/useExploreEnabled.js';
 import { SITE_URL } from '../config.js';
-import AdamHands, { FIELD_END, FIELD_GRAIN_URL } from '../components/AdamHands.jsx';
+import AdamHands, { ADAM_MOBILE_QUERY } from '../components/AdamHands.jsx';
+import LiquidField from '../components/LiquidField.jsx';
+import { KINETIC_SPAN_VH, smoothStep } from '../lib/adamHands/driver.js';
+import { KINETIC_UNITS, STAGGER, unitCss, unitE, circleP, scrimOpacity, sceneProgress } from '../lib/kineticType.js';
 // Task 20261015-adam-hands-scroll-hero: the pinned Creation of Adam section
 // replaced the old halftone-hands "Reaching" band (the hand-*.webp assets stay in
 // src/assets/reaching/ but are no longer imported here).
@@ -34,6 +37,9 @@ const AMBER  = '#E09A30';
 const AMBER_LIGHT = '#F3C48B';
 const LIGHT_BG = '#FBF7F1';
 const LIGHT_INK = '#1A1512';
+
+// The ten words of the .hm-fam h2 (kinetic units 1..10); the trailing period belongs to the last word.
+const FAMILY_WORDS = ['Everyone', 'gathered', 'under', 'Christ', 'is', 'called', 'to', 'live', 'as', 'family'];
 
 const HEAD_FONT = "'Schibsted Grotesk', sans-serif";
 const BODY_FONT = "'Hanken Grotesk', system-ui, sans-serif";
@@ -102,6 +108,119 @@ function useRevealOnScroll(ref) {
     }, { threshold: 0.2, rootMargin: '0px 0px -8% 0px' });
     io.observe(el);
     return () => io.disconnect();
+  }, []);
+}
+
+// Task 20261111-kinetic-type-marble: scroll-driven kinetic typography for the .hm-fam head (eyebrow + ten h2 words)
+// over the pinned marble stage. All maths lives in lib/kineticType.js (pure); this hook only wires it:
+//  - pinned (the previous sibling .adam-pin is live and not stacked): data-kinetic="on", per-frame inline style writes
+//    chased with the hero's scrub smoothing;
+//  - stacked (landscape phone) with motion allowed: data-kinetic="stack", a one-shot staggered fade-up on entry;
+//  - reduced motion, no JS, or the stage not live: nothing is attached, the static final type shows (CSS default).
+const kUnitEls = (section) => {
+  const els = new Array(KINETIC_UNITS).fill(null);
+  section.querySelectorAll('[data-k]').forEach((el) => {
+    const k = el.getAttribute('data-k');
+    const i = k === 'eyebrow' ? 0 : Number(k);
+    if (i >= 0 && i < KINETIC_UNITS) els[i] = el;
+  });
+  return els;
+};
+
+function useKineticType(sectionRef, sceneRef) {
+  useEffect(() => {
+    if (typeof window === 'undefined' || !window.matchMedia || typeof window.requestAnimationFrame !== 'function') return undefined;
+    const section = sectionRef.current; const scene = sceneRef.current;
+    if (!section || !scene) return undefined;
+    const pin = section.previousElementSibling;
+    if (!pin || !pin.classList.contains('adam-pin')) return undefined;
+    const head = scene.querySelector('.hm-fam-head');
+    const rm = window.matchMedia('(prefers-reduced-motion: reduce)');
+    const mo = window.matchMedia(ADAM_MOBILE_QUERY);
+    let mode = 'off'; // 'off' | 'on' | 'stack'
+    let teardown = null;
+
+    const clear = (els) => els.forEach((el) => {
+      if (!el) return;
+      ['opacity', 'transform', 'filter', 'text-shadow', 'transition-delay', '--k-circle', '--fs-thread'].forEach((p) => el.style.removeProperty(p));
+    });
+
+    const enableOn = () => {
+      const els = kUnitEls(section);
+      const lowPower = !!mo.matches;
+      const circleEl = els[KINETIC_UNITS - 1];
+      const measure = () => sceneProgress(scene.getBoundingClientRect().top, scene.offsetHeight, head ? head.offsetHeight : window.innerHeight);
+      const paint = (q) => {
+        els.forEach((el, i) => {
+          if (!el) return;
+          const c = unitCss(i, q, lowPower);
+          el.style.opacity = c.opacity; el.style.transform = c.transform; el.style.filter = c.filter; el.style.textShadow = c.textShadow;
+        });
+        if (els[0]) els[0].style.setProperty('--fs-thread', unitE(0, q).toFixed(4));
+        if (circleEl) circleEl.style.setProperty('--k-circle', circleP(q).toFixed(4));
+        if (head) head.style.setProperty('--k-scrim', scrimOpacity(q).toFixed(3)); // the head is in the viewport (over the white hold) before q = 0
+      };
+      section.setAttribute('data-kinetic', 'on');
+      let target = measure(); let cur = target; let raf = 0; let last = 0;
+      paint(cur); // before the first paint after the stage goes live, so there is no flash of the final type
+      const tick = (now) => {
+        raf = 0;
+        const dt = last ? Math.min(0.1, (now - last) / 1000) : 1 / 60; last = now;
+        cur = smoothStep(cur, target, dt);
+        paint(cur);
+        if (cur !== target) raf = window.requestAnimationFrame(tick); else last = 0;
+      };
+      const onScroll = () => { target = measure(); if (!raf) raf = window.requestAnimationFrame(tick); };
+      document.addEventListener('scroll', onScroll, { passive: true, capture: true });
+      window.addEventListener('resize', onScroll);
+      return () => {
+        document.removeEventListener('scroll', onScroll, { capture: true });
+        window.removeEventListener('resize', onScroll);
+        if (raf) window.cancelAnimationFrame(raf);
+        clear(els);
+        if (head) head.style.removeProperty('--k-scrim');
+        section.removeAttribute('data-kinetic');
+      };
+    };
+
+    const enableStack = () => {
+      const els = kUnitEls(section);
+      els.forEach((el, i) => { if (el) el.style.transitionDelay = `${Math.round(i * STAGGER * 1000)}ms`; });
+      section.setAttribute('data-kinetic', 'stack');
+      let io = null;
+      if (typeof IntersectionObserver !== 'undefined') {
+        io = new IntersectionObserver((entries) => {
+          if (entries.some((e) => e.isIntersecting)) { section.setAttribute('data-kinetic', 'stack-in'); io.disconnect(); }
+        }, { threshold: 0.2, rootMargin: '0px 0px -8% 0px' });
+        io.observe(scene);
+      } else section.setAttribute('data-kinetic', 'stack-in');
+      return () => { if (io) io.disconnect(); clear(els); section.removeAttribute('data-kinetic'); };
+    };
+
+    const sync = () => {
+      const live = pin.getAttribute('data-live') === 'true' && !rm.matches;
+      const want = !live ? 'off' : (pin.getAttribute('data-stack') === 'true' ? 'stack' : 'on');
+      if (want === mode) return;
+      if (teardown) { teardown(); teardown = null; }
+      mode = want;
+      if (want === 'on') teardown = enableOn();
+      else if (want === 'stack') teardown = enableStack();
+    };
+    sync();
+    const obs = typeof MutationObserver !== 'undefined' ? new MutationObserver(sync) : null;
+    if (obs) obs.observe(pin, { attributes: true, attributeFilter: ['data-live', 'data-stack'] });
+    const bind = (mq) => { if (mq.addEventListener) mq.addEventListener('change', sync); else if (mq.addListener) mq.addListener(sync); };
+    const unbind = (mq) => { if (mq.removeEventListener) mq.removeEventListener('change', sync); else if (mq.removeListener) mq.removeListener(sync); };
+    // A phone <-> desktop change re-picks the full-power or low-power style set.
+    const onMobile = () => { if (teardown) { teardown(); teardown = null; } mode = 'off'; sync(); };
+    bind(rm);
+    if (mo.addEventListener) mo.addEventListener('change', onMobile); else if (mo.addListener) mo.addListener(onMobile);
+    return () => {
+      if (obs) obs.disconnect();
+      unbind(rm);
+      if (mo.removeEventListener) mo.removeEventListener('change', onMobile); else if (mo.removeListener) mo.removeListener(onMobile);
+      if (teardown) teardown();
+    };
   }, []);
 }
 
@@ -229,6 +348,10 @@ export default function Home() {
   // for the "Not just once a week" section — see useRevealOnScroll above.
   const familyRef = useRef(null);
   useRevealOnScroll(familyRef);
+  // Task 20261111-kinetic-type-marble: the head (eyebrow + h2) enters with scroll-driven kinetic typography.
+  const famSectionRef = useRef(null);
+  const famSceneRef = useRef(null);
+  useKineticType(famSectionRef, famSceneRef);
 
   return (
     <div style={{ fontFamily: BODY_FONT, color: CREAM, background: INK, overflowX: 'clip' }}>
@@ -251,6 +374,10 @@ export default function Home() {
              every element it would have revealed still renders fully visible
              and static even if that JS gate is ever bypassed or races. */
           .hm-family-reveal { opacity: 1 !important; transform: none !important; transition: none !important; }
+          /* Kinetic head: final static type, no motion, whatever JS did or did not do. */
+          .hm-fam .kw, .hm-fam-eyebrow { opacity: 1 !important; transform: none !important; filter: none !important; text-shadow: none !important; transition: none !important; }
+          .hm-fam-head .hm-draw-path { stroke-dashoffset: 0 !important; }
+          .hm-fam-eyebrow::after { clip-path: none !important; }
         }
 
         /* Task 20260921-homepage-family-section-redesign — "Not just once a
@@ -276,18 +403,43 @@ export default function Home() {
           [data-fs-in-view="true"] .hm-draw-path { stroke-dashoffset: 0; }
         }
 
-        /* Task 20261015-adam-hands-scroll-hero: the family copy as a light block
-           directly after the pinned Adam section (the pin ends on the shared warm field,
-           which this block continues, so there is no seam). Recipe matches THE PROBLEM / SIMPLE PRICING;
-           eyebrow is #8A5217 (5.9:1 on #FBF7F1) because #B4712C fails AA for
-           11-12px text. */
-        .hm-fam { --fam-settle: clamp(480px, 75vh, 760px); position: relative; background-color: ${LIGHT_BG}; background-image: linear-gradient(180deg, ${FIELD_END} 0, ${LIGHT_BG} var(--fam-settle)); background-repeat: no-repeat; color: ${LIGHT_INK}; padding: clamp(72px, 10vh, 140px) clamp(20px, 5vw, 64px) clamp(56px, 8vh, 110px); }
-        .hm-fam::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: var(--fam-settle); pointer-events: none; z-index: 0; background-image: ${FIELD_GRAIN_URL}, linear-gradient(180deg, ${FIELD_END} 0, ${LIGHT_BG} 100%); background-size: 220px 220px, 100% 100%; background-blend-mode: soft-light, normal; -webkit-mask-image: linear-gradient(180deg, #000 0%, #000 10%, transparent 100%); mask-image: linear-gradient(180deg, #000 0%, #000 10%, transparent 100%); }
+        /* Task 20261111-kinetic-type-marble: the family head (eyebrow + h2) enters with scroll-driven kinetic type over the
+           marble liquid field; there is no honey strip and no gradient join any more.
+           Structure: .hm-fam > .hm-fam-scene (transparent, tall) > .hm-fam-head (sticky, 100svh) on top of the pinned Adam stage,
+           then .hm-fam-rest (cream) rises from the stage's bottom edge, where the marble has resolved into the same cream.
+           Static modes (no JS / reduced motion / stage not live / landscape phone) use the default rules: the head is a normal
+           block over a frozen CSS marble backdrop with the final, fully legible type. */
+        .hm-fam { --k-span: ${KINETIC_SPAN_VH}; position: relative; z-index: 1; color: ${LIGHT_INK}; }
+        .hm-fam-scene { position: relative; min-height: 70vh; min-height: 70svh; }
+        .hm-fam-backdrop { position: absolute; inset: 0; overflow: hidden; }
+        .hm-fam-head { position: relative; z-index: 1; padding: clamp(72px, 14vh, 160px) clamp(20px, 5vw, 64px) clamp(72px, 14vh, 160px); color: ${LIGHT_BG}; }
+        /* Scrim backstop behind the type only: it stops short of the resolve zone (bottom 14%), so it never tints the cream join. */
+        .hm-fam-head::before { content: ''; position: absolute; left: 0; right: 0; top: 0; bottom: 14%; z-index: -1; pointer-events: none; background: radial-gradient(ellipse 62% 44% at 38% 50%, rgba(44,23,6,0.38) 0, rgba(44,23,6,0) 100%); opacity: var(--k-scrim, 1); }
         .hm-fam-inner { position: relative; z-index: 1; max-width: 1240px; margin: 0 auto; text-align: left; }
-        .hm-fam-eyebrow { font-family: ${HEAD_FONT}; font-size: 11.5px; letter-spacing: 0.26em; text-transform: uppercase; color: #5C3509; position: relative; padding-bottom: 22px; margin-bottom: 56px; line-height: 1.6; }
-        .hm-fam-eyebrow::after { content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: 1px; background: linear-gradient(90deg, rgba(26,21,18,0) 0%, rgba(26,21,18,0.26) 22%, rgba(26,21,18,0.26) 45%, rgba(26,21,18,0) 100%); }
+        .hm-fam-eyebrow { font-family: ${HEAD_FONT}; font-size: 11.5px; letter-spacing: 0.26em; text-transform: uppercase; color: ${LIGHT_BG}; position: relative; padding-bottom: 22px; margin-bottom: 56px; line-height: 1.6; }
+        .hm-fam-eyebrow::after { content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: 1px; background: linear-gradient(90deg, rgba(224,154,48,0) 0%, rgba(224,154,48,0.55) 22%, rgba(224,154,48,0.55) 45%, rgba(224,154,48,0) 100%); clip-path: inset(0 calc((1 - var(--fs-thread, 1)) * 100%) 0 0); }
+        .hm-fam-h2 { font-family: ${HEAD_FONT}; font-size: clamp(40px, 7.4vw, 116px); line-height: 0.98; font-weight: 400; letter-spacing: -0.035em; margin: 0; max-width: 15em; color: ${LIGHT_BG}; text-wrap: balance; }
+        .hm-fam-h2 .hm-fam-circle { position: relative; display: inline-block; }
+        .hm-fam-h2 .hm-draw-path { stroke: ${AMBER_LIGHT}; }
+        .hm-fam-head .hm-draw-path { stroke-dashoffset: 0; transition: none; }
+        .hm-fam-rest { position: relative; background: ${LIGHT_BG}; padding: clamp(56px, 8vh, 110px) clamp(20px, 5vw, 64px) clamp(56px, 8vh, 110px); }
+        /* Pinned: the scene overlaps the last (100 + KINETIC_SPAN_VH) vh of the Adam runway, so the head is sticky over the pinned marble and both unpin together. */
+        .adam-pin[data-live="true"]:not([data-stack="true"]) + .hm-fam { margin-top: calc(-1 * (100 + var(--k-span)) * 1vh); }
+        .adam-pin[data-live="true"]:not([data-stack="true"]) + .hm-fam .hm-fam-scene { min-height: 0; height: calc((100 + var(--k-span)) * 1vh); }
+        .adam-pin[data-live="true"]:not([data-stack="true"]) + .hm-fam .hm-fam-backdrop { display: none; }
+        .adam-pin[data-live="true"]:not([data-stack="true"]) + .hm-fam .hm-fam-head { position: sticky; top: 0; height: 100vh; height: 100svh; box-sizing: border-box; display: grid; align-content: center; padding: 18svh clamp(20px, 5vw, 64px) 16svh; }
+        .hm-fam[data-kinetic="on"] .kw { display: inline-block; will-change: transform, opacity; }
+        .hm-fam[data-kinetic="on"] .hm-fam-eyebrow { will-change: transform, opacity; }
+        .hm-fam[data-kinetic="on"] .hm-fam-head .hm-draw-path { stroke-dashoffset: calc(1 - var(--k-circle, 1)); }
+        /* Landscape phone (stacked): flow layout, one-shot staggered fade-up on entry. */
+        @media not (prefers-reduced-motion: reduce) {
+          .hm-fam[data-kinetic="stack"] .kw, .hm-fam[data-kinetic="stack"] .hm-fam-eyebrow { display: inline-block; opacity: 0; transform: translateY(26px); transition: opacity 640ms cubic-bezier(0.16,1,0.3,1), transform 640ms cubic-bezier(0.16,1,0.3,1); }
+          .hm-fam[data-kinetic="stack"] .hm-fam-eyebrow { display: block; }
+          .hm-fam[data-kinetic="stack-in"] .kw, .hm-fam[data-kinetic="stack-in"] .hm-fam-eyebrow { transition: opacity 640ms cubic-bezier(0.16,1,0.3,1), transform 640ms cubic-bezier(0.16,1,0.3,1); }
+          .hm-fam[data-kinetic="stack"] .hm-fam-head .hm-draw-path { stroke-dashoffset: 1; transition: stroke-dashoffset 850ms cubic-bezier(0.65,0,0.35,1) 480ms; }
+          .hm-fam[data-kinetic="stack-in"] .hm-fam-head .hm-draw-path { transition: stroke-dashoffset 850ms cubic-bezier(0.65,0,0.35,1) 480ms; }
+        }
         .hm-fam-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: clamp(40px, 6vw, 90px); align-items: start; }
-        .hm-fam-h2 { font-family: ${HEAD_FONT}; font-size: clamp(34px, 5vw, 74px); line-height: 1.02; font-weight: 400; letter-spacing: -0.03em; margin: 0; max-width: 22em; color: ${LIGHT_INK}; text-wrap: balance; }
         .hm-fam-body { font-size: 16.5px; line-height: 1.7; color: rgba(26,21,18,0.86); margin: 28px 0 0; max-width: 34em; text-wrap: pretty; }
         .hm-fam-pill { display: inline-flex; align-items: center; gap: 9px; padding: 7px 15px 7px 12px; border-radius: 999px; background: rgba(232,163,85,0.16); border: 1px solid rgba(180,113,44,0.4); }
         .hm-fam-pill-text { font-size: 12px; letter-spacing: 0.04em; color: ${LIGHT_INK}; }
@@ -297,6 +449,7 @@ export default function Home() {
         .hm-fam-item { display: flex; align-items: flex-start; gap: 12px; font-size: 16px; line-height: 1.45; color: rgba(26,21,18,0.82); }
         @media (max-width: 760px) {
           .hm-fam-eyebrow { font-size: 12px; margin-bottom: 40px; }
+          .hm-fam-h2 { font-size: clamp(36px, 10.4vw, 52px); }
           .hm-fam-grid { gap: 34px; }
           .hm-fam-body { font-size: 16px; }
           .hm-fam-pill-text { font-size: 13px; }
@@ -404,22 +557,41 @@ export default function Home() {
           static gradient into the light family block below. */}
       <AdamHands />
 
-      {/* ══ Not just once a week (task 20260921-homepage-family-section-redesign) ══
-          The family copy, now a light block on #FBF7F1 straight after the
-          Adam flood (the flood ends on the same flat colour, so no seam). */}
-      <section ref={familyRef} className="hm-fam">
+      {/* ══ Not just once a week (task 20260921-homepage-family-section-redesign; kinetic head: 20261111-kinetic-type-marble) ══
+          The head (eyebrow + h2) enters with scroll-driven kinetic type, sticky over the pinned marble stage. Text is static
+          HTML: each word is its own inline span (real spaces between them, no per-letter split, no aria-hidden), so the h2
+          reads and copies as one sentence and the prerender carries the full text. data-k marks the animated units. */}
+      <section ref={famSectionRef} className="hm-fam">
+        <div className="hm-fam-scene" ref={famSceneRef}>
+          <div className="hm-fam-backdrop" aria-hidden="true"><LiquidField /></div>
+          <div className="hm-fam-head">
+            <div className="hm-fam-inner">
+              <div className="hm-fam-eyebrow" data-k="eyebrow">// NOT JUST ONCE A WEEK</div>
+              <h2 className="hm-fam-h2">
+                {FAMILY_WORDS.map((w, i) => (
+                  <React.Fragment key={w}>
+                    {i > 0 && ' '}
+                    <span className="kw" data-k={i + 1}>
+                      {w === 'family' ? (
+                        <>
+                          <span className="hm-fam-circle">
+                            family
+                            <HandDrawnCircle stroke={AMBER_LIGHT} style={{ left: '50%', top: '50%', transform: 'translate(-50%, -50%)', width: '4em', maxWidth: 'calc(100vw - 48px)', height: 'auto' }} />
+                          </span>.
+                        </>
+                      ) : w}
+                    </span>
+                  </React.Fragment>
+                ))}
+              </h2>
+            </div>
+          </div>
+        </div>
+        <div className="hm-fam-rest" ref={familyRef}>
         <div className="hm-fam-inner">
-          <div className="hm-family-reveal hm-fam-eyebrow">// NOT JUST ONCE A WEEK</div>
           <div className="hm-fam-grid">
             <div>
-              <h2 className="hm-family-reveal hm-fam-h2">
-                Everyone gathered under Christ is called to live as{' '}
-                <span style={{ position: 'relative', display: 'inline-block' }}>
-                  family
-                  <HandDrawnCircle stroke="#B4712C" style={{ left: '50%', top: '50%', transform: 'translate(-50%, -50%)', width: 400, maxWidth: 'calc(100vw - 48px)', height: 'auto' }} />
-                </span>.
-              </h2>
-              <p className="hm-family-reveal hm-fam-body" style={{ transitionDelay: '90ms' }}>
+              <p className="hm-family-reveal hm-fam-body" style={{ transitionDelay: '90ms', marginTop: 0 }}>
                 Brothers and sisters don't show up for each other once a week — they show up every day in between. That daily rhythm, not the Sunday appointment, is the actual point. FellowScript exists to make room for it.
               </p>
               <div style={{ marginTop: 24 }}>
@@ -448,6 +620,7 @@ export default function Home() {
               </ul>
             </div>
           </div>
+        </div>
         </div>
       </section>
 

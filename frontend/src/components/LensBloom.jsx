@@ -1,11 +1,12 @@
 // The light transition for the hero (design-spec.md section 2): a lens-gleam bloom that
 // opens at the screen centre and swells outward as six overlapping soft lobes of different
 // size, tilt and delay, plus an anamorphic streak, ghost glints and uneven rays. It holds a
-// full-screen overexposed beat, then falls back toward its own centre over the live field.
+// full-screen overexposed beat and is then switched off in one step (HANDOFF_START_P): from there the light is
+// withdrawn by the marble shader along its folds (liquidGl.js, uH), or by the CSS veil below when WebGL is absent.
 // Markup is static; per frame only transform / opacity / visibility are written
 // (paintLens), so no gradient is ever repainted. Maths: lib/adamHands/driver.js (lensDrivers).
 import React from 'react';
-import { lensDrivers, LENS_LOBES, LENS_MOBILE_LOBES, LENS_GHOSTS } from '../lib/adamHands/driver.js';
+import { lensDrivers, handoffH, lerp, HANDOFF_START_P, LENS_LOBES, LENS_MOBILE_LOBES, LENS_GHOSTS } from '../lib/adamHands/driver.js';
 import { FIELD_WHITE, LEAK_PEACH, LEAK_GOLD, LEAK_HONEY } from '../lib/adamHands/field.js';
 
 // Soft irregular alpha mask for the lobe wash: a 0.74 floor plus a few broad radial swells (union), so the
@@ -29,6 +30,11 @@ const SPOKES = [[6, 3.5, 0.9], [31, 1.6, 0.55], [52, 4.2, 0.8], [79, 2.0, 0.4], 
   [183, 4.6, 0.85], [207, 1.4, 0.35], [231, 3.8, 0.9], [262, 2.2, 0.5], [289, 5.4, 1], [318, 1.9, 0.6], [344, 3.2, 0.75]];
 const RAYS_MASK = `conic-gradient(from 0deg at 50% 50%, ${SPOKES.map(([a, w, o]) => `rgba(0,0,0,0) ${(a - w / 2).toFixed(1)}deg, rgba(0,0,0,${o}) ${a}deg, rgba(0,0,0,0) ${(a + w / 2).toFixed(1)}deg`).join(', ')}, rgba(0,0,0,0) 360deg)`;
 
+// Veil start radius (% of the box, 100% = the box width/height as ellipse radii; the corners sit at 70.7%). 74% = every corner still opaque at h = 0.
+export const VR_FROM = 74;
+// The no-GL veil is the lens frame itself (white core falling to the honey edge, fitted to the lens ring means), not a flat
+// fill, so the hand-off at h = 0 matches the frame just before it at the edges as well as the centre.
+export const VEIL_BG = 'radial-gradient(ellipse farthest-corner at 50% 50%, #FFFEFC 0, #FFFEFC 12%, #FDF6E8 30%, #FBEED6 40%, #FAE8C6 50%, #F9E2B9 60%, #F8DEAE 70%, #F7DBA7 80%, #F6D79D 100%)';
 export const LENS_CSS = `
 .adam-lens { --u: max(1cqw, 1cqh); position: absolute; inset: 0; overflow: hidden; isolation: isolate; pointer-events: none; visibility: hidden; }
 .lens-flat { position: absolute; inset: 0; background: ${FIELD_WHITE}; opacity: 0; }
@@ -42,6 +48,11 @@ export const LENS_CSS = `
 .lens-ghost { mix-blend-mode: screen; }
 .lens-rays { width: calc(200 * var(--u)); height: calc(200 * var(--u)); background: radial-gradient(circle closest-side, rgba(255,246,228,.80) 0, rgba(255,226,170,.35) 40%, rgba(255,226,170,0) 100%); mix-blend-mode: screen;
   -webkit-mask-image: ${RAYS_MASK}; mask-image: ${RAYS_MASK}; -webkit-mask-size: 100% 100%; mask-size: 100% 100%; }
+/* No-GL / low-power hand-off: a warm-white veil whose clear centre grows (spatial mask, never an opacity ramp), edged by a thin gold ring (--vr is written per frame). Hidden whenever the GL canvas draws the hand-off itself. */
+.adam-veil, .adam-veil-rim { position: absolute; inset: 0; pointer-events: none; display: none; --vr: ${VR_FROM}%; }
+.adam-veil { background: ${VEIL_BG}; -webkit-mask-image: radial-gradient(ellipse 100% 100% at 50% 50%, #000 0, #000 var(--vr), transparent calc(var(--vr) + 22%)); mask-image: radial-gradient(ellipse 100% 100% at 50% 50%, #000 0, #000 var(--vr), transparent calc(var(--vr) + 22%)); }
+.adam-veil-rim { background: radial-gradient(ellipse 100% 100% at 50% 50%, rgba(224,154,48,0) calc(var(--vr) + 4%), rgba(224,154,48,.30) calc(var(--vr) + 10%), rgba(224,154,48,0) calc(var(--vr) + 16%)); }
+.adam-field[data-gl="true"] ~ .adam-veil, .adam-field[data-gl="true"] ~ .adam-veil-rim { display: none !important; }
 @media (max-width: 899px), (pointer: coarse) {
   .lens-streak { mix-blend-mode: normal; }
 }
@@ -51,6 +62,7 @@ export const LENS_CSS = `
 export function LensBloom({ mobile = false }) {
   const lobes = LENS_LOBES.slice(0, mobile ? LENS_MOBILE_LOBES : LENS_LOBES.length);
   return (
+    <>
     <div className="adam-lens" data-adam="lens" aria-hidden="true">
       <div className="lens-flat" data-adam="lens-flat" />
       <div className="lens-wash">
@@ -71,6 +83,9 @@ export function LensBloom({ mobile = false }) {
         {!mobile && <i className="lens-rays" data-adam="lens-rays" />}
       </div>
     </div>
+    <div className="adam-veil" data-adam="veil" aria-hidden="true" />
+    <div className="adam-veil-rim" data-adam="veil-rim" aria-hidden="true" />
+    </>
   );
 }
 
@@ -82,16 +97,31 @@ export const collectLens = (q) => ({
   lensStreak: q('lens-streak'),
   lensGhosts: LENS_GHOSTS.map((_, i) => q(`lens-ghost-${i}`)),
   lensRays: q('lens-rays'),
+  veil: q('veil'),
+  veilRim: q('veil-rim'),
 });
 
 const op = (el, o) => { if (el) el.style.opacity = o < 0.003 ? '0' : Math.min(1, o).toFixed(3); };
 const place = (el, tx, rot, scale) => { if (el) el.style.transform = `translate(-50%, -50%) ${tx} rotate(${rot.toFixed(2)}deg) scale(${scale.toFixed(4)})`; };
 const off = (dx, dy) => `translate(calc(${dx} * var(--u)), calc(${dy} * var(--u)))`;
 
+// The CSS hand-off veil (no-GL path): --vr = lerp(VR_FROM, 0, h). Style writes only; display none outside the hand-off.
+function paintVeil(refs, p) {
+  const h = handoffH(p);
+  const show = p >= HANDOFF_START_P && h < 1;
+  const vr = `${lerp(VR_FROM, 0, h).toFixed(2)}%`;
+  [refs.veil, refs.veilRim].forEach((el) => {
+    if (!el) return;
+    el.style.display = show ? 'block' : 'none';
+    if (show) el.style.setProperty('--vr', vr);
+  });
+}
+
 // One frame of the lens: style writes only.
 export function paintLens(refs, p, mobile) {
   const { lens } = refs;
   if (!lens) return;
+  paintVeil(refs, p);
   const d = lensDrivers(p, mobile);
   // display:none (not just visibility) while the lens is off, so its surfaces are released outside the bloom window.
   lens.style.display = d.on ? '' : 'none';
