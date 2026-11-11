@@ -95,3 +95,14 @@ describe('announcementsApi', () => {
       .rejects.toMatchObject({ status: 403 });
   });
 });
+
+describe('fetchAnnouncement (task 20261030-chat-announcements)', () => {
+  test('GETs the one announcement by id; 404 throws with status', async () => {
+    const { fetchAnnouncement } = await import('./announcementsApi.js');
+    fetchMock.mockResolvedValueOnce(ok({ id: 'a1', title: 'T' }));
+    await expect(fetchAnnouncement('u', 'g', 'a1')).resolves.toMatchObject({ id: 'a1' });
+    expect(String(fetchMock.mock.calls[0][0])).toMatch(/\/a1$/);
+    fetchMock.mockResolvedValueOnce(fail(404, { detail: 'Not found' }));
+    await expect(fetchAnnouncement('u', 'g', 'a1')).rejects.toMatchObject({ status: 404 });
+  });
+});

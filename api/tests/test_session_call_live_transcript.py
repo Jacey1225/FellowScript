@@ -129,7 +129,10 @@ def create_session(client, token, creator, participants, title="Live transcript 
     devotion = {
         "id": sid, "title": title, "creator_id": creator,
         "participants": participants, "prompts": [], "verses": [],
-        "group_id": f"{creator}|{uuid.uuid4()}",
+        # Not a DM key: DM ('|') group_ids can no longer be created via
+        # POST /devotions/ (task 20261028-dm-direct-call, 410). A plain
+        # non-group id keeps creator/participants-based authorization.
+        "group_id": f"live-transcript-{uuid.uuid4()}",
     }
     r = client.post("/devotions/", json={"devotion_id": sid, "user_id": creator, "devotion": devotion},
                     headers=cookie_header(token))

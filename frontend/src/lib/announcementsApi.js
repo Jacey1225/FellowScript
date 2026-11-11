@@ -77,6 +77,11 @@ export function fetchLatestAnnouncement(userId, groupId) {
   return request(`${base(userId, groupId)}/latest`, undefined, "Couldn't load the latest announcement.");
 }
 
+// One announcement by id (member-only), e.g. when a chat timeline row is opened.
+export function fetchAnnouncement(userId, groupId, announcementId) {
+  return request(`${base(userId, groupId)}/${announcementId}`, undefined, "Couldn't load that announcement.");
+}
+
 // body: { title, description, banner_key?, publish_at?, title_color?, title_font?,
 // bg_theme?, links?, gallery_keys?, is_event?, payment_handles?, capacity?, location?, poll? }.
 // Flag-gated keys answer 422 while their server flag is off; callers only send

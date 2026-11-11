@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
+import ProfileLink from './profile/ProfileLink.jsx';
 import {
   AudioMutedOutlined, AudioOutlined, BellOutlined, CloseOutlined, CommentOutlined,
   DesktopOutlined, EllipsisOutlined, FullscreenOutlined, PhoneOutlined, RollbackOutlined, TeamOutlined,
@@ -38,14 +39,16 @@ export function resolveName(uid, { user, friends, fetched }) {
   return fetched?.[uid] || null;
 }
 
-function Bubble({ name, isYou, talking, compact, style }) {
+function Bubble({ name, userId, isYou, talking, compact, style }) {
   const label = isYou ? 'You' : (name || 'Member');
   return (
     <div className={`call-bubble${compact ? ' call-bubble-compact' : ''}`} style={style}>
-      <div className={`call-bubble-disc${talking ? ' call-bubble-talking' : ''}`} aria-hidden="true">
-        {name ? name[0].toUpperCase() : <UserOutlined />}
-      </div>
-      <span className="call-bubble-name">{label}</span>
+      <ProfileLink userId={userId} username={name} style={{ flexDirection: 'column', gap: '0.25rem', maxWidth: '100%' }}>
+        <div className={`call-bubble-disc${talking ? ' call-bubble-talking' : ''}`} aria-hidden="true">
+          {name ? name[0].toUpperCase() : <UserOutlined />}
+        </div>
+        <span className="call-bubble-name">{label}</span>
+      </ProfileLink>
       {talking && <span className="visually-hidden"> is speaking</span>}
     </div>
   );
@@ -367,6 +370,7 @@ export default function SessionCallScreen({
               <div role="listitem" key={uid} style={{ display: 'contents' }}>
                 <Bubble
                   name={name}
+                  userId={uid}
                   isYou={isYou}
                   talking={talkingUserId === uid}
                   compact={topRow}

@@ -1,0 +1,26 @@
+{
+  "task_id": "20261030-user-profiles",
+  "step": 5,
+  "gate": "frontend",
+  "result": "pass",
+  "summary": "Web + Tauri desktop profile page implemented with design choices A1/B1/C1/D1/E1. New route /profile/:userId (App.jsx) rendering pages/Profile.jsx in FormSkin; shows avatar, username, relationship chip, tiered bio (stranger: 'Bio is shared with friends.' when the bio key is absent; friend: bio or 'No bio yet.'; self: bio or 'Add bio'), relationship-driven actions (Add friend / Request sent / Accept / Message / Edit bio), overflow menu (Unfriend, Block, Report). Inline bio editor with 160 counter (20-left warn, over-limit blocks Save, draft kept verbatim and error shown inline on failed save). Throw-not-fabricate: lib/profileApi.js throws ProfileApiError on any non-2xx/network failure. Cache: in-memory lib/profileCache.js keyed viewer+target, cleared on sign-out (AuthContext); hooks/useProfile.js keeps the cached profile on network/5xx failure ('Couldn't refresh. Showing what we had.' + Retry), evicts on 404 and shows 'This profile isn't available.', first-load failure with no cache shows 'Couldn't load this profile.' + Try again. Unfriend uses a 6s client-side deferred commit with Undo (hooks/useDeferredAction.js, commits on unmount); Block confirms, evicts cache, goes back, and toasts with Unblock/Manage; Report reuses ReportUserModal (now exported from ContactsPanel). Friend request wording changed to 'If that username exists, a request was sent.' (ContactsPanel). Entry points (thin hook-ins): ContactsPanel friend avatar, ChatThread DM header name (via onViewProfile prop through MessagingPanel/Reader context), Account 'View my profile' row (components/profile/ViewMyProfileRow.jsx). Message button navigates to /reader with location.state.openDm, consumed by hooks/useOpenDmFromRoute.js in Reader. desktopScope.js gained pattern /^\\/profile\\/<uuid>$/i with new test lib/desktopScope.profile.test.js (exact-route list unchanged).",
+  "new_files": [
+    "frontend/src/pages/Profile.jsx",
+    "frontend/src/components/profile/{ProfileHeader,ProfileBio,BioEditor,ProfileActions,ViewMyProfileRow}.jsx",
+    "frontend/src/hooks/{useProfile,useDeferredAction,useOpenDmFromRoute}.js",
+    "frontend/src/lib/{profileApi,profileCache,profileBio}.js",
+    "frontend/src/lib/desktopScope.profile.test.js"
+  ],
+  "changed_files": [
+    "frontend/src/App.jsx", "frontend/src/lib/desktopScope.js", "frontend/src/context/AuthContext.jsx",
+    "frontend/src/components/ContactsPanel.jsx", "frontend/src/components/ChatThread.jsx",
+    "frontend/src/components/panels/MessagingPanel.jsx", "frontend/src/pages/Reader.jsx", "frontend/src/pages/Account.jsx"
+  ],
+  "verification": "vitest: new desktopScope.profile tests, desktopScope*, DesktopRouteGuard, Account.* (back-navigation, notifications-entry, desktop-scope, etc.) pass when run unloaded. vite build transforms all 4224 modules (all new imports resolve) but fails at bundling on a pre-existing missing 'recharts' dependency in node_modules (AdminActivityMonitoring.jsx), unrelated. Reader.dockview.* tests fail with 'localStorage.clear undefined' (Node 26 global localStorage in the test env), pre-existing and unrelated. No Swift/iOS files touched; nothing pushed or deployed.",
+  "notes_for_next_gates": [
+    "Desktop: Rust-side on_navigation mirror (desktop/src-tauri/src/lib.rs) only does exact-match, same as /join; /profile is reached only by in-SPA navigation (HashRouter), which DesktopRouteGuard now allows. A hard reload on a profile URL in the desktop shell would be redirected by the Rust check, same as /join today. No tauri.conf/capabilities change needed.",
+    "Not done: entry from group-member lists (GroupInfoPanel) and pending friend-request rows; web has no request-list UI found besides Account/Subscription, so ProfileActions Accept is reachable only via a profile visit. There is no backend decline endpoint, so no Decline button is rendered.",
+    "Testing gate: add component tests for Profile (tiers, 404 evicts, network failure keeps cache, bio save failure keeps draft, deferred unfriend undo), BioEditor counter, useOpenDmFromRoute.",
+    "Stray untracked dir frontend/.explore-build-off-* contains copied tests that vitest picks up; use --dir src."
+  ]
+}

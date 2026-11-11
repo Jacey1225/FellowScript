@@ -151,9 +151,12 @@ def test_friend_request(cli):
     SENT.clear()
     limiter.reset()
     r = cli.post(f"/friends/{sender}/request", params={"friend_username": uname(sender)}, headers=cookie(sender))
-    check("self request: error, no push", r.status_code == 404 and SENT == [])
+    # user-profiles D5: self is a 400; an unknown username is the same uniform
+    # success a real send returns (no enumeration oracle), and neither pushes.
+    check("self request: error, no push", r.status_code == 400 and SENT == [], (r.status_code, SENT))
     r = cli.post(f"/friends/{sender}/request", params={"friend_username": "no_such_user_zzz"}, headers=cookie(sender))
-    check("unknown user: 404, no push", r.status_code == 404 and SENT == [])
+    check("unknown user: uniform success (no 404 oracle), no push",
+          r.status_code in (200, 204) and SENT == [], (r.status_code, SENT))
 
     # failure isolation
     s3, r3 = make_user("fr_s3"), make_user("fr_r3")

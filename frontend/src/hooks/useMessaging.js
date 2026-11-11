@@ -5,16 +5,21 @@ import { compareTimestamps, threadFrameToRow } from '../utils.js';
 import { useCapabilities } from './useCapabilities.js';
 import {
   INITIAL_PAGE_LIMIT, OLDER_PAGE_LIMIT, ACK_FALLBACK_MS,
-  newClientRef, parsePage, pageQuery,
+  newClientRef, parsePage, pageQuery, toMessage,
   mergeOlder, mergeLive, reconcileAck, findLostAckMatch,
 } from '../lib/chatPaging.js';
 import { parseReactions, toggled, setting, updatingCount, addReaction, removeReaction } from '../lib/reactions.js';
+import { isProfileId } from '../lib/profileId.js';
 import { replyFromWire } from '../lib/replies.js';
 import { MENTION_FEATURE, mentionFields, toWireMentions, verifyMentions } from '../lib/mentions.js';
 import {
   PIN_FEATURE, PIN_PAGE_LIMIT, PIN_LIST_ERROR, PinError, pinFields,
   fetchPins, pinMessageRequest, unpinMessageRequest, withoutPin,
 } from '../lib/pins.js';
+import {
+  CHAT_ANNOUNCEMENT_FEATURE, announcementFields, isOwnAnnouncementFrame, parseSync,
+  removeAnnouncementLines, announcementLinesFromHistory, mergeAnnouncementLines,
+} from '../lib/chatAnnouncements.js';
 import {
   createThread, deleteGroupMessage, restoreGroupMessage, fetchThreadMessagesUrl,
   insertRestored, DEFAULT_UNDO_SECONDS,
@@ -164,7 +169,7 @@ export function useMessaging({ user }) {
   // Task 20261012-message-pins: a live pin system line names its actor by
   // username (the frame carries an id); ordinary frames keep the old behaviour.
   const liveSenderName = (data, cc) => {
-    if (data.system_kind !== 'pin') return data.from_user || '';
+    if (data.system_kind !== 'pin' && data.system_kind !== 'announcement') return data.from_user || '';
     const cached = memberCache.current[data.from_user];
     if (cached && cached.username) return cached.username;
     if (cc && cc.type === 'friend' && cc.name) return cc.name;
@@ -252,6 +257,12 @@ export function useMessaging({ user }) {
           applyPinFrame(data);
           return;
         }
+        // Task 20261030-chat-announcements: an announcement line was edited,
+        // deleted or restored. A `type` frame with no text, never a bubble.
+        if (data.type === 'announcement_updated') {
+          applyAnnouncementFrame(data);
+          return;
+        }
         // Task 20261001-message-threads: thread / delete frames go through a
         // callback ref (same style as sessionSignalCbRef); never a second
         // WebSocket. Not chat bubbles in their own right.
@@ -314,15 +325,17 @@ export function useMessaging({ user }) {
         // currentContact here at all (this handler never needs to change
         // it) -- setMessages runs exactly once per incoming message.
         const cc = currentContactRef.current;
-        if (cc && data.from_user !== user.user_id &&
+        if (cc && (data.from_user !== user.user_id || isOwnAnnouncementFrame(data, user.user_id)) &&
             (data.group_id || '') === (cc.group_id || '')) {
           setMessages(prev => mergeLive(prev, {
             // Message id (new servers); absent on an old server's frame.
             ...(typeof data.id === 'string' && data.id ? { id: data.id, key: data.id } : {}),
             text: data.text || '',
-            mine: false,
+            mine: isOwnAnnouncementFrame(data, user.user_id),
             timestamp: data.timestamp,
             sender: liveSenderName(data, cc),
+            // Task 20261030-profile-everywhere: raw sender id, profile-tap only.
+            ...(!isOwnAnnouncementFrame(data, user.user_id) && isProfileId(data.from_user) ? { senderId: data.from_user } : {}),
             // Task 20260904-messaging-attachments: null/absent for an
             // ordinary text-only message. attachment_url (image/video/file
             // only) is a freshly presigned GET the server resolves at
@@ -335,6 +348,7 @@ export function useMessaging({ user }) {
             // for me; absent otherwise (plain message).
             ...(replyFromWire(data) ? { reply: replyFromWire(data) } : {}),
             ...pinFields(data),
+            ...announcementFields(data),
             // Task 20261017-chat-mentions: absent unless the server sent valid ranges.
             ...mentionFields(data, data.text || ''),
           }));
@@ -604,12 +618,11 @@ export function useMessaging({ user }) {
   // server derives the group and recipients from thread_id.
   const sendThreadMessage = useCallback((text, attachment = null, _reply = null, mentionsArg = null) => {
     const tv = threadViewRef.current;
-    if (!user || !tv || !wsRef.current || wsRef.current.readyState !== 1) return;
+    if (!user || !tv || !wsRef.current || wsRef.current.readyState !== 1) return false;
     const mentions = outgoingMentions(text, mentionsArg);
     const clientRef = newClientRef();
     const payload = {
-      type: 'thread_message',
-      from_user: user.user_id,
+      type: 'thread_message', from_user: user.user_id,
       thread_id: tv.thread.id,
       text,
       client_ref: clientRef,
@@ -629,6 +642,7 @@ export function useMessaging({ user }) {
       attachmentUrl: (attachment && attachment.kind === 'gif') ? null : (attachment?.localUrl || null),
       ...(mentions ? { mentions } : {}),
     }]);
+    return true;
   }, [user, outgoingMentions]);
 
   // Delete (author only, group chat) with the server's undo window. The row
@@ -798,6 +812,7 @@ export function useMessaging({ user }) {
           ...(typeof m.id === 'string' && m.id ? { id: m.id, key: m.id } : {}),
           text: m.text, mine: m.mine, timestamp: m.timestamp,
           sender: m.mine ? '' : (m.from_user || ''),
+          ...(!m.mine && isProfileId(m.from_user) ? { senderId: m.from_user } : {}),
           // Task 20260904-messaging-attachments — see this file's WS
           // onmessage handler above for the field-shape rationale. Note:
           // never read `m.attachment_key` here even if a raw backend
@@ -810,6 +825,7 @@ export function useMessaging({ user }) {
           ...(parseReactions(m.reactions) ? { reactions: parseReactions(m.reactions) } : {}),
           ...(replyFromWire(m) ? { reply: replyFromWire(m) } : {}),
           ...pinFields(m),
+          ...announcementFields(m),
           ...mentionFields(m, m.text),
         })));
       }
@@ -1184,6 +1200,32 @@ export function useMessaging({ user }) {
     setPinList(p => (p.pins.some(x => x.messageId === data.message_id)
       ? { ...p, pins: withoutPin(p.pins, data.message_id), count: Math.max(0, p.count - 1) }
       : p));
+  };
+
+  // Task 20261030-chat-announcements. Fails closed on the capability. Deleted
+  // drops the line now; updated/restored re-read the newest history window and
+  // merge only the announcement lines (a failed read keeps what is shown).
+  const refreshAnnouncementLines = async () => {
+    const cc = currentContactRef.current;
+    if (!cc || cc.type !== 'group' || !user) return;
+    const token = chatTokenRef.current;
+    try {
+      const qs = isPagedFor('group') ? `?limit=${INITIAL_PAGE_LIMIT}` : '';
+      const res = await fetch(`${API}/groups/${user.user_id}/${cc.id}${qs}`);
+      if (!res.ok || token !== chatTokenRef.current) return;
+      const lines = announcementLinesFromHistory(await res.json(), toMessage);
+      if (token !== chatTokenRef.current) return;
+      setMessages(prev => mergeAnnouncementLines(prev, lines, insertRestored));
+    } catch (err) {
+      console.error('Announcement line refresh failed:', err);
+    }
+  };
+  const applyAnnouncementFrame = (data) => {
+    if (capsRef.current?.isEnabled?.(CHAT_ANNOUNCEMENT_FEATURE) !== true) return;
+    const sync = parseSync(data);
+    if (!sync || threadViewRef.current || !frameInCurrentConversation(data)) return;
+    if (sync.action === 'deleted') { setMessages(prev => removeAnnouncementLines(prev, sync.announcementId)); return; }
+    refreshAnnouncementLines();
   };
 
   // Make sure a message is in the loaded window, paging older history until it

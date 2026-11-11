@@ -1065,8 +1065,13 @@ final class ThrowingTestDataService: DataServiceProtocol {
     // MockDataService.shared) for every pre-existing caller of this seam.
     private(set) var fetchUsageCallCount = 0
 
+    /// Task 20261105-onboarding-redo (testing): lets a test pin the usage lookup
+    /// (subscribed / free / thrown) for the walkthrough's entitlement gate.
+    var fetchUsageOverride: Result<FSUsage?, Error>?
+
     func fetchUsage(userId: String) async throws -> FSUsage? {
         fetchUsageCallCount += 1
+        if let o = fetchUsageOverride { return try o.get() }
         return try await MockDataService.shared.fetchUsage(userId: userId)
     }
 

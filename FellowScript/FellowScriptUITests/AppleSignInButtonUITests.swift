@@ -70,8 +70,6 @@ final class AppleSignInButtonUITests: XCTestCase {
         // Walk onboarding to reach the sign-in form (mirrors AccountUITests'
         // signInAndReachAccount, stopping one step earlier).
         _ = waitHittableThenTap(app.buttons["Get Started"], timeout: 10)
-        _ = waitHittableThenTap(onboardingButton(containing: "Skip →"))
-        _ = waitHittableThenTap(onboardingButton(containing: "Begin the Tour →"))
         _ = waitHittableThenTap(app.buttons["Skip"])
         _ = waitHittableThenTap(onboardingButton(containing: "Sign In"))
 

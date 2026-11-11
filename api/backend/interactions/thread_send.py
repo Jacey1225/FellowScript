@@ -47,7 +47,8 @@ from limits import parse as parse_rate
 
 from backend import content_store
 from backend.errors import SaveFailedError
-from backend.interactions import flags, message_mentions
+from backend.interactions import flags, message_mentions, shared_objects
+from backend.interactions.thread_shared_objects import resolve_thread_share
 from backend.interactions.attachments import generate_download_url
 from backend.interactions.paging import format_timestamp
 from backend.interactions.push import send_push
@@ -103,9 +104,13 @@ def _parse_frame(payload: dict) -> "dict | None":
     if kind is None:
         key, meta = None, {}
     else:
-        if kind not in ATTACHMENT_KINDS or not isinstance(meta, dict):
+        if not isinstance(meta, dict) or (kind not in ATTACHMENT_KINDS and kind not in shared_objects.SHARED_KINDS):
             return None
-        if kind == "gif":
+        if kind in shared_objects.SHARED_KINDS:
+            if key:
+                return None  # shares carry no object key
+            key = None
+        elif kind == "gif":
             if not meta.get("url"):
                 return None
             key = None
@@ -181,8 +186,22 @@ async def send_thread_message(manager, payload: dict) -> None:
         await _reply(manager, sender, "not_allowed", "Couldn't send your message.")
         return
 
+    if kind in shared_objects.SHARED_KINDS:
+        # Verse / note share: payload and fallback text are built here, never copied from the
+        # client frame. Every refusal is the uniform not_allowed; infrastructure failure is retriable.
+        try:
+            meta, text = resolve_thread_share(manager, sender_id, kind, meta)
+        except shared_objects.ShareRejected as e:
+            _deny(sender, thread_id, f"share_rejected:{e}")
+            await _reply(manager, sender, "not_allowed", "Couldn't send your message.")
+            return
+        except Exception as e:  # noqa: BLE001 - fail closed, nothing saved
+            logger.warning("thread share resolution failed closed: %s", type(e).__name__)
+            await _reply(manager, sender, "send_failed", "Couldn't send your message. Please try again.")
+            return
     try:
-        check_clean(text=text, attachment_filename=meta.get("filename") if kind == "file" else None)
+        check_clean(text="" if kind in shared_objects.SHARED_KINDS else text,
+                    attachment_filename=meta.get("filename") if kind == "file" else None)
     except ContentRejected as e:
         await _reply(manager, sender, "message_rejected", rejection_message(e))
         return

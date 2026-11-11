@@ -18,7 +18,7 @@ on `devotions`, not child tables.
 ## Level 0 — No foreign keys (create first)
 
 ```
-users
+users                  # incl. nullable bio TEXT (user_bio DDL module)
 groups
 log_group_cursors      # CloudWatch watchdog cursor, unscoped to any user
 error_detections       # CloudWatch watchdog findings, unscoped to any user
@@ -38,7 +38,7 @@ bookmarks              → users
 notes *                → users, groups
 messages               → users, groups
 devotions †            → users (creator_id)
-agents                 → users
+agents                 → users (is_default BOOLEAN, one canonical "Ask AI" row per user via partial unique idx_agents_one_default_per_user; flag ask_ai_default_agent; old rows are archived, never dropped)
 subscriptions          → users
 device_tokens          → users
 user_activity          → users
@@ -57,6 +57,12 @@ error_detection_reports → error_detections
 > group-scoped. `participants`/`verses`/`prompts` are `TEXT[]` columns on
 > this same row, not separate child tables.
 
+> **‡ agents_archive** (task 20261106-remove-agents-ask-ai) is created only by the operator-run
+> `api/scripts/merge_agents_to_default.py` (never at boot). The merge re-points `agent_chats`,
+> `agent_messages` and `agent_heartbeats` onto each user's canonical (`agents.is_default`) row and
+> leaves the retired `agents` rows in place, unreferenced: deleting one would cascade-delete its
+> chats, messages and heartbeats. The `agents` table and its columns are not dropped.
+
 > **users.subscription_id** is an FK to `subscriptions`, added via `ALTER
 > TABLE` *after* `subscriptions` exists (to avoid a circular create-time FK)
 > — the reverse direction of every other Level-1 relationship above, same
@@ -73,6 +79,7 @@ agent_heartbeats       → agents, users
 agent_messages         → agents, users, agent_chats (chat_id, nullable = legacy)
 agent_chats            → agents, users (flag agent_chats; DDL module schema_ddl/agent_chats.py; summary TEXT + summary_through_ts TIMESTAMPTZ added for flag agent_chat_memory, server-side only)
 subscription_request   → subscriptions, users
+agents_archive ‡       → (no FK) operator-created by api/scripts/merge_agents_to_default.py, NOT a boot DDL table: copy of every pre-merge agents row (role, name, enabled, was_default, merged_into)
 ```
 
 ---
@@ -141,6 +148,8 @@ messages (module "message_replies", flag `chat_replies`, off by default)  # addi
 message_pins (module "message_pins", flag `message_pins`, off by default)  # PK message_id -> messages ON DELETE CASCADE, chat_key TEXT (group uuid or sorted "uidA|uidB" DM key), pinned_by -> users ON DELETE CASCADE, pinned_at; index (chat_key, pinned_at DESC); no cap; rows kept on soft delete
 message_pin_push_claims  # PK (chat_key, pinner_id -> users ON DELETE CASCADE), last_at; atomic throttle for the pin push + system line
 messages (module "message_pins")  # additive nullable system_kind TEXT ('pin' = server-generated "pinned a message" line, from_user = pinner)
+group_announcements (module "chat_announcements", flag `chat_announcements`, off by default)  # additive post_to_chat BOOLEAN NOT NULL DEFAULT FALSE (author opted to also show the announcement in the group timeline; existing rows FALSE = no back-fill); partial index (publish_at) WHERE post_to_chat
+messages (module "chat_announcements")  # additive nullable announcement_id UUID -> group_announcements ON DELETE CASCADE; unique partial index (announcement_id) WHERE NOT NULL = at most one timeline line per announcement; the line has system_kind 'announcement', constant text "posted an announcement", from_user = poster
 group_announcement_rsvps  # PK (announcement_id -> group_announcements ON DELETE CASCADE, user_id -> users ON DELETE CASCADE), created_at; an event sign-up, not group membership
 group_announcement_polls  # PK announcement_id -> group_announcements ON DELETE CASCADE; question, multiple, closes_at, closed_at (flag `announcement_polls`, off by default; response key `poll` omitted while off)
 group_announcement_poll_options  # _id, announcement_id -> polls CASCADE, position, label (2-6 per poll)

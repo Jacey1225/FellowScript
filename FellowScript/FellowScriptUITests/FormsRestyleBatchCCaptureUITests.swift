@@ -55,8 +55,6 @@ final class FormsRestyleBatchCCaptureUITests: XCTestCase {
         if app.buttons["Home"].waitForExistence(timeout: 6) { return }
         if app.buttons["Get Started"].waitForExistence(timeout: 8) {
             tap(app.buttons["Get Started"], app)
-            tap(onboardingButton(app, "Skip →"), app)
-            tap(onboardingButton(app, "Begin the Tour →"), app)
             tap(app.buttons["Skip"], app)
         }
         tap(onboardingButton(app, "Sign In"), app)

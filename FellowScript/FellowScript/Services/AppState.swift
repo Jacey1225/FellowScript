@@ -36,6 +36,8 @@ final class AppState: ObservableObject {
     /// editor with the verse attached, then clears it. iPhone keeps its sheet.
     @Published var pendingNoteDraft: VerseNoteDraft? = nil
     @Published var pendingChatContact: FSContact? = nil   // set to open a chat from another tab
+    /// Task 20261106-remove-agents-ask-ai: Account's "Open Ask AI" -> Chat tab, Ask AI segment.
+    @Published var pendingAskAiOpen = false
     /// Task 20261012-share-verses-notes-in-chat: a verse/note picked for "Send in
     /// chat". The chat thread for `contact` sends it over the one chat socket
     /// once it has loaded, then clears this. Memory only.
@@ -402,6 +404,7 @@ final class AppState: ObservableObject {
         pendingNoteDraft = nil   // in-memory verse draft must not outlive the session
         clearPendingInvite()
         clearShareLinks()
+        ProfileCache.shared.clear()   // task 20261030-user-profiles: memory-only, never outlives the session
         storedUserId    = ""
         storedUsername  = ""
         storedEmail     = ""
@@ -551,6 +554,20 @@ final class AppState: ObservableObject {
     /// than doing nothing on tap.
     func joinRingedCall(devotionId: String, groupId: String) {
         guard let uid = currentUser?.user_id, !devotionId.isEmpty, !groupId.isEmpty else { return }
+        // Task 20261028-dm-direct-call: friend DMs have no session list any
+        // more (DM calls are ad hoc rows the list endpoint never returns), and
+        // the join path needs only the session id. Join with a minimal session
+        // and land on the DM thread; a stale ring for an old scheduled DM
+        // session fails the join (410) and shows the normal join error, never
+        // a crash.
+        if groupId.contains("|") {
+            var session = FSSession()
+            session.id = devotionId
+            session.group_id = groupId
+            CallController.shared.start(session: session, service: service, userId: uid)
+            openSession(groupId: groupId)
+            return
+        }
         Task { @MainActor in
             let sessions = (try? await service.fetchSessionsForContact(contactId: groupId)) ?? []
             if let session = sessions.first(where: { $0.id == devotionId }) {

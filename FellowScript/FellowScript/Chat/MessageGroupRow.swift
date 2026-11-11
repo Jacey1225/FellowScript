@@ -216,6 +216,11 @@ struct MessageGroupRow: View {
     // Task 20261012-message-pins: message briefly highlighted after a jump
     // from the Pinned list (nil = none).
     var highlightedMessageId: String? = nil
+    // Task 20261030-profile-everywhere: ids the sender avatar/name need to open a
+    // profile (see ChatProfileHookins.swift). Default = nothing tappable.
+    var profileLookup: ChatProfileLookup = .none
+    /// Chat tour: the viewer's last message, spotlighted by the "press and hold" step.
+    @Environment(\.chatTourAnchorMessageId) private var tourAnchorMessageId
 
     /// Scroll anchor id for one message. Prefixed so it can never collide with
     /// a MessageDisplayGroup row id (a group's id IS its first message's id).
@@ -223,7 +228,11 @@ struct MessageGroupRow: View {
 
     var body: some View {
         if group.isSystem, let line = group.messages.first {
-            systemLine(line)
+            if line.systemKind == "announcement", let card = line.announcement {
+                AnnouncementTimelineRow(message: line, card: card, posterName: line.mine ? "You" : group.senderName)
+            } else {
+                systemLine(line)
+            }
         } else {
             groupBody
         }
@@ -260,6 +269,7 @@ struct MessageGroupRow: View {
         if message.systemKind == "pin" { return "\(who) pinned a message" }
         // Text is built client-side (never from server text), as for pins.
         if message.systemKind == "member_joined" { return "\(who) joined the group" }
+        if message.systemKind == "announcement" { return "\(who) posted an announcement" }
         return message.text.isEmpty ? who : "\(who) \(message.text)"
     }
 
@@ -277,6 +287,7 @@ struct MessageGroupRow: View {
                     Text(group.senderName)
                         .font(.inter(Theme.fontSM, weight: .bold))
                         .foregroundColor(Theme.parchment)
+                        .senderProfileTap(group: group, lookup: profileLookup, expandHitArea: false)
                     if !group.timeLabel.isEmpty {
                         Text(group.timeLabel)
                             .font(.inter(Theme.fontXXS))
@@ -364,6 +375,7 @@ struct MessageGroupRow: View {
                             .font(.inter(Theme.fontBody))
                             .foregroundColor(Theme.parchment)
                             .multilineTextAlignment(.leading)
+                            .fixedSize(horizontal: false, vertical: true)
                             .padding(.horizontal, 14)
                             .padding(.bottom, 10)
                             .padding(.top, isMedia ? 6 : 0)
@@ -374,11 +386,16 @@ struct MessageGroupRow: View {
                     .font(.inter(Theme.fontBody))
                     .foregroundColor(Theme.parchment)
                     .multilineTextAlignment(.leading)
+                    // Reply body must never clip: claim full wrapped height
+                    // (the quote's fixedSize row otherwise squeezes it to one
+                    // line with a tail ellipsis).
+                    .fixedSize(horizontal: false, vertical: true)
                     .padding(.horizontal, 14)
                     .padding(.vertical, 10)
             }
         }
         }
+        .fixedSize(horizontal: false, vertical: true)
         .background(
             group.isOutgoing
                 ? Theme.gold.opacity(0.18)
@@ -397,6 +414,7 @@ struct MessageGroupRow: View {
         )
         .accessibilityLabel(accessibilityLabel(for: message))
         .messageActions(actionsFor?(message) ?? [], reactions: reactionsFor?(message))
+        .onboardingFrameAnchor(message.id == tourAnchorMessageId ? .ownMessage : nil)
     }
 
     /// Extends the pre-existing `"{sender}: {text}"` pattern with a
@@ -497,7 +515,8 @@ struct MessageGroupRow: View {
             }
         }
         .frame(width: 32, height: 32)
-        .accessibilityHidden(true)
+        // Decorative unless tappable; SenderProfileTap hides it when it is not.
+        .senderProfileTap(group: group, lookup: profileLookup)
     }
 }
 

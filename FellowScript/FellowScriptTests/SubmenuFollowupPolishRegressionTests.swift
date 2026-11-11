@@ -89,58 +89,28 @@ final class SubmenuFollowupPolishRegressionTests: XCTestCase {
     }
 
     func test_eventSetupSheet_recurrenceScreenAndDetailsScreen_havePrincipalTitleItems() throws {
+        // TA1: one centered title for all three steps, from the FSFormScaffold nav bar.
         let source = try readSource("FellowScript/Account/EventSetupSheet.swift")
-        guard let recRange = source.range(of: "private var recurrenceScreen: some View {") else {
-            XCTFail("recurrenceScreen not found"); return
-        }
-        let recEnd = source.range(of: "private func recurrenceCard", range: recRange.upperBound..<source.endIndex)?.lowerBound ?? source.endIndex
-        let recBody = String(source[recRange.upperBound..<recEnd])
-        XCTAssertTrue(recBody.contains("ToolbarItem(placement: .principal)"),
-                      "recurrenceScreen has no trailing item at all, so its default inline title was never truly centered -- needs the same `.principal` fix")
-        XCTAssertTrue(recBody.contains("isEditing ? \"Edit scheduled devotion\" : \"New scheduled devotion\""))
-
-        guard let detRange = source.range(of: "private var detailsScreen: some View {") else {
-            XCTFail("detailsScreen not found"); return
-        }
-        let detEnd = source.range(of: "// ── Helpers", range: detRange.upperBound..<source.endIndex)?.lowerBound ?? source.endIndex
-        let detBody = String(source[detRange.upperBound..<detEnd])
-        XCTAssertTrue(detBody.contains("ToolbarItem(placement: .principal)"),
-                      "detailsScreen must keep 'Details' centered now that its trailing pill is wider than the old plain-text button")
-        XCTAssertTrue(detBody.contains("Text(\"Details\")"))
+        XCTAssertTrue(source.contains("FSFormScaffold(") &&
+                      source.contains("title: isEditing ? \"Edit scheduled devotion\" : \"New scheduled devotion\""),
+                      "EventSetupSheet's centered title comes from the FSForm scaffold nav bar")
     }
 
     // MARK: - B. EventSetupSheet.detailsScreen: DEVOTION TIME + GROUP merged into one row
 
     func test_eventSetupSheet_detailsScreen_eventTimeAndGroupAreOneRow() throws {
+        // TA1: Group and Time share ONE Details card on the WHO & WHEN step.
         let source = try readSource("FellowScript/Account/EventSetupSheet.swift")
-        guard let detRange = source.range(of: "private var detailsScreen: some View {") else {
-            XCTFail("detailsScreen not found"); return
+        guard let start = source.range(of: "FSFormCard(title: \"Details\") {"),
+              let end = source.range(of: "FSFormCard(title: \"Permissions\")", range: start.upperBound..<source.endIndex) else {
+            XCTFail("Details card or Permissions card not found"); return
         }
-        let detEnd = source.range(of: "// ── Helpers", range: detRange.upperBound..<source.endIndex)?.lowerBound ?? source.endIndex
-        let detBody = String(source[detRange.upperBound..<detEnd])
-
-        guard let hstackRange = detBody.range(of: "HStack(alignment: .top, spacing: Theme.spacingMD) {") else {
-            XCTFail("the row-combining HStack (item 2's fix) was not found in detailsScreen"); return
-        }
-        guard let closingCardRange = detBody.range(of: ".fsCard()", range: hstackRange.upperBound..<detBody.endIndex) else {
-            XCTFail(".fsCard() closing the merged row not found after the HStack"); return
-        }
-        let row = String(detBody[hstackRange.lowerBound..<closingCardRange.upperBound])
-
-        XCTAssertTrue(row.contains("DEVOTION TIME"), "DEVOTION TIME must be inside the row-combining HStack")
-        XCTAssertTrue(row.contains("\"GROUP\""), "GROUP must be inside the same row-combining HStack as DEVOTION TIME")
-        // Only the one widgetCard() (closing this shared row) should appear
-        // inside the HStack's own body -- confirms DEVOTION TIME and GROUP are
-        // not still each individually wrapped in their own widgetCard().
-        let rowBodyOnly = String(row.dropLast(".fsCard()".count))
-        XCTAssertFalse(rowBodyOnly.contains(".fsCard()"),
-                       "DEVOTION TIME and GROUP must share exactly one widgetCard() (the row's own), not carry individual ones")
-        // The separate PROMPT card must come strictly after this merged row.
-        guard let promptRange = detBody.range(of: "FSEyebrow(title: \"PROMPT\")") else {
-            XCTFail("PROMPT card not found"); return
-        }
-        XCTAssertTrue(closingCardRange.upperBound <= promptRange.lowerBound,
-                      "the merged DEVOTION TIME/GROUP row's widgetCard() must close before the separate PROMPT card begins")
+        let card = String(source[start.upperBound..<end.lowerBound])
+        XCTAssertTrue(card.contains("Text(\"Group\")"), "Group must sit inside the Details card")
+        XCTAssertTrue(card.contains("Text(\"Time\")") && card.contains("DatePicker(\"Time\""), "Time must sit inside the same Details card")
+        XCTAssertFalse(card.contains("FSFormCard("), "Group and Time must share the one card, not carry individual cards")
+        // The separate Prompt card belongs to the next step.
+        XCTAssertTrue(source.contains("private var promptCard: some View {") && source.contains("FSFormCard(title: \"Prompt\")"))
     }
 
     func test_eventSetupSheet_detailsScreen_dateAndMenuBindingsUnchanged() throws {
@@ -176,17 +146,11 @@ final class SubmenuFollowupPolishRegressionTests: XCTestCase {
     }
 
     func test_eventSetupSheet_recurrenceScreen_usesGhostChipCancel_notPlainButton() throws {
+        // TA1: Cancel (step 1) / Back is the pinned bar's ghost-pill secondary.
         let source = try readSource("FellowScript/Account/EventSetupSheet.swift")
-        guard let recRange = source.range(of: "private var recurrenceScreen: some View {") else {
-            XCTFail("recurrenceScreen not found"); return
-        }
-        let recEnd = source.range(of: "private func recurrenceCard", range: recRange.upperBound..<source.endIndex)?.lowerBound ?? source.endIndex
-        let recBody = String(source[recRange.upperBound..<recEnd])
-        XCTAssertFalse(recBody.contains(#"Button("Cancel")"#),
-                       "EventSetupSheet.recurrenceScreen must no longer use a plain string-literal Button(\"Cancel\")")
-        XCTAssertTrue(recBody.contains("cancelGhostChip"), "recurrenceScreen must use the file's ghost-chip Cancel label")
-        XCTAssertTrue(recBody.contains("Button(action: { dismiss() }) { cancelGhostChip }"),
-                      "recurrenceScreen's Cancel must still call dismiss()")
+        XCTAssertFalse(source.contains(#"Button("Cancel")"#), "EventSetupSheet must not use a plain Button(\"Cancel\")")
+        XCTAssertTrue(source.contains(#"secondaryTitle: step == 0 ? "Cancel" : "Back""#), "the pinned bar secondary is Cancel on step 1, Back after")
+        XCTAssertTrue(source.contains("if step == 0 { dismiss() }"), "Cancel must still call dismiss()")
     }
 
     // MARK: - D. Primary actions use PillButton (gold-gradient recipe), not a plain Button
@@ -216,35 +180,24 @@ final class SubmenuFollowupPolishRegressionTests: XCTestCase {
 
     func test_eventSetupSheet_detailsScreen_updateOrSave_usesPillButton() throws {
         let source = try readSource("FellowScript/Account/EventSetupSheet.swift")
-        guard let detRange = source.range(of: "private var detailsScreen: some View {") else {
-            XCTFail("detailsScreen not found"); return
-        }
-        let detEnd = source.range(of: "// ── Helpers", range: detRange.upperBound..<source.endIndex)?.lowerBound ?? source.endIndex
-        let detBody = String(source[detRange.upperBound..<detEnd])
-        XCTAssertTrue(detBody.contains(#"primaryTitle: isEditing ? "Update" : "Save""#),
-                      "Update/Save must use PillButton's gold-gradient recipe, matching the other three sheets' primary actions")
-        XCTAssertFalse(detBody.contains(#"Button("Update")"#) && detBody.contains(#"Button("Save")"#))
-        // A later, legitimate double-tap-guard fix (task
-        // 20260905-heartbeat-timezone-duplicate-bugs) prepended `isSaving ||`
-        // to this predicate; the original sub-expression this task cares
-        // about is still present as a component of the new predicate, so the
-        // assertion now checks for it as a suffix rather than requiring the
-        // exact original full-string match.
-        XCTAssertTrue(detBody.contains("isSaving || prompt.trimmingCharacters(in: .whitespaces).isEmpty || selectedAgentId.isEmpty)"),
-                      "disabled predicate on Update/Save must still include the original empty-prompt/missing-agent guard (now combined with the later isSaving guard)")
+        XCTAssertTrue(source.contains(#"primaryTitle: lastStep ? (isEditing ? "Update" : "Save") : "Next""#),
+                      "Update/Save is the pinned bar's gold primary, Next on earlier steps")
+        XCTAssertFalse(source.contains(#"Button("Update")"#) || source.contains(#"Button("Save")"#))
+        XCTAssertTrue(source.contains("primaryDimmed: primaryDimmed"), "primary dims via the sheet's predicate")
+        XCTAssertTrue(source.contains("default: return needsDays || promptTrimmed.isEmpty || selectedAgentId.isEmpty"),
+                      "Save/Update must still be dimmed on empty prompt or missing agent")
+        XCTAssertTrue(source.contains("if isSaving { return true }"), "and while a save is in flight")
     }
 
     // MARK: - F. Out-of-scope guard: dayPickerScreen's Next and TimeZonePickerSheet untouched
 
     func test_dayPickerScreenNext_and_timeZonePickerSheetCancel_notSweptIntoThisTask() throws {
+        // TA1 replaced the old dayPickerScreen with the inline REPEAT step; the
+        // day pickers still exist and the Next button is the pinned bar's.
         let eventSource = try readSource("FellowScript/Account/EventSetupSheet.swift")
-        guard let dayRange = eventSource.range(of: "private var dayPickerScreen: some View {") else {
-            XCTFail("dayPickerScreen not found"); return
-        }
-        let dayEnd = eventSource.range(of: "private var weekdayPicker", range: dayRange.upperBound..<eventSource.endIndex)?.lowerBound ?? eventSource.endIndex
-        let dayBody = String(eventSource[dayRange.upperBound..<dayEnd])
-        XCTAssertTrue(dayBody.contains(#"Button("Next") { path.append(.details) }"#),
-                      "dayPickerScreen's Next button was explicitly optional/out-of-scope and should be left as-is")
+        XCTAssertFalse(eventSource.contains("dayPickerScreen"), "the old separate day-picker screen is gone")
+        XCTAssertTrue(eventSource.contains("private var weekdayPicker") && eventSource.contains("private var monthDayPicker"),
+                      "weekday and month-day pickers must survive inline in the REPEAT step")
 
         let accountSource = try readSource("FellowScript/Account/AccountSupportingViews.swift")
         guard let tzRange = accountSource.range(of: "struct TimeZonePickerSheet: View {") else {

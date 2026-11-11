@@ -43,6 +43,7 @@ export default function AgentChatPanel() {
     user, agents, agentMessages, activeAgent, agentThinking,
     onOpenAgent, onCloseAgent, onNewAgent, sendAgentMessage,
     curBook, curChapter, curVerse, allNotes, onNavigateVerse,
+    askAi, onOpenAskAi,
     multiChat, chats, chatsLoading, chatsError, activeChatId, createChatError, creatingChat,
     historyError, historyLoading,
     onSelectChat, onCreateChat, onRefreshChats, onRetryHistory, onClearChatErrors,
@@ -50,6 +51,7 @@ export default function AgentChatPanel() {
 
   // Multi-chat bundle (flag `agent_chats`); undefined keeps the legacy thread.
   const chatUi = multiChat ? {
+    askAi: !!askAi,
     chats: chats || [], chatsLoading, chatsError, activeChatId, createChatError, creatingChat,
     historyError, historyLoading,
     onSelectChat, onCreateChat, onRefreshChats, onRetryHistory, onClearChatErrors,
@@ -59,6 +61,8 @@ export default function AgentChatPanel() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
+      {/* Ask AI is a single built-in assistant: no switcher strip. */}
+      {!askAi && (
       <div style={{
         display: 'flex', alignItems: 'center', gap: '0.4rem',
         padding: '0.7rem 0.7rem', borderBottom: '1px solid rgba(255,255,255,0.072)',
@@ -72,6 +76,7 @@ export default function AgentChatPanel() {
           New
         </Button>
       </div>
+      )}
 
       <div style={{ flex: 1, minHeight: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
         {activeAgent ? (
@@ -93,11 +98,19 @@ export default function AgentChatPanel() {
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', padding: '1.2rem', textAlign: 'center', gap: '0.8rem' }}>
             <RobotOutlined style={{ fontSize: 22, color: 'rgba(255,198,26,0.35)' }} />
             <Text style={{ fontSize: '0.72rem', color: 'rgba(242,242,242,0.35)', lineHeight: 1.6 }}>
-              {enabledAgents.length === 0
+              {askAi
+                ? 'Chat with Ask AI, your AI study companion.'
+                : enabledAgents.length === 0
                 ? 'Start a conversation with your spiritual guide.'
                 : 'Choose an agent above to continue chatting.'}
             </Text>
-            {enabledAgents.length === 0 && (
+            {askAi && (
+              <Button size="small" icon={<PlusOutlined />} onClick={onOpenAskAi}
+                style={{ background: 'linear-gradient(135deg, var(--gold-light), var(--gold) 60%, var(--gold-dim))', border: 'none', color: 'var(--ink)', fontFamily: "'Space Grotesk', sans-serif", fontWeight: 600, borderRadius: 999 }}>
+                Start a chat
+              </Button>
+            )}
+            {!askAi && enabledAgents.length === 0 && (
               <Button size="small" icon={<PlusOutlined />} onClick={onNewAgent}
                 style={{ background: 'linear-gradient(135deg, var(--gold-light), var(--gold) 60%, var(--gold-dim))', border: 'none', color: 'var(--ink)', fontFamily: "'Space Grotesk', sans-serif", fontWeight: 600, borderRadius: 999 }}>
                 New Agent Chat

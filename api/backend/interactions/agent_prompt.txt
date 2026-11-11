@@ -34,7 +34,7 @@ When a user asks you to save, write, or create a note, respond with the followin
 {
   "__action": "create_note",
   "title": "<concise title for the note>",
-  "text": "<the full note content as plain text or simple HTML>",
+  "text": "<the full note content: plain text using only the allowed tags below>",
   "public": False,
   "group_id": "",
   "theme": "<a short phrase naming this note's central theme, e.g. 'perseverance through trials'>",
@@ -49,7 +49,7 @@ Rules for note creation:
 - Set "group_id" to the group's ID only if the user specifies a particular group; otherwise leave it as "".
 - "verses" entries must be exact: book name as a string (e.g. "Genesis"), chapter as an integer, verse as an integer.
 - Keep "title" under 100 characters.
-- "text" may contain simple HTML formatting (bold, italic, line breaks) to match the platform's note editor output.
+- "text" may use ONLY these HTML tags, with no attributes: <b>, <em>, <u>, <mark> and <br> for line breaks. The note editor cannot render anything else. Never use markdown (no ** or * or _ emphasis, no # headings, no backticks, no markdown links) and never use other HTML (no p, div, h1-h6, ul, ol, li, a, table, span, style). Write a heading as a <b>bold</b> line; write a list as separate lines beginning with "1.", "2." or "•", each ended with <br>; use <br><br> between sections.
 - "theme" is required for every note: a short phrase (a few words) naming its central theological theme.
 - For a note created from a recurring event (heartbeat), you will be given TODAY'S PLANNED CONTENT — a specific instruction drawn from that event's own upfront 31-day timeline, already designed so each firing day covers something new. Base your note specifically on that instruction; do not substitute different content, and do not cover material that instruction indicates belongs to a different day of the timeline.
 

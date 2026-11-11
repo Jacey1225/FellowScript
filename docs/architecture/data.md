@@ -196,6 +196,8 @@ be updated to describe it once it lands.
 
 ### `agents` / `agent_heartbeats`
 
+`agents.is_default` (task 20261106-remove-agents-ask-ai, additive) marks each user's single canonical agent, enforced by the partial unique index `idx_agents_one_default_per_user`. The operator-run `scripts/merge_agents_to_default.py` re-points chats, messages and heartbeats onto it and copies old rows into `agents_archive` (not a boot table); old `agents` rows are never deleted because the FKs cascade. See [Ask AI](../design/ask-ai.md#data-model-and-migration).
+
 | Table | Key columns |
 |---|---|
 | `agents` | `_id`, `user_id FK→users ON DELETE CASCADE`, `config JSONB` |

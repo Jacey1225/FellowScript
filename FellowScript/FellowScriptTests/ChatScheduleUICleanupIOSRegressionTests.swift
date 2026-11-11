@@ -107,6 +107,9 @@ final class HeaderAvatarBloomRemovalRegressionTests: XCTestCase {
     }
 
     func test_source_headerAvatarBlock_backButtonAndSessionsPillUnaffected() throws {
+        // UPDATED for task 20261028-dm-direct-call (Jacey option a): the friend-DM
+        // header's trailing pill is now Call (same slot, same PillButton); the DM
+        // Sessions pill is gone. Group Sessions live in the info chip row.
         // Task 20260920-chat-sessions-submenu renamed this pill "Schedule" ->
         // "Sessions" (now opening the sessions submenu instead of the
         // create-session sheet directly) -- updated here to the new intended
@@ -115,8 +118,10 @@ final class HeaderAvatarBloomRemovalRegressionTests: XCTestCase {
         let header = try headerSource()
         XCTAssertTrue(header.contains(#"RoundIconButton(systemIcon: "chevron.left")"#),
                       "removing the avatar bloom must not have disturbed the back button")
-        XCTAssertTrue(header.contains(#"PillButton(title: "Sessions", systemIcon: "calendar")"#),
-                      "removing the avatar bloom must not have disturbed the header's own \"Sessions\" pill")
+        XCTAssertTrue(header.contains(#"PillButton(title: "Call", systemIcon: "phone.fill")"#),
+                      "removing the avatar bloom must not have disturbed the header's trailing Call pill")
+        XCTAssertFalse(header.contains(#"PillButton(title: "Sessions""#),
+                       "the friend-DM Sessions pill is removed")
     }
 }
 

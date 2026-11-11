@@ -25,7 +25,7 @@ All signup paths automatically create a `plan_type='free'` subscription row for 
 
 | Method | Route | Description |
 |---|---|---|
-| GET | `/user/{user_id}` | Get user profile (excludes `hash_pass`) |
+| GET | `/user/{user_id}` | Public identity of any user: for someone else only `user_id`, `username`, `profile_photo_url` (plus blank `email`, `mfa_enabled`, `friend_requests`, `suspended_at` kept for old decoders); never `bio`. The owner gets their full record (no `hash_pass`) plus `bio`. See User profiles below. |
 | PUT | `/user/{user_id}` | Update `username`, `email`, `plain_pass`, or `timezone` (IANA name, e.g. `America/Los_Angeles`; validated, drives the nightly backup schedule) |
 | DELETE | `/user/{user_id}` | Permanently delete account and all owned data |
 
@@ -129,15 +129,25 @@ may still be populated.
 
 ---
 
+### Announcements in chat (task 20261030-chat-announcements)
+
+Behind the default-OFF flag `chat_announcements` (`features.chat_announcements` in `/app/capabilities`). Groups only.
+
+- `POST /groups/{user_id}/{group_id}/announcements` takes a new optional `post_to_chat` (boolean). `true` also publishes the announcement as a line in the group timeline once it is published (immediately, or at `publish_at`). `422` while the flag is off for the caller. Everything else (member-only 403, free-plan 403 body, 422 validation) is unchanged. Edit, delete and restore are unchanged; the line follows the announcement (an edit shows in place, a deleted announcement's line disappears and returns on restore within the grace window).
+- `GET /groups/{user_id}/{group_id}/messages` (legacy and paged): with the flag on for the caller, announcement lines are returned with `system_kind: "announcement"`, `announcement_id` and `announcement` (the caller's view of the announcement plus `edited`). With the flag off they are omitted entirely. Older clients that ignore `system_kind` show the line text `posted an announcement`.
+- WebSocket: the line is delivered as a message frame carrying the same three keys (the `announcement` card is viewer-neutral; re-GET the announcement for viewer fields), and `{"type": "announcement_updated", "group_id", "announcement_id", "action"}` tells clients to refetch after an edit, delete or restore.
+- No new endpoints. The announcement push is unchanged and the line sends no push of its own.
+
 ## Friends
 
 | Method | Route | Description |
 |---|---|---|
-| POST | `/friends/{user_id}/request` | Send a friend request |
+| POST | `/friends/{user_id}/request` | Send a friend request by username. Same response whether or not the username exists, is blocked or suspended (no enumeration); `400` for yourself, `429` over the rate limit or the pending-request cap |
 | GET | `/friends/{user_id}/requests` | Incoming friend requests |
-| POST | `/friends/{user_id}/accept/{friend_id}` | Accept a request |
+| POST | `/friends/{user_id}/add?friend_username=` | Accept a request. Requires a pending request from that user; one uniform `404` for unknown, blocked, suspended or no pending request |
+| POST | `/friends/{user_id}/requests/{sender_id}/decline` | Decline an incoming request: the recipient (`user_id`, must be the caller) deletes the pending request from `sender_id`. Always `204`, whether or not a request exists and whether the sender is unknown, malformed, blocked or suspended (no probing). No cooldown on a later re-request. `429` over `friend_decline_hour` in `api/config/profile.json` |
 | DELETE | `/friends/{user_id}/{friend_id}` | Remove a friend |
-| GET | `/friends/{user_id}` | Friend list |
+| GET | `/friends/{user_id}` | Friend list: `user_id`, `username`, `profile_photo_url` (no email) |
 | GET | `/friends/{user_id}/activity` | Friend-activity read surface for the dashboard's Friend Activity hero card: each friend's most recent group note preview, most recent highlight preview (with real verse text), last-active timestamp + activity type (block-respecting both directions), plus a bounded "check in" nudge candidate pool (up to 5 friends gone longest without a direct message). |
 | POST | `/friends/{user_id}/{friend_id}/nudge` | Send a fixed, non-user-authored "come back and study" push notification to a friend. Gated behind `NUDGE_FEATURE_ENABLED` (404 while disabled, as if the route doesn't exist) and rate-limited per sender→recipient pair (`NUDGE_RATE_LIMIT_HOURS`, one nudge per pair per window), plus a coarse `30/minute` per-IP backstop. Triggered client-side from the Dashboard's Friend Activity hero card (one randomly-surfaced check-in candidate) and, as of task `20260922-chat-friend-nudge-button`, from a nudge control on every friend row in the Chat page's friends list (any friend, not just a surfaced candidate) — both surfaces call this same endpoint with an arbitrary `friend_id`. |
 
@@ -201,7 +211,7 @@ Opt-in and flag-gated (`chat_pagination`, off by default; clients read `GET /app
 - `GET /groups/{user_id}/{group_id}/messages?limit=&cursor_timestamp=&cursor_seq=&cursor_id=`: one older page, `{messages, page}`. While the flag is off for the caller this answers `404`. Order of checks: session, `user_id` match, flag (`404`), membership (`403`), `limit` and cursor (`422`, before any SQL), then the query. Rate limited by `pagination.rate_limits.messages_page` in `api/config/chat.json`.
 - `GET /groups/{user_id}/{group_id}/media?kind=&limit=&cursor_timestamp=&cursor_seq=&cursor_id=`: one page of the group's main-chat media (thread media excluded), newest first, `{media, page}`. Each item is `{message_id, kind, thumb_url, url, width, height, duration, sender_id, sender_name, created_at}`. `kind` is a comma list of `image`, `video`, `gif` (default all three; anything else `422`). `url` is a fresh presigned GET for image and video and the provider https URL for gif; `thumb_url` equals `url` for images, the provider preview for gifs and null for videos (no server thumbnail exists). `width`, `height` and `duration` come from client-supplied meta and are null when absent or out of range. Gated by the default-OFF `group_media` flag (capabilities `features.group_media`); while off it answers `404`. Check order: session, `user_id` match, flag (`404`), membership (`403`), `kind`/`limit`/cursor (`422`, before any SQL), then the query. Only the caller's and current, unblocked members' media is returned; soft-deleted rows are excluded. Rate limited by `pagination.rate_limits.messages_page`. The older ungated `GET /groups/{user_id}/{group_id}/gallery` (group info panel) is unchanged.
 - `page` is `{limit, has_more, next_cursor_timestamp, next_cursor_seq, next_cursor_id}`. Pass the three `next_cursor_*` values back as `cursor_timestamp`, `cursor_seq` and `cursor_id` (timestamp and id together or neither; seq optional, default 0). They are null when `has_more` is false.
-- Row shape: `{id, from_user (username), mine, text, timestamp (ISO 8601 UTC, microseconds, Z), attachment_kind, attachment_meta, attachment_url}`. `attachment_url` is a fresh short-lived presigned GET (null when there is no stored attachment); the stored key is never returned.
+- Row shape: `{id, from_user (username), from_user_id, mine, text, timestamp (ISO 8601 UTC, microseconds, Z), attachment_kind, attachment_meta, attachment_url}`. `from_user_id` is the sender's lowercase user id; it is present only when the author is a live user (absent for deleted or system authors), so clients must tolerate its absence. It is already visible in member lists and adds no email or other field; blocked authors' rows are excluded exactly as before. `attachment_url` is a fresh short-lived presigned GET (null when there is no stored attachment); the stored key is never returned.
 - Pages are ordered `timestamp DESC, seq DESC, id DESC` with a keyset predicate, so inserts and deletes never shift older pages. Only the caller's own messages and those of current, unblocked members are returned (blocking is filtered in SQL, so a page never shrinks), and soft-deleted rows are excluded.
 
 ### Direct message history paging (task 20261001-chat-pagination, backend step 4)
@@ -391,9 +401,40 @@ Session"/"Session Starting" pushes above and route its tap-through
 straight into the live join flow instead of just the session detail
 screen.
 
+#### Ring lifecycle (task `20261028-dm-direct-call`)
+
+Every accepted ring (DM calls and group sessions alike, same route) also
+writes a `ring_states` row per `(session, target)` with `status`
+(`ringing`, `answered`, `declined`, `canceled`, `timed_out`) and
+`expires_at = now + RING_TIMEOUT_SECONDS` (45s in repo config; the server
+owns expiry, the client timer is only a fallback). The `/ring` response
+shape is unchanged. Rings only target the user's most recently registered
+VoIP device (one token per user).
+
+- `POST /devotions/ring/respond` — body `{ devotion_id, user_id,
+  target_id, outcome }`, `outcome` one of `answered`/`declined` (only the
+  ringed target) or `canceled` (only the ring's caller). Atomic
+  compare-and-set on `ringing`; a ring that already ended returns its
+  current status with `changed: false`. Caller hang-up sends a VoIP push
+  `{ "action": "ring_cancel", devotion_id, caller_id, reason }` so the
+  target's CallKit UI ends. 404 when the ring is disabled or no ring
+  exists, 403 for a non-party.
+- `GET /devotions/ring/status?devotion_id=&user_id=` — the caller's rings
+  on that session: `{ "rings": { target_id: { status, seconds_left } } }`,
+  so the caller UI can show ringing / declined / no answer.
+- A scheduler job (`ring_expiry`, every 10s) times out unanswered rings
+  and sends the same `ring_cancel` push (`reason: "timed_out"`).
+  `POST /devotions/join-call` by the ringed user also marks the ring
+  `answered`.
+- With `RING_VOIP_ENABLED=false` the ring is a plain alert push: state is
+  still tracked (the caller sees declined/no answer) but no cancel push is
+  sent since there is no CallKit UI.
+
 ---
 
 ## Agent (AI Check-ins)
+
+> Flag `ask_ai_default_agent` (default off): clients use the agent-id-free `/ask-ai/{user_id}/...` routes and the `/agent/{user_id}/{agent_id}/...` routes below become compatibility shims for older builds (ownership still enforced; guessed ids `404`). See [Ask AI](../design/ask-ai.md).
 
 | Method | Route | Description |
 |---|---|---|
@@ -574,7 +615,7 @@ Gated by flags `threads` and `message_delete` (off by default; clients read them
 | POST | `/groups/{user_id}/{group_id}/messages/{message_id}/restore` | Undo your own delete within `undo_seconds` (10). Returns `{ "id" }`. |
 | POST | `/groups/{user_id}/{group_id}/threads` | Start the thread on a message, or open the one that exists. Body `{ "message_id", "title"? }` (blank title is auto-generated, max 80 characters, content filtered: `422`). `201` when created, `200` when it already existed. Returns `{ id, group_id, title, root_preview, root_message_id, root_deleted, reply_count, last_activity_at, created_by (username), created }`. `403 { "code": "terms_reaccept_required" }` when Terms are stale, `409 { "code": "thread_limit" }` at the per-group cap. |
 | GET | `/groups/{user_id}/{group_id}/threads?limit=&cursor_timestamp=&cursor_id=` | Threads, most recently active first (default 20, max 50). `{ "threads": [{ id, title, root_preview (null when the root is deleted), root_deleted, reply_count, last_activity_at, created_by }], "page": {...} }`. Keyset on `(last_activity_at, id)`: `next_cursor_seq` is always null and clients omit `cursor_seq` (sending it is `422`). Threads by creators in a block relationship with the caller are excluded. |
-| GET | `/groups/{user_id}/{group_id}/threads/{thread_id}/messages?limit=&cursor_timestamp=&cursor_seq=&cursor_id=` | One page of a thread's messages: the same `{ messages, page }` envelope, ordering, cursor rules and row shape as the main chat page (`{id, from_user, mine, text, timestamp, attachment_kind, attachment_meta, attachment_url}`) plus `thread_id` on each row. Only messages by the caller and current, unblocked members. |
+| GET | `/groups/{user_id}/{group_id}/threads/{thread_id}/messages?limit=&cursor_timestamp=&cursor_seq=&cursor_id=` | One page of a thread's messages: the same `{ messages, page }` envelope, ordering, cursor rules and row shape as the main chat page (`{id, from_user, from_user_id, mine, text, timestamp, attachment_kind, attachment_meta, attachment_url}`) plus `thread_id` on each row (`from_user_id` as on the main chat page). Only messages by the caller and current, unblocked members. |
 | PUT | `/groups/{user_id}/{group_id}/threads/{thread_id}` | Rename (creator only). Body `{ "title" }`. Returns `{ "id", "title" }`. |
 | DELETE | `/groups/{user_id}/{group_id}/threads/{thread_id}` | Hard-delete a thread with its messages and followers (thread creator or the group owner, `groups.creator_id`; a group with no owner allows only the thread creator). `204` on success; every other case, including a repeat delete, is the uniform `404`. Rate scope `thread_delete` (`threads.delete_rate`). Open sockets of current members get `{ "type": "thread_deleted", "thread_id", "group_id" }`; no push. |
 
@@ -609,3 +650,16 @@ Owner routes (group owner only: creator, still a member, not suspended; everyone
 
 Push (flag `join_request_push`, evaluated for the owner): the owner gets at most one `join_request` push per group per 30 minutes with generic text, and the applicant gets one when approved; data `{ "action": "join_request", "group_id" }`. Notes, usernames and ids never appear in push text.
 <!-- /JRQ -->
+
+## User profiles (task 20261030-user-profiles)
+
+Config: `api/config/profile.json` (validated at startup). Column: `users.bio` (nullable text, added by `schema_ddl/user_bio.py`).
+
+| Method | Path | Notes |
+|---|---|---|
+| GET | `/profiles/{target_id}` | Tiered profile of the signed-in caller's view: `user_id`, `username`, `profile_photo_url`, `relationship.state` (`self`/`friends`/`request_sent`/`request_received`/`none`), `editable`; `bio` (string or null) only for self and friends, absent for strangers. `404` (identical body) for unknown, malformed, suspended or blocked (either direction) targets and for a suspended caller. `429` over the read limits |
+| PUT | `/profile/{user_id}/bio` | Own bio only (`403` otherwise). Body `{"bio": string or null}`, no other fields. NFC-normalised, invisible characters stripped, whitespace collapsed, max `bio_max_length` (160) characters, no links, email addresses or HTML tags, explicit-content filter. `422` with a user-facing message on rejection (never truncated), `429` over the edit limits. `null` or blank clears it |
+| POST | `/profiles/{target_id}/friend-request` | Request by user id; always `204` (same as the username route), `400` for yourself, `429` over limits |
+| POST | `/profiles/{target_id}/friend-accept` | Accept by user id; `204` or the uniform `404` |
+
+`GET /friends/{user_id}/{friend_id}` and `GET /message/messages/{host_user}/` now require an existing friendship and return `friend` as `{user_id, username, profile_photo_url, bio}` (no email); a non-friend gets the same `404` as an unknown or blocked user.

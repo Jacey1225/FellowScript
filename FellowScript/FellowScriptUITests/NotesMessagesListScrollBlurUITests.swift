@@ -92,15 +92,7 @@ final class NotesMessagesListScrollBlurUITests: XCTestCase {
         if getStarted.waitForExistence(timeout: 8) {
             getStarted.tap()
         }
-        let surveySkip = app.buttons["Skip →"]
-        if surveySkip.waitForExistence(timeout: 5) {
-            surveySkip.tap()
-        }
-        let beginTour = app.buttons["Begin the Tour →"]
-        if beginTour.waitForExistence(timeout: 5) {
-            beginTour.tap()
-        }
-        let tourSkip = app.buttons["Skip"]
+        let tourSkip = app.buttons["Skip"]  // survey Skip
         if tourSkip.waitForExistence(timeout: 5) {
             tourSkip.tap()
         }

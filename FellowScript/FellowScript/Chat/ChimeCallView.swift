@@ -61,6 +61,10 @@ final class CallController: ObservableObject {
     // touches `session` (the MAIN session) or the CallKit call.
     let rooms = CallRoomController()
 
+    // Task 20261028-dm-direct-call: caller-side ringing/declined/no-answer
+    // state for DM and group rings (see CallRingTracker.swift).
+    let ring = CallRingTracker()
+
     #if canImport(AmazonChimeSDK)
     let manager = ChimeCallManager()
     #endif
@@ -112,6 +116,9 @@ final class CallController: ObservableObject {
         let endingService = service
         let endingUserId  = userId
 
+        // Caller hang-up while someone is still ringing: cancel those rings so
+        // their CallKit UI is dismissed. Best effort, never blocks ending.
+        ring.cancelOutstandingAndReset()
         // Best-effort room leave + heartbeat stop before teardown; never blocks ending.
         rooms.callEnded()
         // Detach the transcript relay BEFORE leaving so its buffered tail can
@@ -1345,6 +1352,7 @@ struct ChimeCallView: View {
     private func headerStack(topPadding: CGFloat) -> some View {
         VStack(spacing: 0) {
             callHeader(topPadding: topPadding)
+            OutgoingRingBanner(tracker: call.ring, onLeave: { call.end() })
             if manager.screenShare.showsIndicator {
                 ScreenSharePill(onStop: { manager.stopScreenShare() })
                     .padding(.bottom, 8)

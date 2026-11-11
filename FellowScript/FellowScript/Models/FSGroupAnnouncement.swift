@@ -185,11 +185,15 @@ struct FSAnnouncementDraft {
     var poll: Change<FSPollDraft> = .unchanged
     /// Recurring reminders; `.unchanged` omits every repeat key.
     var repeatChange: AnnouncementRepeatChange = .unchanged
+    /// Task 20261030-chat-announcements: create-only opt-in to also post the
+    /// announcement into the group chat timeline. Never sent unless true.
+    var postToChat: Bool = false
     var includePublishAt: Bool = true
     var publishAt: Date?        // nil + includePublishAt on create = publish now
 
     var jsonObject: [String: Any] {
         var o: [String: Any] = ["title": title, "description": description]
+        if postToChat { o["post_to_chat"] = true }
         switch banner {
         case .unchanged: break
         case .removed: o["banner_key"] = NSNull()

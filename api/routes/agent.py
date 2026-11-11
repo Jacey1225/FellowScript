@@ -3,9 +3,10 @@ from backend import content_store
 from backend.interactions.agent import AgentManager, detect_leaked_action_json
 from backend.interactions.groups import GroupsManager
 from backend.interactions import flags
-from backend.interactions.agent_chats import AgentChatStore, ChatLimitError
+from backend.interactions.agent_chats import AgentChatStore, ChatLimitError, ask_ai_enabled, multi_chat_enabled
 from backend.interactions.agent_chats_config import get_agent_chats_config
 from backend.interactions import session_summary_fanout as fanout
+from backend.interactions.note_markup import NoteMarkupError, normalize_note_markup
 from backend.interactions.session_summary_fanout_config import is_fanout_enabled
 from backend.rate_limiting import limiter
 from backend.errors import SaveFailedError, NoSummarizableContentError
@@ -51,6 +52,8 @@ async def agent_ws_endpoint(agent_id: str, user_id: str, websocket: WebSocket):
         return
     db = AgentManager(user_id)
     try:
+        if ask_ai_enabled(user_id) and db.owns_agent(agent_id):
+            agent_id = db.ensure_default_agent()
         await db.connect_agent(agent_id, websocket, websocket.query_params.get("chat_id"))
     finally:
         db.close()
@@ -62,6 +65,10 @@ async def agent_ws_endpoint(agent_id: str, user_id: str, websocket: WebSocket):
 async def get_agents(user_id: str, _: str = Depends(require_match("user_id"))) -> dict:
     db = AgentManager(user_id)
     try:
+        if ask_ai_enabled(user_id):
+            # Compat shim for old clients: exactly one agent, the canonical one.
+            canonical = db.ensure_default_agent()
+            return db.lookup("agents", {"_id": canonical, "user_id": user_id})
         return db.get_user_agents()
     finally:
         db.close()
@@ -71,6 +78,9 @@ async def get_agents(user_id: str, _: str = Depends(require_match("user_id"))) -
 async def create_agent(user_id: str, body: dict, _: str = Depends(require_match("user_id"))) -> dict:
     db = AgentManager(user_id)
     try:
+        if ask_ai_enabled(user_id):
+            # No user-created agents: old clients get the canonical id back.
+            return {"id": db.ensure_default_agent()}
         agent_id = str(uuid.uuid4())
         if not db.insertion("agents", {
             "_id":     agent_id,
@@ -92,6 +102,8 @@ async def update_agent(user_id: str, agent_id: str, body: dict, _: str = Depends
     try:
         if not db.owns_agent(agent_id):
             raise HTTPException(status_code=404, detail="Agent not found")
+        if ask_ai_enabled(user_id):
+            return {"ok": True}  # name/role/enabled are no longer user-editable
         updates = {k: body[k] for k in ("role", "chats", "enabled", "name") if k in body}
         if updates:
             # owns_agent() above already confirmed the row exists, so a
@@ -108,6 +120,8 @@ async def update_agent(user_id: str, agent_id: str, body: dict, _: str = Depends
 async def delete_agent(user_id: str, agent_id: str, _: str = Depends(require_match("user_id"))) -> None:
     db = AgentManager(user_id)
     try:
+        if ask_ai_enabled(user_id):
+            return  # never delete: cascades to chats, messages and heartbeats
         db.delete_agent(agent_id)
     finally:
         db.close()
@@ -117,6 +131,26 @@ async def delete_agent(user_id: str, agent_id: str, _: str = Depends(require_mat
 
 def _chat_not_found() -> HTTPException:
     return HTTPException(status_code=404, detail={"code": "not_found", "message": "Not found"})
+
+
+def _canonical_for(user_id: str, agent_id: str) -> str:
+    """Ask AI on: map an agent id the caller owns to their single canonical
+    agent. An id they do not own is a 404 (never substituted by a default)."""
+    db = AgentManager(user_id)
+    try:
+        if not db.owns_agent(agent_id):
+            raise _chat_not_found()
+        return db.ensure_default_agent()
+    finally:
+        db.close()
+
+
+def _own_default(user_id: str) -> str:
+    db = AgentManager(user_id)
+    try:
+        return db.ensure_default_agent()
+    finally:
+        db.close()
 
 
 def _create_chat_rate() -> str:
@@ -131,12 +165,14 @@ def _chat_user_key(request: Request) -> str:
 def list_chats(user_id: str, agent_id: str, _: str = Depends(require_match("user_id"))) -> dict:
     """Every chat between the caller and this agent, most recent first:
     ``{"chats": [{id, title, created_at, last_message_at}]}``."""
-    if not flags.is_enabled("agent_chats", user_id):
+    if not multi_chat_enabled(user_id):
         raise _chat_not_found()
     db = AgentManager(user_id)
     try:
         if not db.owns_agent(agent_id):
             raise _chat_not_found()
+        if ask_ai_enabled(user_id):
+            agent_id = db.ensure_default_agent()
         return {"chats": AgentChatStore(db).list_chats(agent_id)}
     finally:
         db.close()
@@ -147,12 +183,18 @@ def list_chats(user_id: str, agent_id: str, _: str = Depends(require_match("user
 def create_chat(request: Request, response: Response, user_id: str, agent_id: str,
                 _: str = Depends(require_match("user_id"))) -> dict:
     """Start a new, empty chat with this agent. 409 ``chat_limit`` at the cap."""
-    if not flags.is_enabled("agent_chats", user_id):
+    return _create_chat_impl(user_id, agent_id)
+
+
+def _create_chat_impl(user_id: str, agent_id: str) -> dict:
+    if not multi_chat_enabled(user_id):
         raise _chat_not_found()
     db = AgentManager(user_id)
     try:
         if not db.owns_agent(agent_id):
             raise _chat_not_found()
+        if ask_ai_enabled(user_id):
+            agent_id = db.ensure_default_agent()
         try:
             chat = AgentChatStore(db).create_chat(agent_id)
         except ChatLimitError:
@@ -171,12 +213,14 @@ async def get_messages(user_id: str, agent_id: str, chat_id: str | None = None,
     agent) or 404 (never a fallback). A chat_id with the flag off is 404."""
     db = AgentManager(user_id)
     try:
-        if not flags.is_enabled("agent_chats", user_id):
+        if not multi_chat_enabled(user_id):
             if chat_id:
                 raise _chat_not_found()
             return db.get_messages(agent_id)
         if not db.owns_agent(agent_id):
             raise _chat_not_found()
+        if ask_ai_enabled(user_id):
+            agent_id = db.ensure_default_agent()
         store = AgentChatStore(db)
         resolved = store.resolve(agent_id, chat_id)
         if resolved is None:
@@ -188,6 +232,8 @@ async def get_messages(user_id: str, agent_id: str, chat_id: str | None = None,
 
 @agent_router.delete("/{user_id}/{agent_id}/messages/{message_id}", status_code=204)
 async def delete_message(user_id: str, agent_id: str, message_id: str, _: str = Depends(require_match("user_id"))) -> None:
+    if ask_ai_enabled(user_id):
+        _canonical_for(user_id, agent_id)
     db = AgentManager(user_id)
     try:
         db.delete_message(message_id)
@@ -199,8 +245,15 @@ async def delete_message(user_id: str, agent_id: str, message_id: str, _: str = 
 
 @agent_router.get("/{user_id}/{agent_id}/heartbeats")
 async def get_heartbeats(user_id: str, agent_id: str, _: str = Depends(require_match("user_id"))) -> list:
+    ask_ai = ask_ai_enabled(user_id)
+    if ask_ai:
+        _canonical_for(user_id, agent_id)
     db = AgentManager(user_id)
     try:
+        if ask_ai:
+            # One default AI: every scheduled devotion the caller owns, regardless of
+            # which legacy agent row it still points at (user-scoped read).
+            return [{"_id": k, **v} for k, v in db.lookup(db.hb_table, {"user_id": user_id}).items()]
         return db.get_heartbeats(agent_id)
     finally:
         db.close()
@@ -229,6 +282,17 @@ async def update_heartbeat(user_id: str, heartbeat_id: str, body: dict, _: str =
         db.close()
 
 
+def _heartbeat_agent_id(user_id: str, heartbeat_id: str) -> str:
+    db = AgentManager(user_id)
+    try:
+        row = db.lookup(db.hb_table, {"_id": heartbeat_id, "user_id": user_id})
+        if not row:
+            raise _chat_not_found()
+        return str(list(row.values())[0]["agent_id"])
+    finally:
+        db.close()
+
+
 @agent_router.post("/{user_id}/{agent_id}/{heartbeat_id}/commit_heartbeat")
 async def commit_heartbeat(user_id: str, agent_id: str, heartbeat_id: str, body: dict, _: str = Depends(require_match("user_id"))):
     # A fired heartbeat persists its generated content as a note, so it counts
@@ -251,6 +315,11 @@ async def commit_heartbeat(user_id: str, agent_id: str, heartbeat_id: str, body:
     # identical `_call_api` call and scheduler.py's `_fire_due_heartbeats`
     # offload of this same client-triggerable defect's server-triggered
     # twin.
+    if ask_ai_enabled(user_id):
+        # Ownership of the path agent is verified; the heartbeat then keeps whatever
+        # agent row it points at (user-scoped lookup, 404 if it is not the caller's).
+        _canonical_for(user_id, agent_id)
+        agent_id = _heartbeat_agent_id(user_id, heartbeat_id)
     loop = asyncio.get_running_loop()
     gate = await loop.run_in_executor(None, functools.partial(check_limit, user_id, "notes"))
     if not gate["allowed"]:
@@ -279,6 +348,8 @@ async def commit_heartbeat(user_id: str, agent_id: str, heartbeat_id: str, body:
 
 @agent_router.post("/{user_id}/{agent_id}/heartbeat", status_code=201)
 async def add_heartbeat(user_id: str, agent_id: str, body: dict, _: str = Depends(require_match("user_id"))) -> dict:
+    if ask_ai_enabled(user_id):
+        agent_id = _canonical_for(user_id, agent_id)
     db = AgentManager(user_id)
     try:
         # `idempotency_key`: optional client-generated token (task
@@ -347,6 +418,8 @@ async def add_heartbeat(user_id: str, agent_id: str, body: dict, _: str = Depend
 
 @agent_router.delete("/{user_id}/{agent_id}/heartbeat/{heartbeat_id}", status_code=204)
 async def delete_heartbeat(user_id: str, agent_id: str, heartbeat_id: str, _: str = Depends(require_match("user_id"))) -> None:
+    if ask_ai_enabled(user_id):
+        _canonical_for(user_id, agent_id)
     db = AgentManager(user_id)
     try:
         db.delete_heartbeat(heartbeat_id)
@@ -407,6 +480,8 @@ async def summarize_session(user_id: str, agent_id: str, body: dict, _: str = De
     # being invoked either way.
     # Session summaries are a paid-only feature (task 20261002-free-plan-limits-ui):
     # checked first, fail closed, so a free user never reaches the model.
+    if ask_ai_enabled(user_id):
+        _canonical_for(user_id, agent_id)
     paid_gate = check_paid_only(user_id, "session_summaries")
     if not paid_gate["allowed"]:
         raise HTTPException(status_code=403, detail=paid_gate)
@@ -527,7 +602,16 @@ async def summarize_session(user_id: str, agent_id: str, body: dict, _: str = De
     prompt_lines += [
         "",
         "Write a concise summary covering key scriptural insights, main takeaways, "
-        "and actionable next steps for the group. Format it as a readable study note.",
+        "and actionable next steps for the group. Make it a readable study note.",
+        "",
+        # The note editor cannot render markdown (task 20261104-ai-note-format-normalizer);
+        # the server also normalizes the reply, this is the first line of defense.
+        "Formatting: write plain text. The only markup allowed is <b>bold</b>, "
+        "<em>italic</em>, <u>underline</u>, <mark>highlight</mark> and <br> for line "
+        "breaks. Do NOT use markdown (no ** or * or _ emphasis, no # headings, no "
+        "backticks, no markdown links). Write a heading as a <b>bold</b> line. Write "
+        "lists as separate lines starting with \"1.\", \"2.\" or \"•\", each line "
+        "ended with <br>, and use <br><br> between sections.",
         "",
         # Bug fix (task 20260915-session-summary-note-fixes): agent_prompt.txt's
         # shared system prompt instructs the model to respond with a
@@ -546,8 +630,7 @@ async def summarize_session(user_id: str, agent_id: str, body: dict, _: str = De
 
     db = AgentManager(user_id)
     try:
-        result     = db.lookup("agents", {"_id": agent_id})
-        agent_role = list(result.values())[0].get("role", "") if result else ""
+        agent_role = db._agent_role(agent_id)
         try:
             summary = db._call_api(agent_role, [{"role": "user", "content": "\n".join(prompt_lines)}])
         except Exception as e:
@@ -578,6 +661,17 @@ async def summarize_session(user_id: str, agent_id: str, body: dict, _: str = De
                     agent_id, len(summary),
                 )
                 raise HTTPException(status_code=502, detail="Could not generate session summary.")
+
+        # Task 20261104-ai-note-format-normalizer: notes render as editor HTML, not
+        # markdown. Normalize ONCE here (after the leaked-JSON salvage, before the
+        # fan-out and the direct INSERT) so every recipient stores identical,
+        # editor-renderable text. Nothing renderable left -> fail the request
+        # (throw-not-fabricate), never save blank or raw LLM text.
+        try:
+            summary = normalize_note_markup(summary)
+        except NoteMarkupError as e:
+            logger.error("summarize_session normalization failed for agent %s: %s", agent_id, e)
+            raise HTTPException(status_code=502, detail="Could not generate session summary.")
 
         # `public` here means group-edit permission (task
         # 20260903-notes-public-repurpose), not visibility -- visibility of
@@ -618,3 +712,89 @@ async def summarize_session(user_id: str, agent_id: str, body: dict, _: str = De
         return {"ok": True, "note_id": note_id}
     finally:
         db.close()
+
+
+# ── Ask AI (agent-id-free surface, flag ask_ai_default_agent) ────────────────
+# Every route is a uniform 404 with the flag off. The server resolves the
+# caller's single canonical agent; clients never send or learn an agent id.
+
+ask_ai_router = APIRouter(prefix="/ask-ai")
+
+
+def _require_ask_ai(user_id: str) -> None:
+    if not ask_ai_enabled(user_id):
+        raise _chat_not_found()
+
+
+@ask_ai_router.websocket("/ws/{user_id}")
+async def ask_ai_ws(user_id: str, websocket: WebSocket):
+    session_user = await authenticate_ws(websocket)
+    if session_user is None or session_user != user_id:
+        await websocket.close(code=4401)
+        return
+    if not ask_ai_enabled(user_id):
+        await websocket.close(code=4404)
+        return
+    db = AgentManager(user_id)
+    try:
+        await db.connect_agent(db.ensure_default_agent(), websocket, websocket.query_params.get("chat_id"))
+    finally:
+        db.close()
+
+
+@ask_ai_router.get("/{user_id}/chats")
+def ask_ai_list_chats(user_id: str, _: str = Depends(require_match("user_id"))) -> dict:
+    _require_ask_ai(user_id)
+    return list_chats(user_id, _own_default(user_id), user_id)
+
+
+@ask_ai_router.post("/{user_id}/chats", status_code=201)
+@limiter.shared_limit(_create_chat_rate, scope="agent_chat_create", key_func=_chat_user_key)
+def ask_ai_create_chat(request: Request, response: Response, user_id: str,
+                       _: str = Depends(require_match("user_id"))) -> dict:
+    _require_ask_ai(user_id)
+    return _create_chat_impl(user_id, _own_default(user_id))
+
+
+@ask_ai_router.get("/{user_id}/messages")
+async def ask_ai_messages(user_id: str, chat_id: str | None = None,
+                          _: str = Depends(require_match("user_id"))) -> dict:
+    _require_ask_ai(user_id)
+    return await get_messages(user_id, _own_default(user_id), chat_id, user_id)
+
+
+@ask_ai_router.delete("/{user_id}/messages/{message_id}", status_code=204)
+async def ask_ai_delete_message(user_id: str, message_id: str, _: str = Depends(require_match("user_id"))) -> None:
+    _require_ask_ai(user_id)
+    await delete_message(user_id, _own_default(user_id), message_id, user_id)
+
+
+@ask_ai_router.get("/{user_id}/heartbeats")
+async def ask_ai_heartbeats(user_id: str, _: str = Depends(require_match("user_id"))) -> list:
+    _require_ask_ai(user_id)
+    return await get_heartbeats(user_id, _own_default(user_id), user_id)
+
+
+@ask_ai_router.post("/{user_id}/heartbeat", status_code=201)
+async def ask_ai_add_heartbeat(user_id: str, body: dict, _: str = Depends(require_match("user_id"))) -> dict:
+    _require_ask_ai(user_id)
+    return await add_heartbeat(user_id, _own_default(user_id), body, user_id)
+
+
+@ask_ai_router.delete("/{user_id}/heartbeat/{heartbeat_id}", status_code=204)
+async def ask_ai_delete_heartbeat(user_id: str, heartbeat_id: str, _: str = Depends(require_match("user_id"))) -> None:
+    _require_ask_ai(user_id)
+    await delete_heartbeat(user_id, _own_default(user_id), heartbeat_id, user_id)
+
+
+@ask_ai_router.post("/{user_id}/heartbeats/{heartbeat_id}/commit")
+async def ask_ai_commit_heartbeat(user_id: str, heartbeat_id: str, body: dict,
+                                  _: str = Depends(require_match("user_id"))):
+    _require_ask_ai(user_id)
+    return await commit_heartbeat(user_id, _own_default(user_id), heartbeat_id, body, user_id)
+
+
+@ask_ai_router.post("/{user_id}/summarize", status_code=201)
+async def ask_ai_summarize(user_id: str, body: dict, _: str = Depends(require_match("user_id"))) -> dict:
+    _require_ask_ai(user_id)
+    return await summarize_session(user_id, _own_default(user_id), body, user_id)

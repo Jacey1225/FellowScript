@@ -9,6 +9,14 @@ import Foundation
 
 extension NetworkService {
 
+    /// Task 20261106-remove-agents-ask-ai: path prefix for one agent's routes.
+    /// The local Ask AI handle (FSAgent.askAiId) maps to the agent-id-free
+    /// `/ask-ai/{user}` surface; any other id keeps the legacy `/agent/...` path
+    /// (flag off = unchanged behavior).
+    static func agentBase(userId: String, agentId: String) -> String {
+        agentId == FSAgent.askAiId ? "/ask-ai/\(userId)" : "/agent/\(userId)/\(agentId)"
+    }
+
     // ── Agents (read) ─────────────────────────────────────────────────────────
     // GET /agent/{userId}
     // GET /agent/{userId}/{agentId}/messages
@@ -60,7 +68,7 @@ extension NetworkService {
     }
 
     func fetchAgentMessages(userId: String, agentId: String) async throws -> [FSAgentMessage] {
-        let data = try await get("/agent/\(userId)/\(agentId)/messages")
+        let data = try await get("\(Self.agentBase(userId: userId, agentId: agentId))/messages")
         // Backend returns dict keyed by message id: {msgId: {content, title, timestamp}}
         guard let dict = decode([String: RawAgentMsg].self, from: data) else { return [] }
         return dict.map { key, m in
@@ -80,7 +88,7 @@ extension NetworkService {
 
     func fetchAgentChats(userId: String, agentId: String) async throws -> [FSAgentChat] {
         let endpoint = "GET /agent/{user_id}/{agent_id}/chats"
-        let data = try await get("/agent/\(userId)/\(agentId)/chats")
+        let data = try await get("\(Self.agentBase(userId: userId, agentId: agentId))/chats")
         guard let resp = decode(AgentChatsResponse.self, from: data, endpoint: endpoint) else {
             RefreshDiagnostics.fetchOutcome(endpoint: endpoint, outcome: "decode-failure-thrown")
             throw AppError.networkError("Could not read this agent's chats.")
@@ -90,7 +98,7 @@ extension NetworkService {
     }
 
     func createAgentChat(userId: String, agentId: String) async throws -> FSAgentChat {
-        let data = try await checkedRequestRaw("/agent/\(userId)/\(agentId)/chats", method: "POST", jsonObject: [String: Any]())
+        let data = try await checkedRequestRaw("\(Self.agentBase(userId: userId, agentId: agentId))/chats", method: "POST", jsonObject: [String: Any]())
         guard let chat = decode(FSAgentChat.self, from: data, endpoint: "POST /agent/{user_id}/{agent_id}/chats") else {
             throw AppError.networkError(extractErrorDetail(from: data) ?? "Could not start a new chat.")
         }
@@ -100,7 +108,7 @@ extension NetworkService {
     func fetchAgentMessages(userId: String, agentId: String, chatId: String) async throws -> [FSAgentMessage] {
         let endpoint = "GET /agent/{user_id}/{agent_id}/messages?chat_id"
         let q = chatId.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? chatId
-        let data = try await get("/agent/\(userId)/\(agentId)/messages?chat_id=\(q)")
+        let data = try await get("\(Self.agentBase(userId: userId, agentId: agentId))/messages?chat_id=\(q)")
         guard let dict = decode([String: RawAgentMsg].self, from: data, endpoint: endpoint) else {
             throw AppError.networkError("Could not read this chat.")
         }
@@ -111,7 +119,7 @@ extension NetworkService {
 
     func fetchHeartbeats(userId: String, agentId: String) async throws -> [FSHeartbeat] {
         let endpoint = "GET /agent/{user_id}/{agent_id}/heartbeats"
-        let data = try await get("/agent/\(userId)/\(agentId)/heartbeats")
+        let data = try await get("\(Self.agentBase(userId: userId, agentId: agentId))/heartbeats")
         // task 20260903-account-events-not-loading: tagged like the sibling
         // fetches (fetchNotesCount/fetchHighlights/fetchAgents) fixed earlier
         // today -- this was the one fetch that fix missed. A decode failure
@@ -202,11 +210,11 @@ extension NetworkService {
         // `body.get("idempotency_key")` fallback-generation path applies.
         if let idempotencyKey { body["idempotency_key"] = idempotencyKey }
         // checked so a free-tier 403 surfaces as AppError.limitReached
-        _ = try await checkedRequestRaw("/agent/\(userId)/\(agentId)/heartbeat", method: "POST", jsonObject: body)
+        _ = try await checkedRequestRaw("\(Self.agentBase(userId: userId, agentId: agentId))/heartbeat", method: "POST", jsonObject: body)
     }
 
     func deleteHeartbeat(userId: String, agentId: String, heartbeatId: String) async throws {
-        _ = try await request("/agent/\(userId)/\(agentId)/heartbeat/\(heartbeatId)", method: "DELETE")
+        _ = try await request("\(Self.agentBase(userId: userId, agentId: agentId))/heartbeat/\(heartbeatId)", method: "DELETE")
     }
 
     func updateHeartbeat(userId: String, heartbeatId: String, heartbeat: FSHeartbeat) async throws {
@@ -244,7 +252,8 @@ extension NetworkService {
         // threading an unused parameter through the protocol for a case
         // (an unforced client-triggered fire) nothing in this app calls.
         let data = try await checkedRequestRaw(
-            "/agent/\(userId)/\(agentId)/\(heartbeatId)/commit_heartbeat", method: "POST",
+            agentId == FSAgent.askAiId ? "/ask-ai/\(userId)/heartbeats/\(heartbeatId)/commit"
+                                     : "/agent/\(userId)/\(agentId)/\(heartbeatId)/commit_heartbeat", method: "POST",
             jsonObject: ["prompt": prompt, "force": true]
         )
         return decode([String: String].self, from: data) ?? [:]
@@ -256,7 +265,7 @@ extension NetworkService {
 
     func summarizeSessionReportingDeferral(userId: String, agentId: String, session: FSSession, groupId: String) async throws -> Bool {
         // checked — see updateAgent above.
-        let data = try await checkedRequestRaw("/agent/\(userId)/\(agentId)/summarize", method: "POST",
+        let data = try await checkedRequestRaw("\(Self.agentBase(userId: userId, agentId: agentId))/summarize", method: "POST",
                                   jsonObject: ["session": try jsonObject(session), "group_id": groupId])
         // Task 20261013-session-call-live-transcript-summary (bounce 2):
         // {"ok": true, "deferred": true} means "not generated yet".

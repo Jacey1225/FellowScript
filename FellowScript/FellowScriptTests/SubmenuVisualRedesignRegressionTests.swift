@@ -108,16 +108,15 @@ final class SubmenuVisualRedesignRegressionTests: XCTestCase {
     }
 
     func test_eventSetupSheet_allThreeSteps_applySharedWarmBloomBackground() throws {
+        // TA1: all three steps render inside one FSFormScaffold, which owns the
+        // shared warm-bloom page ground (Color.clear.warmBloomBackground()).
         let source = try readSource("FellowScript/Account/EventSetupSheet.swift")
-        // Count only actual modifier CALL sites (a trimmed line that starts
-        // with the modifier itself), not the explanatory comment mentioning
-        // `Theme.warmBloomBackground()` by name -- same technique as
-        // InteractionPolishSharedMechanismsTests' bespoke-call-site guard.
-        let callSites = source
-            .components(separatedBy: .newlines)
-            .map { $0.trimmingCharacters(in: .whitespaces) }
-            .filter { $0 == ".warmBloomBackground()" }
-        XCTAssertEqual(callSites.count, 3, "expected exactly 3 call sites (recurrenceScreen, dayPickerScreen, detailsScreen), found \(callSites.count)")
+        XCTAssertTrue(source.contains("FSFormScaffold("), "EventSetupSheet's three steps must sit inside the shared FSFormScaffold")
+        for step in ["whoAndWhenCards", "promptCard", "repeatCards"] {
+            XCTAssertTrue(source.contains(step), "step content \(step) must still render inside the scaffold")
+        }
+        let scaffold = try readSource("FellowScript/Shared/Forms/FSFormScaffold.swift")
+        XCTAssertTrue(scaffold.contains(".warmBloomBackground()"), "the scaffold must apply the shared warm-bloom ground")
         XCTAssertFalse(source.contains("Theme.bgPage.ignoresSafeArea()"), "EventSetupSheet must no longer use the old flat-fill background anywhere")
     }
 
@@ -218,17 +217,10 @@ final class SubmenuVisualRedesignRegressionTests: XCTestCase {
 
     func test_eventSetupSheet_detailsScreen_noLongerUsesFormOrSection() throws {
         let source = try readSource("FellowScript/Account/EventSetupSheet.swift")
-        guard let range = source.range(of: "private var detailsScreen: some View {") else {
-            XCTFail("detailsScreen not found"); return
-        }
-        // detailsScreen is the last computed property before the private
-        // helpers section -- bound the search at the "── Helpers" marker.
-        let end = source.range(of: "// ── Helpers", range: range.upperBound..<source.endIndex)?.lowerBound ?? source.endIndex
-        let body = String(source[range.upperBound..<end])
-        XCTAssertFalse(body.contains("Form {") || body.contains("Form(") || body.contains("Section("),
-                       "EventSetupSheet.detailsScreen must be restructured off native Form/Section")
-        XCTAssertTrue(body.contains("ScrollView") && body.contains(".fsCard()"),
-                      "EventSetupSheet.detailsScreen must use the ScrollView + fsCard() (gray glass) shell matching recurrenceScreen/dayPickerScreen")
+        XCTAssertFalse(source.contains("Form {") || source.contains("Form(") || source.contains("Section("),
+                       "EventSetupSheet must stay off native Form/Section")
+        XCTAssertTrue(source.contains("FSFormCard(title: \"Details\")"),
+                      "the WHO & WHEN step must use FSFormCard (gray glass) inside the FSFormScaffold")
     }
 
     // MARK: - D. No behavioral regression: callbacks, disabled predicates, group-picker, prefill/buildTimestamps
@@ -275,39 +267,34 @@ final class SubmenuVisualRedesignRegressionTests: XCTestCase {
     }
 
     func test_eventSetupSheet_onSaveCallback_andDisabledPredicate_unchanged() throws {
-        // Two later, intentional features each legitimately added a trailing
-        // parameter after this test was written: `notesPublic` (task
-        // 20260902-group-tagged-devotions) and `idempotencyKey` (task
-        // 20260905-heartbeat-timezone-duplicate-bugs). The real signature is
-        // now 6 params, and the call site continues past this test's
-        // original expected closing paren -- this assertion now pins the
-        // original 4 unmapped arguments as a prefix of the real signature/
-        // call, rather than requiring them to be the entire thing.
         let source = try readSource("FellowScript/Account/EventSetupSheet.swift")
         XCTAssertTrue(source.contains("let onSave:   (_ agentId: String, _ prompt: String, _ timestamps: [String?], _ groupId: String?, _ notesPublic: Bool, _ idempotencyKey: String) -> Void"),
-                      "onSave signature's original 4 params must be unchanged and still lead the (now 6-param) signature")
+                      "onSave signature must be unchanged (6 params)")
         XCTAssertTrue(source.contains("onSave(selectedAgentId,") &&
-                      source.contains("prompt.trimmingCharacters(in: .whitespaces),") &&
+                      source.contains("promptTrimmed,") &&
                       source.contains("buildTimestamps(),") &&
                       source.contains("selectedGroupId.isEmpty ? nil : selectedGroupId,"),
-                      "Save/Update must still call onSave with the same original four unmapped arguments leading the call")
-        // Later double-tap-guard fix (task
-        // 20260905-heartbeat-timezone-duplicate-bugs) prepended `isSaving ||`
-        // to this predicate; the original guard is still present as a
-        // component of the new predicate.
-        XCTAssertTrue(source.contains("primaryDimmed: (isSaving || prompt.trimmingCharacters(in: .whitespaces).isEmpty || selectedAgentId.isEmpty)"),
-                      "Save/Update must still be disabled on empty prompt or missing agent (now combined with the later isSaving guard)")
+                      "Save/Update must still call onSave with the same leading arguments (promptTrimmed is the whitespace-trimmed prompt)")
+        XCTAssertTrue(source.contains(#"private var promptTrimmed: String { prompt.trimmingCharacters(in: .whitespaces) }"#))
+        // Dimmed on isSaving, and on the final step also on empty prompt / missing agent.
+        XCTAssertTrue(source.contains("if isSaving { return true }"), "primary must dim while saving")
+        XCTAssertTrue(source.contains("default: return needsDays || promptTrimmed.isEmpty || selectedAgentId.isEmpty"),
+                      "Save/Update must still be dimmed on empty prompt or missing agent")
+        // Dimmed stays tappable, so the tap itself must refuse to save an invalid form.
+        XCTAssertTrue(source.contains("else if promptTrimmed.isEmpty { promptError") && source.contains("if selectedAgentId.isEmpty { goTo(0) }"),
+                      "tapping Save with an empty prompt or missing agent must not call saveDevotion()")
     }
 
     func test_eventSetupSheet_groupPickerMenu_contentAndBehaviorUnchanged() throws {
-        // Task 20260902-group-tagged-devotions' logic -- must be completely
-        // untouched by this purely-visual redesign task.
+        // Task 20260902-group-tagged-devotions' logic -- untouched by the TA1 restyle.
         let source = try readSource("FellowScript/Account/EventSetupSheet.swift")
         XCTAssertTrue(source.contains(#"Button(action: { selectedGroupId = "" }) {"#), "the 'No Group' option must be unchanged")
         XCTAssertTrue(source.contains("ForEach(sortedGroups) { group in"), "the groups list source must be unchanged")
         XCTAssertTrue(source.contains("Button(action: { selectedGroupId = group.id }) {"), "selecting a group must be unchanged")
-        XCTAssertTrue(source.contains(".background(Theme.goldGradient)") && source.contains(".clipShape(Capsule())") && source.contains(".topEdgeHighlight(Capsule())"),
-                      "the group-picker pill's own visual recipe (untouched by this task's sheet-container changes) must remain exactly as before")
+        XCTAssertTrue(source.contains("Theme.fieldFill") && source.contains("Theme.fieldBorder") && source.contains("Theme.formFieldHeight"),
+                      "the group menu label uses the FSForm field recipe (fill, border, field height)")
+        XCTAssertTrue(source.contains("if !selectedGroupId.isEmpty {") && source.contains("FSToggleRow(title: notesPublic"),
+                      "the notesPublic permission toggle stays hidden outside a group")
     }
 
     func test_eventSetupSheet_prefillAndBuildTimestamps_unchanged() throws {

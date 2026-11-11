@@ -252,6 +252,15 @@ protocol DataServiceProtocol {
     func sendFriendRequest(userId: String, username: String) async throws
     func acceptFriendRequest(userId: String, username: String) async throws
     func removeFriend(userId: String, friendId: String) async throws
+    // Task 20261030-user-profiles: profile read / own-bio edit / id-keyed friend
+    // request+accept. Defaults (throwing) live in NetworkService+Profile.swift so
+    // existing conformers need no stubs.
+    func fetchProfile(targetId: String) async throws -> FSProfile
+    func updateBio(userId: String, bio: String?) async throws -> String?
+    func sendProfileFriendRequest(targetId: String) async throws
+    func acceptProfileFriendRequest(targetId: String) async throws
+    // Task 20261030-profile-everywhere: recipient declines an incoming request (204 always).
+    func declineFriendRequest(userId: String, senderId: String) async throws
     // Dashboard's Friend Activity hero card -- friend-only, block-respecting
     // read of each friend's most recent public note + a "check in" nudge
     // candidate. See FSFriendActivityFeed for the response shape.
@@ -884,7 +893,7 @@ final class MockDataService: DataServiceProtocol {
     }
 
     func fetchHeartbeats(userId: String, agentId: String) async throws -> [FSHeartbeat] {
-        agentId == Self.mockHeartbeat.agent_id ? [Self.mockHeartbeat] : []
+        (agentId == Self.mockHeartbeat.agent_id || agentId == FSAgent.askAiId) ? [Self.mockHeartbeat] : []
     }
 
     func createAgent(userId: String, role: String) async throws -> FSAgent {
@@ -907,6 +916,9 @@ final class MockDataService: DataServiceProtocol {
 
     // Contacts + messages
     func fetchContacts(userId: String) async throws -> ([FSContact], [String: FSGroup]) {
+        // UI-TESTING-NO-FRIENDS (additive, task 20261106-chat-tour): the chat
+        // tour's zero-friend path. Without the argument behaviour is unchanged.
+        if ProcessInfo.processInfo.arguments.contains("UI-TESTING-NO-FRIENDS") { return ([], [:]) }
         let group = FSGroup(id: "group-abc", title: "Wednesday Night Study",
                            users: [userId, "friend-001", "friend-002"],
                            creatorId: userId)

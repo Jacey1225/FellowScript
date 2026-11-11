@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException, Depends, Request, Response
-from schemas.devotion import DevotionRequest, DevotionPlan, RingRequest
+from schemas.devotion import DevotionRequest, DevotionPlan, RingRequest, RingRespondRequest, DmCallRequest
 from backend.interactions.push_preferences import async_disabled_user_ids
-from backend.interactions.devotion import DevotionManager, is_ring_enabled, is_ring_voip_enabled, ring_timeout_seconds
+from backend.interactions.devotion import DevotionManager, is_legacy_dm_session, is_ring_enabled, is_ring_voip_enabled, ring_timeout_seconds
 from backend.auth.dependencies import get_current_user, require_match
 from backend.moderation.content_filter import check_clean, ContentRejected, rejection_message
 from backend.rate_limiting import limiter
@@ -10,6 +10,7 @@ import boto3
 from backend.interactions.session_call_transcription import join_transcription_fields
 import logging
 import uuid
+from backend.errors import SaveFailedError
 from botocore.exceptions import ClientError
 
 chime = boto3.client("chime-sdk-meetings", region_name="us-east-1")
@@ -17,6 +18,17 @@ devo_router = APIRouter(prefix="/devotions")
 logger = logging.getLogger(__name__)
 
 _CHIME_ERROR_DETAIL = "Could not start the call. Please try again."
+
+
+_DM_SESSIONS_GONE_DETAIL = "Scheduled sessions are no longer available in direct messages. Start a call instead."
+
+
+def _reject_legacy_dm_session(session: dict) -> None:
+    """Task 20261028-dm-direct-call (Jacey Q6 option a): pre-existing scheduled
+    DM session rows are inert -- never deleted or updated, but not joinable or
+    editable. The marked ad hoc call row (``call_kind``) is exempt here."""
+    if is_legacy_dm_session(session):
+        raise HTTPException(status_code=410, detail=_DM_SESSIONS_GONE_DETAIL)
 
 
 def _check_devotion_clean(devotion) -> None:
@@ -68,6 +80,10 @@ async def create_devotion(req: DevotionRequest, current_user: str = Depends(get_
     if req.user_id != current_user:
         raise HTTPException(status_code=403, detail="Forbidden")
     _check_devotion_clean(req.devotion)
+    if "|" in (req.devotion.group_id or ""):
+        # DM rooms (uidA|uidB keys) no longer take scheduled sessions; use
+        # POST /devotions/dm-call. Group sessions are unaffected.
+        raise HTTPException(status_code=410, detail=_DM_SESSIONS_GONE_DETAIL)
     # Free plan: at most one active (not yet ended) session created at a time.
     # The creator is the authenticated caller, never the body's creator_id.
     # A per-user advisory lock is held across check + insert so concurrent
@@ -129,6 +145,11 @@ async def update_devotion(req: DevotionRequest, current_user: str = Depends(get_
             raise HTTPException(status_code=404, detail="Session not found")
         if not db.is_authorized(session, current_user):
             raise HTTPException(status_code=403, detail="Not authorized")
+        if session.get("call_kind"):
+            raise HTTPException(status_code=403, detail="This can't be edited.")
+        _reject_legacy_dm_session(session)
+        if "|" in (req.devotion.group_id or ""):
+            raise HTTPException(status_code=410, detail=_DM_SESSIONS_GONE_DETAIL)
         # creator_id is never client-settable on update (it would let any
         # participant take over a session and its entitlement accounting).
         creator = (session.get("creator_id") if isinstance(session, dict) else None) or ""
@@ -162,6 +183,7 @@ async def join_devotion(user_id: str, session_id: str, _: str = Depends(require_
             raise HTTPException(status_code=404, detail="Session not found")
         if not db.is_authorized(session, user_id):
             raise HTTPException(status_code=403, detail="Not authorized")
+        _reject_legacy_dm_session(session)
         # Task 20260920-session-join-window-gating (backend step 2): the
         # server's own time-window enforcement, closing the direct-API
         # bypass a client-side-only grey-out would otherwise leave open --
@@ -203,6 +225,49 @@ def _ring_body(caller_username: str, session_title: str) -> str:
     if session_title:
         return f'{caller_username} wants you to join "{session_title}" now'
     return f"{caller_username} wants you to join the call now"
+
+
+@devo_router.post("/dm-call")
+@limiter.limit("30/minute")
+async def start_dm_call(
+    request: Request, req: DmCallRequest, current_user: str = Depends(get_current_user),
+) -> dict:
+    """Get-or-create the ad hoc call row for the caller's 1:1 DM with
+    ``peer_id`` and return it (task 20261028-dm-direct-call).
+
+    This only prepares the call row; the client then uses the existing
+    ``POST /devotions/join-call`` and ``POST /devotions/ring`` unchanged
+    (single Chime path). Authorization is the verified mutual, non-blocked
+    friendship from ``DevotionManager.real_group_roster`` -- the room key is
+    derived server-side from the authenticated caller and ``peer_id``, never
+    taken from the client. Any inability to confirm the pair denies (403, one
+    merged answer for not-friends/blocked, enumeration-safe).
+
+    Raises:
+        HTTPException 403: ``user_id`` isn't the caller, or the pair is not a
+            verified, non-blocked friendship.
+        HTTPException 500: the call row could not be created.
+    """
+    if req.user_id != current_user:
+        raise HTTPException(status_code=403, detail="Forbidden")
+    peer_id = req.peer_id
+    if not peer_id or peer_id == current_user or "|" in peer_id:
+        raise HTTPException(status_code=403, detail="Not authorized")
+    db = DevotionManager()
+    try:
+        room_key = "|".join(sorted([current_user, peer_id]))
+        if db.real_group_roster(room_key) != {current_user, peer_id}:
+            raise HTTPException(status_code=403, detail="Not authorized")
+        try:
+            session_id = db.get_or_create_dm_call_session(current_user, peer_id)
+        except SaveFailedError:
+            raise HTTPException(status_code=500, detail=_CHIME_ERROR_DETAIL)
+        plan = db.read_devotion(session_id)
+        if plan is None:
+            raise HTTPException(status_code=500, detail=_CHIME_ERROR_DETAIL)
+        return {"id": session_id, "peer_id": peer_id, "session": plan.model_dump()}
+    finally:
+        db.close()
 
 
 @devo_router.post("/ring")
@@ -318,6 +383,7 @@ async def ring_members(
         session = db.get_session(req.devotion_id)
         if not session:
             raise HTTPException(status_code=404, detail="Session not found")
+        _reject_legacy_dm_session(session)
 
         group_id = str(session.get("group_id") or "")
         roster = db.real_group_roster(group_id)
@@ -394,8 +460,99 @@ async def ring_members(
                 results[target_id] = {"sent": False, "reason": "send_failed"}
                 continue
             results[target_id] = {"sent": True, "reason": None}
+            try:
+                # Ring lifecycle record (server-side expiry + cancel/decline).
+                db.record_ring(req.devotion_id, current_user, target_id, token if voip else None)
+            except Exception as e:
+                # The push already went out; lifecycle tracking degrades to the
+                # client timer only. Logged, not raised.
+                logger.error("Ring state record failed (%s -> %s, session %s): %s", current_user, target_id, req.devotion_id, type(e).__name__)
 
         return {"results": results}
+    finally:
+        db.close()
+
+
+@devo_router.post("/ring/respond")
+@limiter.limit("60/minute")
+async def ring_respond(
+    request: Request, req: RingRespondRequest, current_user: str = Depends(get_current_user),
+) -> dict:
+    """End a ring: the one route answer, decline and caller hang-up share
+    (task 20261028-dm-direct-call).
+
+    Authorization comes from the ring record itself (created by
+    ``/devotions/ring`` after full membership checks): only the ringed target
+    may send ``answered``/``declined``, only the ring's caller may send
+    ``canceled``; anyone else is 403, no record is 404 (fail closed). The
+    transition is an atomic compare-and-set on ``ringing``, so a ring that
+    already ended (answered elsewhere, timed out) returns its current status
+    with ``changed: false`` and nothing is re-sent. On caller hang-up the
+    target's CallKit UI is dismissed with a VoIP ``ring_cancel`` push; a
+    target's own answer/decline needs no push (their device did it).
+
+    Returns:
+        dict: ``{"status": <ring status>, "changed": bool}``.
+    """
+    if req.user_id != current_user:
+        raise HTTPException(status_code=403, detail="Forbidden")
+    if not is_ring_enabled():
+        raise HTTPException(status_code=404, detail="Not found")
+    from backend.interactions.ring_lifecycle import send_ring_cancel
+
+    db = DevotionManager()
+    try:
+        try:
+            ring = db.get_ring(req.devotion_id, req.target_id)
+        except Exception:
+            raise HTTPException(status_code=500, detail="Could not update the ring. Please try again.")
+        if ring is None:
+            raise HTTPException(status_code=404, detail="Ring not found")
+        if req.outcome == "canceled":
+            allowed = current_user == ring["caller_id"]
+        else:
+            allowed = current_user == ring["target_id"]
+        if not allowed:
+            raise HTTPException(status_code=403, detail="Not authorized")
+        try:
+            won = db.resolve_ring(req.devotion_id, req.target_id, req.outcome)
+        except Exception:
+            raise HTTPException(status_code=500, detail="Could not update the ring. Please try again.")
+        if won is None:
+            current = db.get_ring(req.devotion_id, req.target_id)
+            return {"status": current["status"] if current else "unknown", "changed": False}
+        if req.outcome == "canceled":
+            await send_ring_cancel(won["voip_token"], req.devotion_id, won["caller_id"], "canceled")
+        return {"status": req.outcome, "changed": True}
+    finally:
+        db.close()
+
+
+@devo_router.get("/ring/status")
+@limiter.limit("120/minute")
+async def ring_status(
+    request: Request, devotion_id: str, user_id: str, _: str = Depends(require_match("user_id")),
+) -> dict:
+    """The caller's rings on a session and their live state, so the caller UI
+    can show ringing / declined / no answer (task 20261028-dm-direct-call).
+    Due rings are expired first, so a dead client or sweep never leaves a
+    stale ``ringing``. Only rings the caller started are returned.
+
+    Returns:
+        dict: ``{"rings": {target_id: {"status", "seconds_left"}}}``.
+    """
+    from backend.interactions.ring_lifecycle import expire_due_rings
+
+    try:
+        await expire_due_rings()
+    except Exception as e:
+        logger.warning("Ring expiry before status read failed: %s", type(e).__name__)
+    db = DevotionManager()
+    try:
+        try:
+            return {"rings": db.rings_by_caller(devotion_id, user_id)}
+        except Exception:
+            raise HTTPException(status_code=500, detail="Could not read the ring. Please try again.")
     finally:
         db.close()
 
@@ -499,6 +656,12 @@ async def join_call(session_id: str, user_id: str, _: str = Depends(require_matc
             raise HTTPException(status_code=404, detail="Session not found")
         if not db.is_authorized(session, user_id):
             raise HTTPException(status_code=403, detail="Not authorized")
+        _reject_legacy_dm_session(session)
+        if session.get("call_kind") and user_id not in db.real_group_roster(str(session.get("group_id") or "")):
+            # DM call row: is_authorized trusts the creator/participants
+            # fields, so a since-unfriended or blocked member must be denied
+            # by the verified friendship/block roster (fail closed).
+            raise HTTPException(status_code=403, detail="Not authorized")
         # Task 20260920-session-join-window-gating (backend step 2): same
         # server-side enforcement as join_devotion above, and doubly
         # important here since join_call lazily creates a billed AWS Chime
@@ -563,6 +726,13 @@ async def join_call(session_id: str, user_id: str, _: str = Depends(require_matc
                     session_id, user_id, retry_e,
                 )
                 raise HTTPException(status_code=500, detail=_CHIME_ERROR_DETAIL)
+
+        try:
+            # Joining the call IS answering a ring aimed at this user: end it
+            # server-side too (no-op unless a ring is still 'ringing').
+            db.resolve_ring(session_id, user_id, "answered")
+        except Exception as e:
+            logger.warning("Ring answer bookkeeping on join failed: %s", type(e).__name__)
 
         return {
             "Meeting": meeting_data,

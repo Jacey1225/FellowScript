@@ -11,7 +11,7 @@ import { useHostRect } from '../../hooks/useHostRect.js';
 export default function MessagingPanel() {
   const {
     user, friends, groups, currentContact, messages, groupMembers,
-    onOpen, onBack, onAddFriend, onRemoveFriend, onReportUser, onBlockUser,
+    onOpen, onViewProfile, onBack, onAddFriend, onRemoveFriend, onReportUser, onBlockUser,
     onCreateGroup, onUpdateGroup, onLeaveGroup,
     loaded, onLoad, sendMessage,
     onRequestUploadUrl, onUploadToS3, onSearchGifs, onBrowseGifs,
@@ -25,7 +25,7 @@ export default function MessagingPanel() {
     threadView, threadMessages, threadPage, threadLoad, restoredDraft,
     onCloseThread, onRetryThread, onLoadOlderThread, onSendThreadMessage,
     onStartThread, onDeleteMessage, onRestoreMessage,
-    onAddGroupMembers, onRetryMessage, onToggleReaction, pins,
+    onAddGroupMembers, onRetryMessage, onToggleReaction, pins, askAi,
   } = useMessagingPanel() || {};
   const inThread = !!threadView;
 
@@ -47,12 +47,13 @@ export default function MessagingPanel() {
     <div ref={hostRef} style={{ position: 'relative', height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
       <ContactsPanel
         user={user} friends={friends || []} groups={groups || {}} currentContact={currentContact}
-        onOpen={onOpen}
+        onOpen={onOpen} onViewProfile={onViewProfile}
         onAddFriend={onAddFriend} onRemoveFriend={onRemoveFriend}
         onReportUser={onReportUser} onBlockUser={onBlockUser}
         onCreateGroup={onCreateGroup} onUpdateGroup={onUpdateGroup} onLeaveGroup={onLeaveGroup}
         loaded={loaded} onLoad={onLoad}
         showAgents={false}
+        askAi={askAi}
       />
       {currentContact && createPortal(
         <div
@@ -75,6 +76,7 @@ export default function MessagingPanel() {
           <ChatThread
             key={inThread ? `thread:${threadView.thread.id}` : 'main'}
             contact={currentContact}
+            onViewProfile={onViewProfile}
             messages={(inThread ? threadMessages : messages) || []}
             groupMembers={groupMembers || []}
             user={user}

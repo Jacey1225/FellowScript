@@ -375,13 +375,9 @@ extension AccountView {
                         // get_requests() already resolves profile_photo_url per
                         // pending request -- fetchFriendRequests' tuple simply
                         // discarded it before this fix.
-                        AvatarView(
-                            initial: String(req.username.prefix(1)).uppercased(),
-                            photoURL: req.profile_photo_url,
-                            diameter: 36,
-                            fillColor: Theme.gold.opacity(0.15),
-                            textColor: Theme.gold
-                        )
+                        // Task 20261030-user-profiles: avatar opens the requester's profile.
+                        ProfileLinkedAvatar(userId: req.id, username: req.username,
+                                            photoURL: req.profile_photo_url, diameter: 36)
                         VStack(alignment: .leading) {
                             Text(req.username).font(.system(size: Theme.fontBody)).foregroundColor(Theme.parchment)
                             Text("Wants to be your friend").font(.system(size: Theme.fontXS)).foregroundColor(Theme.textMuted)
@@ -393,6 +389,9 @@ extension AccountView {
                             gradientPill("Accept", compact: true)
                         }
                         .accessibilityLabel("Accept friend request from \(req.username)")
+                        FriendRequestDeclineButton(username: req.username) {
+                            Task { await vm.declineRequest(senderId: req.id) }
+                        }
                     }
                 }
             }

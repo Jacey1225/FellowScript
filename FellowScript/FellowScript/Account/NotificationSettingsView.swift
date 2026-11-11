@@ -67,7 +67,10 @@ final class NotificationPreferencesModel: ObservableObject {
     @Published private(set) var loadFailed = false
     @Published private(set) var loaded = false
     @Published private(set) var savingKey: String?
+    /// Key that just saved; drives the 2-second inline "Saved" check (TD1).
+    @Published private(set) var savedKey: String?
     @Published var errorMessage: String?
+    private var savedClear: Task<Void, Never>?
 
     private let service: DataServiceProtocol
     private let userId: String
@@ -104,15 +107,34 @@ final class NotificationPreferencesModel: ObservableObject {
             times = snap.times
             loadFailed = false
             errorMessage = nil
+            markSaved(key)
+            // Onboarding: the prayer reminder is really on (server-confirmed).
+            if key == "prayer_reminder", newValue, snap.toggles[key] == true {
+                OnboardingEngine.shared.report(.prayerReminderEnabled)
+            }
         } catch {
             errorMessage = "Couldn't save. Please try again."
+            if key == "prayer_reminder" {
+                OnboardingEngine.shared.reportFailure(.prayerReminderEnabled, message: "We couldn't turn that on. Try again.")
+            }
+        }
+    }
+
+    private func markSaved(_ key: String) {
+        savedKey = key
+        savedClear?.cancel()
+        savedClear = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: 2_000_000_000)
+            guard !Task.isCancelled else { return }
+            self?.savedKey = nil
         }
     }
 
     /// Saves a reminder time ("HH:MM"). The picker reads `times`, so a failed
-    /// save snaps back to the confirmed value.
-    func setTime(_ key: String, _ newValue: String) async {
-        guard loaded, savingKey == nil, !userId.isEmpty, times[key] != newValue,
+    /// save snaps back to the confirmed value. `force` re-saves an unchanged
+    /// value (onboarding "Keep this time": still a real server write).
+    func setTime(_ key: String, _ newValue: String, force: Bool = false) async {
+        guard loaded, savingKey == nil, !userId.isEmpty, force || times[key] != newValue,
               PushReminderKeys.isValidTime(newValue) else { return }
         savingKey = key
         defer { savingKey = nil }
@@ -122,14 +144,49 @@ final class NotificationPreferencesModel: ObservableObject {
             times = snap.times
             loadFailed = false
             errorMessage = nil
+            markSaved(key)
+            if key == PushReminderKeys.timeKey["prayer_reminder"], snap.toggles["prayer_reminder"] == true {
+                OnboardingEngine.shared.report(.prayerReminderTimeSaved)
+            }
         } catch {
             errorMessage = "Couldn't save. Please try again."
+            if key == PushReminderKeys.timeKey["prayer_reminder"] {
+                OnboardingEngine.shared.reportFailure(.prayerReminderTimeSaved, message: "We couldn't save that time. Try again.")
+            }
+        }
+    }
+}
+
+/// One instant-apply toggle row (TD1): FSToggleRow plus an inline "Saved" check for 2 seconds.
+struct NotificationToggleRow: View {
+    let type: NotificationPushType
+    @ObservedObject var model: NotificationPreferencesModel
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            FSToggleRow(
+                title: type.label,
+                helper: type.detail,
+                isOn: Binding(
+                    get: { model.prefs[type.key] ?? false },
+                    set: { v in Task { await model.set(type.key, v) } }),
+                disabled: model.savingKey != nil)
+                .accessibilityLabel("\(type.label) notifications")
+                .accessibilityHint(type.detail)
+            if model.savedKey == type.key {
+                Label("Saved", systemImage: "checkmark")
+                    .font(.fsHelper)
+                    .foregroundColor(Theme.success)
+                    .padding(.bottom, 8)
+                    .accessibilityLabel("\(type.label) saved")
+            }
         }
     }
 }
 
 struct NotificationSettingsView: View {
     @StateObject private var model: NotificationPreferencesModel
+    @ObservedObject private var onboarding = OnboardingEngine.shared
     private let capabilities: FSCapabilities
 
     init(userId: String, service: DataServiceProtocol, capabilities: FSCapabilities) {
@@ -139,57 +196,42 @@ struct NotificationSettingsView: View {
 
     var body: some View {
         ScrollView {
-            VStack(spacing: 20) {
+            VStack(spacing: 16) {
                 Text("Choose which push notifications you receive. The ones listed under Always on can't be turned off.")
-                    .font(.system(size: Theme.fontXS))
-                    .foregroundColor(Theme.textMuted)
+                    .font(.fsHelper)
+                    .foregroundColor(Theme.textSecondary)
                     .frame(maxWidth: .infinity, alignment: .leading)
 
                 if let msg = model.errorMessage {
-                    HStack {
-                        Text(msg)
-                            .font(.system(size: Theme.fontXS))
-                            .foregroundColor(Theme.error)
-                            .accessibilityLabel(msg)
-                        Spacer()
+                    VStack(alignment: .leading, spacing: 10) {
+                        HStack(spacing: 8) {
+                            Image(systemName: "exclamationmark.triangle.fill").foregroundColor(Theme.error)
+                            Text(msg).font(.system(size: 14, weight: .semibold)).foregroundColor(Theme.error)
+                                .accessibilityLabel(msg)
+                        }
                         if model.loadFailed {
                             Button("Try again") { Task { await model.load() } }
-                                .font(.system(size: Theme.fontXS, weight: .semibold))
-                                .foregroundColor(Theme.gold)
+                                .font(.system(size: 14, weight: .bold)).foregroundColor(Theme.gold)
+                                .frame(minHeight: 44).padding(.horizontal, 16)
+                                .overlay(Capsule().strokeBorder(Theme.borderGold, lineWidth: 1))
                         }
                     }
-                    .padding(.horizontal, 18).padding(.vertical, 12)
-                    .glassCard(cornerRadius: 20)
+                    .padding(12)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(RoundedRectangle(cornerRadius: Theme.radiusLG, style: .continuous).fill(Theme.dangerBg))
+                    .overlay(RoundedRectangle(cornerRadius: Theme.radiusLG, style: .continuous).strokeBorder(Theme.errorStrong, lineWidth: 1))
                 }
 
                 if model.loaded {
                     ForEach(NotificationPushType.visibleGroups(capabilities: capabilities), id: \.title) { group in
-                        VStack(alignment: .leading, spacing: Theme.spacingSM) {
-                            Text(group.title.uppercased())
-                                .font(.system(size: Theme.fontXS, weight: .semibold))
-                                .foregroundColor(Theme.textMuted)
-                                .accessibilityAddTraits(.isHeader)
-                            ForEach(group.types) { type in
-                                Toggle(isOn: Binding(
-                                    get: { model.prefs[type.key] ?? false },
-                                    set: { v in Task { await model.set(type.key, v) } })) {
-                                    VStack(alignment: .leading, spacing: 2) {
-                                        Text(type.label)
-                                            .font(.system(size: Theme.fontBody))
-                                            .foregroundColor(Theme.parchment)
-                                        Text(type.detail)
-                                            .font(.system(size: Theme.fontXS))
-                                            .foregroundColor(Theme.textMuted)
-                                    }
+                        FSFormCard(title: group.title) {
+                            VStack(spacing: 0) {
+                                ForEach(Array(group.types.enumerated()), id: \.element.id) { idx, type in
+                                    if idx > 0 { Divider().overlay(Theme.borderGray) }
+                                    NotificationToggleRow(type: type, model: model)
                                 }
-                                .tint(Theme.gold)
-                                .disabled(model.savingKey != nil)
-                                .accessibilityLabel("\(type.label) notifications")
-                                .accessibilityHint(type.detail)
                             }
                         }
-                        .padding(.horizontal, 18).padding(.vertical, 16)
-                        .glassCard(cornerRadius: 20)
                     }
                     NotificationRemindersCard(model: model)
                     NotificationAlwaysOnCard()
@@ -197,7 +239,7 @@ struct NotificationSettingsView: View {
                     ProgressView().tint(Theme.gold).frame(maxWidth: .infinity)
                 }
             }
-            .padding(.horizontal, 20)
+            .padding(.horizontal, 16)
             .padding(.top, Theme.spacingMD)
             .padding(.bottom, 150)
             // Readable column on wide (iPad) sheets; a no-op at phone widths.
@@ -208,8 +250,19 @@ struct NotificationSettingsView: View {
         .navigationTitle("Notifications")
         .navigationBarTitleDisplayMode(.inline)
         .task { await model.load() }
+        .onAppear { onboarding.report(.notificationSettingsOpened) }
+        .onDisappear { onboarding.surfaceDismissed(cueIDs: ["prayer.toggle", "prayer.time"]) }
+        // Already on (replay, or turned on earlier): the toggle cue is satisfied by the real state.
+        .onChange(of: model.loaded) { _, _ in syncPrayerCue() }
+        .onChange(of: onboarding.currentCue?.id) { _, _ in syncPrayerCue() }
         .onChange(of: model.errorMessage) { _, msg in
             if let msg { UIAccessibility.post(notification: .announcement, argument: msg) }
         }
+    }
+
+    private func syncPrayerCue() {
+        guard model.loaded, onboarding.currentCue?.id == "prayer.toggle",
+              model.prefs["prayer_reminder"] == true else { return }
+        onboarding.report(.prayerReminderEnabled)
     }
 }

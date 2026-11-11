@@ -632,6 +632,7 @@ struct GroupInfoSheet: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .onboardingAnchor(.hostToolsRow)
         .accessibilityLabel("Host tools")
         .accessibilityHint("Opens group management")
     }

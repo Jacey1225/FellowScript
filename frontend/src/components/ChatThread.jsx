@@ -6,7 +6,7 @@ import {
   PictureOutlined, FileOutlined, SmileOutlined, PlayCircleOutlined,
   DownloadOutlined, CloseCircleFilled, SearchOutlined,
   BranchesOutlined, CopyOutlined, DeleteOutlined, ExclamationCircleOutlined,
-  RollbackOutlined, ArrowUpOutlined, PushpinOutlined,
+  RollbackOutlined, ArrowUpOutlined, PushpinOutlined, NotificationOutlined,
 } from '@ant-design/icons';
 import { SessionCard } from './SessionWidget.jsx';
 import SessionsMenu from './SessionsMenu.jsx';
@@ -25,7 +25,13 @@ import { systemLineText, PIN_NOT_FOUND_COPY } from '../lib/pins.js';
 import {
   REPLY_UNAVAILABLE_LABEL, replyPreviewText, replyAuthorName, replyAuthorLabel, replySnippet,
 } from '../lib/replies.js';
+import ChatAnnouncementRow from './ChatAnnouncementRow.jsx';
+import ChatAnnouncementComposer from './ChatAnnouncementComposer.jsx';
+import { CHAT_ANNOUNCEMENT_FEATURE, isAnnouncementLine } from '../lib/chatAnnouncements.js';
 import MentionText from './MentionText.jsx';
+import ChatHeaderIdentity from './ChatHeaderIdentity.jsx';
+import ProfileLink from './profile/ProfileLink.jsx';
+import { INLINE_LINK_STYLE } from './profile/profileLinkStyles.js';
 import MentionPicker, { MENTION_LISTBOX_ID, mentionOptionId } from './MentionPicker.jsx';
 import {
   MENTION_FEATURE, MAX_MENTIONS, applyEdit, deleteAcrossMentions, fetchMentionMembers,
@@ -622,7 +628,7 @@ function UndoToast({ toast, onUndo, onExpire }) {
 // ── Chat thread (iMessage style) ──────────────────────────────────────────────
 
 export default function ChatThread({
-  contact, messages, groupMembers, user, onBack, onSend,
+  contact, messages, groupMembers, user, onBack, onSend, onViewProfile,
   onRequestUploadUrl, onUploadToS3, onSearchGifs, onBrowseGifs,
   sessions, activeSessionId, talkingUserId,
   onJoinSession, onLeaveSession, onOpenSessionCreator,
@@ -669,6 +675,9 @@ export default function ChatThread({
   // group chat (never agent chats or shared-object compose).
   const mentionsOn = features[MENTION_FEATURE] === true
     && (contact?.type === 'group' || contact?.type === 'friend');
+  // Task 20261030-chat-announcements. Fails closed: capability + group chat, not a thread.
+  const announcementsOn = !inThread && contact?.type === 'group' && features[CHAT_ANNOUNCEMENT_FEATURE] === true && !!user?.user_id;
+  const [showAnnouncementForm, setShowAnnouncementForm] = useState(false);
   const [showPins, setShowPins] = useState(false);
   const pinsBtnRef = useRef(null);
   // Task 20261023-group-info-row. Groups get the chip row + bottom submenu
@@ -1283,6 +1292,12 @@ export default function ChatThread({
         onClick={() => { setShowAttachMenu(false); setShowGifSheet(true); }}>
         GIF
       </Button>
+      {announcementsOn && (
+        <Button className="attach-menu-row" icon={<NotificationOutlined />} style={attachPillStyle}
+          onClick={() => { setShowAttachMenu(false); setShowAnnouncementForm(true); }}>
+          Announcement
+        </Button>
+      )}
     </div>
   );
 
@@ -1347,6 +1362,8 @@ export default function ChatThread({
             </Avatar>
             <span className="group-info-header-name">{contact.name}</span>
           </button>
+        ) : contact?.type === 'friend' && onViewProfile ? (
+          <ChatHeaderIdentity contact={contact} onViewProfile={onViewProfile} />
         ) : (
           <Text
             strong
@@ -1496,6 +1513,9 @@ export default function ChatThread({
               </div>
             );
           }
+          if (announcementsOn && isAnnouncementLine(m)) {
+            return <ChatAnnouncementRow key={m.key ?? `i${i}`} message={m} userId={user.user_id} groupId={contact.id} />;
+          }
           const isMedia = ['image', 'video', 'gif'].includes(m.attachmentKind);
           const ariaLabel = m.attachmentKind === 'image' ? `${m.sender || 'You'}: photo attachment`
             : m.attachmentKind === 'video' ? `${m.sender || 'You'}: video attachment, tap to play`
@@ -1534,7 +1554,7 @@ export default function ChatThread({
                   )}
                 </div>
               )}
-              {!m.mine && m.sender && !isMedia && <div className="msg-bubble-sender">{m.sender}</div>}
+              {!m.mine && m.sender && !isMedia && <div className="msg-bubble-sender"><ProfileLink userId={m.senderId} username={m.sender} style={INLINE_LINK_STYLE}>{m.sender}</ProfileLink></div>}
               {repliesOn && m.reply && (() => {
                 const r = m.reply;
                 if (r.deleted) return <div className="msg-quote msg-quote-unavailable">{REPLY_UNAVAILABLE_LABEL}</div>;
@@ -1750,6 +1770,10 @@ export default function ChatThread({
           style={{ flexShrink: 0 }}
         />
       </div>
+
+      {announcementsOn && showAnnouncementForm && (
+        <ChatAnnouncementComposer userId={user.user_id} groupId={contact.id} onClose={() => setShowAnnouncementForm(false)} />
+      )}
 
       {!inThread && <GroupInfoPanel
         open={showGroupInfo && contact?.type === 'group'}

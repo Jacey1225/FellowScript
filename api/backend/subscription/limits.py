@@ -75,7 +75,7 @@ class LimitsManager(DBManager):
             # cap: an ended session stops counting.
             self.cur.execute(
                 "SELECT COUNT(*) FROM devotions "
-                "WHERE creator_id = %s "
+                "WHERE creator_id = %s AND call_kind IS NULL AND position('|' in COALESCE(group_id, '')) = 0 "
                 "AND (recurring = TRUE OR time_end IS NULL OR time_end >= now())",
                 (user_id,),
             )

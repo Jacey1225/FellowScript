@@ -167,6 +167,21 @@ def run_create_tables(module=db_module, record=False):
         conn.close()
 
 
+# Task 20261106-remove-agents-ask-ai added exactly these two additive DDL
+# statements to db.create_tables (agents.is_default + its partial unique
+# index). They are expected deltas vs HEAD until that task is committed, so the
+# parity check ignores them (and only them). Once HEAD contains them this
+# filter is a harmless no-op. Any other difference still fails the check.
+TASK_ADDED_DDL = (
+    "ADD COLUMN IF NOT EXISTS is_default BOOLEAN NOT NULL DEFAULT FALSE",
+    "idx_agents_one_default_per_user",
+)
+
+
+def _without_task_ddl(stream):
+    return [s for s in stream if not any(f in str(s) for f in TASK_ADDED_DDL)]
+
+
 def load_head_db():
     src = subprocess.run(["git", "show", "HEAD:api/db.py"], cwd=API_DIR, capture_output=True,
                          text=True, check=True).stdout
@@ -230,7 +245,8 @@ def test_flag_off_sql_parity():
         prep()
         a = run_create_tables(head, record=True)
         prep()
-        b = run_create_tables(db_module, record=True)
+        b = _without_task_ddl(run_create_tables(db_module, record=True))
+        a = _without_task_ddl(a)
         check(f"flag off parity ({name}): {len(a)} statements identical to HEAD", a == b,
               f"len head={len(a)} new={len(b)}; first diff="
               f"{next(((x, y) for x, y in zip(a, b) if x != y), None)}")

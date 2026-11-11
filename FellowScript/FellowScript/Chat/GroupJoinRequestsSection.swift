@@ -299,7 +299,7 @@ struct GroupJoinRequestsSection: View {
         let busy = vm.busyId == req.id
         VStack(alignment: .leading, spacing: Theme.spacingXS) {
             HStack(alignment: .top, spacing: Theme.spacingSM) {
-                avatar(req)
+                avatar(req).joinRequestProfileTap(req)   // task 20261030-profile-everywhere
                 VStack(alignment: .leading, spacing: 2) {
                     // Untrusted text: plain Text, never markdown/links.
                     Text(verbatim: req.displayName).font(.system(size: Theme.fontSM, weight: .semibold))
@@ -351,9 +351,9 @@ struct GroupJoinRequestsSection: View {
     private func avatar(_ req: FSJoinRequest) -> some View {
         if let s = req.profilePhotoUrl, let url = URL(string: s), url.scheme == "https" {
             AsyncImage(url: url) { img in img.resizable().scaledToFill() } placeholder: { Color.white.opacity(0.08) }
-                .frame(width: 40, height: 40).clipShape(Circle()).accessibilityHidden(true)
+                .frame(width: 40, height: 40).clipShape(Circle())
         } else {
-            Circle().fill(Color.white.opacity(0.08)).frame(width: 40, height: 40).accessibilityHidden(true)
+            Circle().fill(Color.white.opacity(0.08)).frame(width: 40, height: 40)
         }
     }
 

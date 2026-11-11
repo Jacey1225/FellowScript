@@ -631,6 +631,8 @@ final class NotesViewModel: ObservableObject {
             if updated.username.isEmpty { updated.username = authorUsername }
             notes[savedId] = updated
             print("[VM] saveNote succeeded — savedId=\(savedId)")
+            // Onboarding: the note is saved server-side.
+            OnboardingEngine.shared.report(.noteSaved)
             return true
         } catch {
             print("[VM] saveNote FAILED — \(error)")
@@ -641,6 +643,7 @@ final class NotesViewModel: ObservableObject {
                 return false
             }
             saveError = error.localizedDescription
+            OnboardingEngine.shared.reportFailure(.noteSaved, message: "We couldn't save your note. Try again.")
             return false
         }
     }
@@ -676,6 +679,7 @@ final class NotesViewModel: ObservableObject {
         highlights[key] = color   // optimistic
         do {
             try await service.saveHighlight(userId: userId, book: book, chapter: chapter, verse: verse, color: color)
+            OnboardingEngine.shared.report(.highlightSaved)
         } catch {
             // Revert the optimistic mutation and surface the real failure —
             // saveHighlight now uses checkedRequestRaw, so a rejected write

@@ -153,6 +153,19 @@ def insert_msg(from_user, group_id, text, ts, seq="default", deleted=False, to_u
     return mid
 
 
+def make_friends(a: str, b: str) -> None:
+    """Mutual user_friends rows. Since the user-profiles task (security D4)
+    DM history reads require an existing friendship, so DM fixtures must
+    befriend the pair first (stranger reads are 404)."""
+    d = DBManager()
+    try:
+        for x, y in ((a, b), (b, a)):
+            d.cur.execute("INSERT INTO user_friends (user_id, friend_id) VALUES (%s, %s) ON CONFLICT DO NOTHING", (x, y))
+        d.conn.commit()
+    finally:
+        d.close()
+
+
 def cleanup(user_ids, group_ids):
     d = DBManager()
     try:
@@ -783,6 +796,7 @@ def test_legacy_readers():
     print("legacy response shape and soft-delete filters")
     host, other, third, blocker = (make_user(f"pagleg{i}") for i in range(4))
     gid = make_group([host, other, blocker])
+    make_friends(host, other)
     client = TestClient(main_module.app)
     ck_host = session_cookie(host)
     saved_flags = {}

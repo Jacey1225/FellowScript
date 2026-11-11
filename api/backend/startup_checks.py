@@ -117,6 +117,12 @@ def check_session_rooms_config() -> None:
     validate_session_rooms_config()
 
 
+def check_profile_config() -> None:
+    from backend.interactions.profile_config import validate_profile_config
+
+    validate_profile_config()
+
+
 CHECKS = (
     check_flag_registry,
     check_chat_pagination_config,
@@ -135,6 +141,7 @@ CHECKS = (
     check_content_encryption_config,
     check_email_verification_config,
     check_session_rooms_config,
+    check_profile_config,
 )
 
 

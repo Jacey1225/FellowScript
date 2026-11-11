@@ -5,10 +5,12 @@ import React, { useMemo, useState } from 'react';
 import { Modal, Button, Spin, ConfigProvider } from 'antd';
 import { formTheme } from '../lib/formTokens.js';
 import { CheckOutlined } from '@ant-design/icons';
+import ShareThreadPicker from './ShareThreadPicker.jsx';
 
-export default function ShareToChatModal({ open, onClose, preview, friends, groups, loaded, onSend }) {
+export default function ShareToChatModal({ open, onClose, preview, friends, groups, loaded, onSend, userId, threadsEnabled = false }) {
   const [selected, setSelected] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [thread, setThread] = useState(null); // thread picked under the selected group
 
   const contacts = useMemo(() => {
     const dms = (friends || []).map((f) => ({ ...f }));
@@ -19,12 +21,13 @@ export default function ShareToChatModal({ open, onClose, preview, friends, grou
     return [...dms, ...grps];
   }, [friends, groups]);
 
-  const close = () => { setSelected(null); setBusy(false); onClose(); };
+  const pick = (key) => { setSelected(key); setThread(null); };
+  const close = () => { setSelected(null); setThread(null); setBusy(false); onClose(); };
   const submit = async () => {
     if (!selected || busy) return;
     setBusy(true);
     const contact = contacts.find((c) => `${c.type}:${c.id}` === selected);
-    if (contact) await onSend(contact);
+    if (contact) await onSend(contact, contact.type === 'group' ? thread : null);
     setSelected(null); setBusy(false);
   };
 
@@ -59,13 +62,16 @@ export default function ShareToChatModal({ open, onClose, preview, friends, grou
               <li key={key}>
                 <button type="button" role="radio" aria-checked={on}
                   aria-label={`${c.name}, ${c.type === 'group' ? 'group' : 'friend'}. ${on ? 'Selected' : 'Not selected'}`}
-                  className="ring-row" onClick={() => setSelected(key)}>
+                  className="ring-row" onClick={() => pick(key)}>
                   <span className="ring-row-avatar" aria-hidden="true">{(c.name || '?')[0].toUpperCase()}</span>
                   <span className="ring-row-text">
                     <span className="ring-row-name">{c.name}</span>
                   </span>
                   <span className="ring-row-trailing">{on && <CheckOutlined style={{ color: 'var(--gold)' }} aria-hidden="true" />}</span>
                 </button>
+                {on && threadsEnabled && c.type === 'group' && (
+                  <ShareThreadPicker userId={userId} groupId={c.group_id} selectedId={thread && thread.id} onSelect={setThread} />
+                )}
               </li>
             );
           })}

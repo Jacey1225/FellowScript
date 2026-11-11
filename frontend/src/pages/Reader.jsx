@@ -1,6 +1,7 @@
 import React, { useEffect, useLayoutEffect, useState, useRef, useCallback, useMemo } from 'react';
 import { peekGroupToOpen, takeGroupToOpen } from '../lib/pendingInvite.js';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, useNavigate } from 'react-router-dom';
+import { useOpenDmFromRoute } from '../hooks/useOpenDmFromRoute.js';
 import { Layout } from 'antd';
 import { DockviewReact } from 'dockview-react';
 
@@ -26,10 +27,13 @@ import {
 import { useAuth }        from '../context/AuthContext.jsx';
 import { useCapabilities } from '../hooks/useCapabilities.js';
 import ShareToChatModal from '../components/ShareToChatModal.jsx';
+import { useChatShare } from '../hooks/useChatShare.js';
+import { canShareToThreads } from '../lib/threadShare.js';
 import { SharedVerseWidget, SharedNoteCard } from '../components/SharedObjects.jsx';
 import { SHARED_FEATURE, verseAttachment, noteAttachment } from '../lib/sharedObjects.js';
 import { stripHtml } from '../components/RichText.jsx';
 import { useAgentChat }  from '../hooks/useAgentChat.js';
+import { ASK_AI_AGENT } from '../lib/agentChats.js';
 import { useBible }       from '../hooks/useBible.js';
 import { useHighlights }  from '../hooks/useHighlights.js';
 import { useNotes }       from '../hooks/useNotes.js';
@@ -124,7 +128,9 @@ export default function Reader() {
 
   // Flag `agent_chats` (capability, fails closed): multiple chats per agent.
   const agentCaps = useCapabilities();
-  const agentChatsEnabled = !!user && !!agentCaps?.isEnabled?.('agent_chats');
+  const askAiEnabled = !!user && !!agentCaps?.isEnabled?.('ask_ai_default_agent');
+  // Ask AI implies multi-chat (the server treats the two flags the same way).
+  const agentChatsEnabled = askAiEnabled || (!!user && !!agentCaps?.isEnabled?.('agent_chats'));
 
   const {
     agents, agentMessages, activeAgent, agentThinking,
@@ -133,7 +139,7 @@ export default function Reader() {
     chats, chatsLoading, chatsError, activeChatId, createChatError, creatingChat,
     historyError, historyLoading,
     selectChat, createChat, refreshChats, retryHistory, clearChatErrors,
-  } = useAgentChat({ user, onNoteSaved: loadNotes, multiChat: agentChatsEnabled });
+  } = useAgentChat({ user, onNoteSaved: loadNotes, multiChat: agentChatsEnabled, askAi: askAiEnabled });
 
   const { bookmarks, loadBookmarks, addBookmark, removeBookmark } = useBookmarks({ user });
 
@@ -167,6 +173,7 @@ export default function Reader() {
   const layoutUserId = user?.user_id ?? null;
   const layoutUserRef = useRef(layoutUserId);
   layoutUserRef.current = layoutUserId;
+  const handleRailSelectRef = useRef(null);
   const [openPanelIds, setOpenPanelIds]   = useState(() => new Set());
   const [activePanelId, setActivePanelId] = useState(null);
   const railDisposablesRef = useRef([]);
@@ -204,6 +211,13 @@ export default function Reader() {
     if (user) { loadHighlights(); loadNotes(); loadGroups(); loadBookmarks(); connectWS(); loadAgents(); }
     return () => disconnectWS();
   }, [user]);
+
+  // Ask AI: capabilities can arrive after the first load, so (re)load the
+  // single assistant and the chat list once the flag is known to be on. A
+  // failed refresh keeps the saved list (see useAgentChat.refreshChats).
+  useEffect(() => {
+    if (user && askAiEnabled) { loadAgents(); refreshChats(); }
+  }, [user, askAiEnabled]);
 
   useEffect(() => { setOnSessionSignal(handleSignal); }, [setOnSessionSignal, handleSignal]);
 
@@ -295,6 +309,9 @@ export default function Reader() {
   }, [openChat, loadSessions, closeAgentChat]);
 
   const handleCloseChat = useCallback(() => { closeChat(); }, [closeChat]);
+  const navigate = useNavigate();
+  const handleViewProfile = useCallback((id) => navigate(`/profile/${encodeURIComponent(id)}`), [navigate]);
+  useOpenDmFromRoute({ loaded: contactsLoaded, onLoad: handleLoadContacts, friends, onOpen: handleOpenChat });
 
   // Task 20260929-group-invite-links: after joining via a link the join page
   // leaves a one-shot group id; open that group's chat once the contact list
@@ -321,18 +338,33 @@ export default function Reader() {
     if (agent) await handleOpenAgent(agent);
   }, [createAgent, handleOpenAgent]);
 
+  // Ask AI: open the assistant (optionally a specific chat) in the Agent Chat
+  // dock panel, or start a new chat when asked.
+  const handleOpenAskAi = useCallback(async (chatId = null) => {
+    closeChat();
+    handleRailSelectRef.current?.(PANEL_IDS.AGENT_CHAT);
+    await openAgentChat(ASK_AI_AGENT, typeof chatId === 'string' ? chatId : null);
+  }, [openAgentChat, closeChat]);
+
+  const handleNewAskAiChat = useCallback(async () => {
+    closeChat();
+    handleRailSelectRef.current?.(PANEL_IDS.AGENT_CHAT);
+    await createChat();
+  }, [createChat, closeChat]);
+
   const handleLeaveSession = useCallback(async () => {
     const session = sessions.find(s => s.id === activeSessionId);
     await leaveSession();
     if (session?.summarize) {
-      const enabledAgent = agents.find(a => a.enabled !== false);
+      // Ask AI: the lone assistant is always on and the server resolves it.
+      const enabledAgent = askAiEnabled ? ASK_AI_AGENT : agents.find(a => a.enabled !== false);
       if (enabledAgent) {
         const groupId = currentContact?.group_id || currentContact?.id || '';
         await summarizeSession(enabledAgent.id, session, groupId, loadNotes);
         loadNotes();
       }
     }
-  }, [sessions, activeSessionId, leaveSession, agents, currentContact, summarizeSession, loadNotes]);
+  }, [sessions, activeSessionId, leaveSession, agents, askAiEnabled, currentContact, summarizeSession, loadNotes]);
 
   // ── Dockview (desktop) ────────────────────────────────────────────────────────
   const handleDockviewReady = useCallback((event) => {
@@ -374,6 +406,7 @@ export default function Reader() {
     if (panel) panel.api.setActive();
     else reopenPanel(api, id, layoutUserRef.current);
   }, []);
+  handleRailSelectRef.current = handleRailSelect;
 
   // ── Send in chat (task 20261012-share-verses-notes-in-chat) ────────────────
   // Fails closed: with the server flag off no entry point is offered. The
@@ -382,8 +415,6 @@ export default function Reader() {
   const caps = useCapabilities();
   const shareEnabled = !!user && ((caps && caps.features) || {})[SHARED_FEATURE] === true;
   const [shareReq, setShareReq] = useState(null); // { attachment, preview }
-  const [shareTick, setShareTick] = useState(0);
-  const pendingShareRef = useRef(null);
 
   const requestVerseShare = useCallback((book, chapter, verse) => {
     if (!contactsLoaded) handleLoadContacts();
@@ -417,21 +448,10 @@ export default function Reader() {
     });
   }, [contactsLoaded, handleLoadContacts, currentGroupId]);
 
-  const performShare = useCallback(async (contact) => {
-    if (!shareReq) return;
-    pendingShareRef.current = { contactId: contact.id, attachment: shareReq.attachment };
-    setShareReq(null);
-    handleRailSelect(PANEL_IDS.MESSAGING);
-    await handleOpenChat(contact);
-    setShareTick(t => t + 1);
-  }, [shareReq, handleOpenChat, handleRailSelect]);
-
-  useEffect(() => {
-    const p = pendingShareRef.current;
-    if (!p || !currentContact || currentContact.id !== p.contactId) return;
-    pendingShareRef.current = null;
-    sendMessage('', p.attachment);
-  }, [shareTick, currentContact, sendMessage]);
+  const performShare = useChatShare({
+    shareReq, setShareReq, onOpenChat: handleOpenChat, onShowMessaging: () => handleRailSelect(PANEL_IDS.MESSAGING),
+    currentContact, sendMessage, openThread, threadView, threadLoad, sendThreadMessage,
+  });
 
   // ── Derived ─────────────────────────────────────────────────────────────────
   const preamble = getPreamble(curBook, null);
@@ -471,7 +491,7 @@ export default function Reader() {
 
   const messagingPanelValue = useMemo(() => ({
     user, friends, groups: msgGroups, currentContact, messages, groupMembers,
-    onOpen: handleOpenChat, onBack: handleCloseChat,
+    onOpen: handleOpenChat, onViewProfile: handleViewProfile, onBack: handleCloseChat,
     onAddFriend: addFriend, onRemoveFriend: removeFriend,
     onReportUser: reportUser, onBlockUser: blockUser,
     onCreateGroup: createGroup, onUpdateGroup: updateGroup, onLeaveGroup: leaveGroup,
@@ -487,6 +507,12 @@ export default function Reader() {
     onGroupChanged: (patch) => { if (currentContact) applyGroupChange(currentContact.id, patch); },
     onGroupGone: (contact) => { if (contact) dropGroup(contact.id); },
     olderPage, onLoadOlder: loadOlder,
+    askAi: askAiEnabled ? {
+      chats, loading: chatsLoading, error: chatsError, activeChatId: activeAgent ? activeChatId : null,
+      creating: creatingChat, createError: createChatError,
+      onOpenChat: handleOpenAskAi, onNewChat: handleNewAskAiChat, onRefresh: refreshChats,
+      onClearCreateError: clearChatErrors,
+    } : null,
     threadView, threadMessages, threadPage, threadLoad, restoredDraft,
     onOpenThread: openThread, onCloseThread: closeThread, onRetryThread: retryThread,
     onLoadOlderThread: loadOlderThread, onSendThreadMessage: sendThreadMessage,
@@ -496,9 +522,10 @@ export default function Reader() {
       enabled: pinsEnabled, list: pinList, onLoad: loadPins, onLoadMore: loadMorePins,
       onToggle: togglePin, onUnpin: unpinFromList, ensureLoaded: ensureMessageLoaded,
     },
-  }), [addGroupMembers, retryFailedMessage, toggleReaction, pinList, pinsEnabled, loadPins, loadMorePins, togglePin, unpinFromList, ensureMessageLoaded, threadView, threadMessages, threadPage, threadLoad, restoredDraft, openThread, closeThread, retryThread,
+  }), [askAiEnabled, chats, chatsLoading, chatsError, activeChatId, activeAgent, creatingChat, createChatError,
+       handleOpenAskAi, handleNewAskAiChat, refreshChats, clearChatErrors, addGroupMembers, retryFailedMessage, toggleReaction, pinList, pinsEnabled, loadPins, loadMorePins, togglePin, unpinFromList, ensureMessageLoaded, threadView, threadMessages, threadPage, threadLoad, restoredDraft, openThread, closeThread, retryThread,
        loadOlderThread, sendThreadMessage, startThread, deleteMessage, restoreMessage,
-       olderPage, loadOlder, applyGroupChange, dropGroup, user, friends, msgGroups, currentContact, messages, groupMembers, handleOpenChat, handleCloseChat,
+       olderPage, loadOlder, applyGroupChange, dropGroup, user, friends, msgGroups, currentContact, messages, groupMembers, handleOpenChat, handleViewProfile, handleCloseChat,
        addFriend, removeFriend, reportUser, blockUser, createGroup, updateGroup, leaveGroup,
        contactsLoaded, handleLoadContacts, sendMessage, requestUploadUrl, uploadToS3, searchGifs, browseGifs,
        sessions, activeSessionId, talkingUserId,
@@ -523,13 +550,14 @@ export default function Reader() {
     user, agents, agentMessages, activeAgent, agentThinking,
     onOpenAgent: handleOpenAgent, onCloseAgent: handleCloseAgent, onNewAgent: handleNewAgent,
     sendAgentMessage,
+    askAi: askAiEnabled, onOpenAskAi: handleOpenAskAi,
     multiChat: agentChatsEnabled, chats, chatsLoading, chatsError, activeChatId,
     createChatError, creatingChat, historyError, historyLoading,
     onSelectChat: selectChat, onCreateChat: createChat, onRefreshChats: refreshChats,
     onRetryHistory: retryHistory, onClearChatErrors: clearChatErrors,
     curBook, curChapter, curVerse, allNotes, onNavigateVerse: handleNavigateVerse,
   }), [user, agents, agentMessages, activeAgent, agentThinking, handleOpenAgent, handleCloseAgent,
-       handleNewAgent, sendAgentMessage, agentChatsEnabled, chats, chatsLoading, chatsError,
+       handleNewAgent, sendAgentMessage, askAiEnabled, handleOpenAskAi, agentChatsEnabled, chats, chatsLoading, chatsError,
        activeChatId, createChatError, creatingChat, historyError, historyLoading,
        selectChat, createChat, refreshChats, retryHistory, clearChatErrors, curBook, curChapter, curVerse, allNotes, handleNavigateVerse]);
 
@@ -573,6 +601,8 @@ export default function Reader() {
             groups={msgGroups}
             loaded={contactsLoaded}
             onSend={performShare}
+            userId={user?.user_id}
+            threadsEnabled={canShareToThreads(caps)}
           />
         )}
 

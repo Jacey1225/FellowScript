@@ -142,7 +142,7 @@ jobs:
       # exercised as a live ring-timeout window in the test suite itself.
       VOIP_APNS_TOPIC: "com.fellowscript.app.voip"
       RING_VOIP_ENABLED: "false"
-      RING_TIMEOUT_SECONDS: "30"
+      RING_TIMEOUT_SECONDS: "45"
       # validate_invite_link_secret() (task 20261002-group-invite-show-link)
       # fails fast at app boot if INVITE_LINK_SECRET is unset or under 32
       # chars. Throwaway CI-only value, not the production secret.

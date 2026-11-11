@@ -1,0 +1,39 @@
+{
+  "task_id": "20261030-user-profiles",
+  "step": 6,
+  "gate": "frontend",
+  "platform": "ios",
+  "result": "pass",
+  "summary": "iOS profiles implemented with design choices A1/B1/C1/D1/E1. New FellowScript/Profile/ (ProfileModels with FSProfile + memory-only ProfileCache, ProfileViewModel, ProfileView, ProfileHeaderView, ProfileActionsView, ProfileBioEditor, ProfileEntryViews) and Services/NetworkService+Profile.swift (fetchProfile, updateBio, sendProfileFriendRequest, acceptProfileFriendRequest). New DataServiceProtocol requirements have throwing protocol-extension defaults so no existing conformer or test double changes. Behavior: bio key absent = hidden (stranger line 'Bio is shared with friends.'), present-null = 'No bio yet.'; 404 -> AppError.notFound -> cache evicted and 'This profile isn't available.'; network/5xx keeps cache with 'Couldn't refresh. Showing what we had.' + Retry; first-load failure shows Try again, never fabricated data. Friend request/accept refetch the profile for the real state; copy is uniform. Primary action Add friend / Request sent / Accept / Message (Message sets appState.pendingChatContact, existing DM flow). Overflow menu: Unfriend (deferred commit, 6s Undo, commits on leave), Block (confirm; existing endpoint, manage in BlockedUsersView), Report (existing ReportUserSheet, content_type user). Inline own-bio editor with 160 counter (NFC + whitespace collapse mirrored), draft kept on 422/403/429/network errors. Add Friend sheet now says 'If that username exists, a friend request is sent.' Thin hook-ins only: ChatRootView (state, sheet, swipe/menu action, ContactRow avatar tap), AccountView (one MyProfileRow line), AccountView+Profile (request avatar -> ProfileLinkedAvatar), AppState.signOut (ProfileCache.clear), MockDataService protocol list. Docs: docs/design/account.md section added. No Xcode project edits needed (file-system synchronized groups, 11 sync-group refs). Verified only with swiftc -parse (syntax OK); pgrep xcodebuild was empty; no xcodebuild/simulator run, so type-checking is left to testing step 8.",
+  "new_files": [
+    "FellowScript/FellowScript/Profile/ProfileModels.swift",
+    "FellowScript/FellowScript/Profile/ProfileViewModel.swift",
+    "FellowScript/FellowScript/Profile/ProfileView.swift",
+    "FellowScript/FellowScript/Profile/ProfileHeaderView.swift",
+    "FellowScript/FellowScript/Profile/ProfileActionsView.swift",
+    "FellowScript/FellowScript/Profile/ProfileBioEditor.swift",
+    "FellowScript/FellowScript/Profile/ProfileEntryViews.swift",
+    "FellowScript/FellowScript/Services/NetworkService+Profile.swift"
+  ],
+  "changed_files": [
+    "FellowScript/FellowScript/Chat/ChatRootView.swift",
+    "FellowScript/FellowScript/Account/AccountView.swift",
+    "FellowScript/FellowScript/Account/AccountView+Profile.swift",
+    "FellowScript/FellowScript/Services/AppState.swift",
+    "FellowScript/FellowScript/Services/MockDataService.swift",
+    "docs/design/account.md"
+  ],
+  "deviations_and_gaps": [
+    "No Decline button: the API has no decline endpoint (only Accept). Add one backend-side if wanted.",
+    "Block does not show the 'Unblock' toast; the sheet just dismisses (Blocked Users in Account manages unblocking), because the host sheet is gone.",
+    "Entry points not wired: DM thread header avatar (ChatThreadView header is a Button, 3966-line file) and group member lists / group-chat sender avatars (GroupInfoSheet, MessageGroupRow). Wired: contact-row avatar, swipe 'Profile', iPad row menu, friend-request avatars, Account 'View my profile'.",
+    "Bio max length hardcoded to 160 (ProfileViewModel.bioMaxLength); no endpoint exposes it.",
+    "iPad compact row avatar tap sits inside a Button label; whether the inner tap beats the Button is unverified (menu 'View profile' is the reliable path there).",
+    "Friend-request list in Account is not auto-refreshed after accepting from the profile sheet (pull-to-refresh updates it)."
+  ],
+  "testing_notes": [
+    "Add tests: FSProfile decode (bio absent vs null vs string; unknown state throws), ProfileViewModel (404 evicts, 5xx/network keeps cache, bioErrorMessage mapping, normalizedBio/draftLength vs server rules, unfriend undo/commit), NetworkService fetchProfile 404 -> notFound.",
+    "ChatRootView AddFriendSheet source-scan tests in SubmenuVisualRedesignRegressionTests still match (struct body only gained a helper argument).",
+    "Existing AccountUITests friend-request row measurements: avatar now has a 44pt tap frame (was 36)."
+  ]
+}

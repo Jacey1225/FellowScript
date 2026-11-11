@@ -112,12 +112,11 @@ final class SubmenuFollowupPolishScreenshotUITests: XCTestCase {
         app.launch()
 
         if app.buttons["Home"].waitForExistence(timeout: 3) {
+            dismissOnboardingRecapIfPresent(app)
             return app
         }
 
         waitHittableThenTap(app.buttons["Get Started"], timeout: 10)
-        waitHittableThenTap(app.buttons.matching(NSPredicate(format: "label CONTAINS[c] %@", "Skip →")).firstMatch)
-        waitHittableThenTap(app.buttons.matching(NSPredicate(format: "label CONTAINS[c] %@", "Begin the Tour →")).firstMatch)
         waitHittableThenTap(app.buttons["Skip"])
         waitHittableThenTap(app.buttons.matching(NSPredicate(format: "label CONTAINS[c] %@", "Sign In")).firstMatch)
 
@@ -142,7 +141,16 @@ final class SubmenuFollowupPolishScreenshotUITests: XCTestCase {
             RunLoop.current.run(until: Date().addingTimeInterval(0.3))
         }
         XCTAssertTrue(app.buttons["Home"].waitForExistence(timeout: 15), "expected Dashboard tab bar after sign-in")
+        dismissOnboardingRecapIfPresent(app)
         return app
+    }
+
+    /// The redone onboarding ends in a "You're set up" recap whose Continue leads to Home.
+    /// A first sign-in (or a persisted recap phase) shows it over the tab bar; clear it.
+    private func dismissOnboardingRecapIfPresent(_ app: XCUIApplication) {
+        let cont = app.buttons["Continue"]
+        if cont.waitForExistence(timeout: 4) { waitHittableThenTap(cont) }
+        RunLoop.current.run(until: Date().addingTimeInterval(0.8))
     }
 
     // MARK: - 1. AddFriendSheet — centered title + ghost-chip Cancel + gold PillButton
@@ -262,7 +270,7 @@ final class SubmenuFollowupPolishScreenshotUITests: XCTestCase {
         XCTAssertTrue(cancelButton.isHittable)
     }
 
-    // MARK: - 5. EventSetupSheet.detailsScreen — merged EVENT TIME/GROUP row + gold Update/Save
+    // MARK: - 5. EventSetupSheet WHO & WHEN step (TA1) — Group + Time in one Details card, gold Next
 
     func test_eventSetupSheet_detailsScreen_screenshot() {
         let app = signInAndReachDashboard()
@@ -275,28 +283,23 @@ final class SubmenuFollowupPolishScreenshotUITests: XCTestCase {
         XCTAssertTrue(createEventButton.waitForExistence(timeout: 10), "expected AccountView's Create new event control.\n\(app.debugDescription)")
         scrollToAndTap(createEventButton, app: app)
 
-        // Daily recurrence jumps straight to detailsScreen (path = [.details]).
-        let dailyCard = app.staticTexts["Daily"]
-        XCTAssertTrue(dailyCard.waitForExistence(timeout: 8), "expected the Daily recurrence card.\n\(app.debugDescription)")
-        waitHittableThenTap(dailyCard)
+        // TA1 sheet opens on step 1 (WHO & WHEN): the Details card holds the
+        // Group menu and the Time picker together, with Next in the pinned bar.
+        let detailsTitle = app.staticTexts.matching(NSPredicate(format: "label ==[c] %@", "Details")).firstMatch
+        XCTAssertTrue(detailsTitle.waitForExistence(timeout: 8), "expected the Details card on the WHO & WHEN step.\n\(app.debugDescription)")
 
-        let title = app.staticTexts["Details"]
-        XCTAssertTrue(title.waitForExistence(timeout: 8), "expected detailsScreen's centered `.principal` title.\n\(app.debugDescription)")
+        let eventTimeLabel = app.staticTexts["Time"]
+        let groupLabel = app.staticTexts["Group"]
+        XCTAssertTrue(eventTimeLabel.waitForExistence(timeout: 8), "expected the Time row in the Details card.\n\(app.debugDescription)")
+        XCTAssertTrue(groupLabel.waitForExistence(timeout: 5), "expected the Group row in the same Details card")
 
-        // Item 2: EVENT TIME and GROUP must both be visible together, on the
-        // same screen without scrolling, as one merged row.
-        let eventTimeLabel = app.staticTexts["DEVOTION TIME"]
-        let groupLabel = app.staticTexts["GROUP"]
-        XCTAssertTrue(eventTimeLabel.waitForExistence(timeout: 8), "expected the EVENT TIME card in the merged row.\n\(app.debugDescription)")
-        XCTAssertTrue(groupLabel.waitForExistence(timeout: 5), "expected the GROUP card in the same merged row")
-
-        let saveButton = app.buttons["Save"]
-        XCTAssertTrue(saveButton.waitForExistence(timeout: 5), "expected detailsScreen's gold PillButton Save (new event, not editing)")
+        let nextButton = app.buttons["Next"]
+        XCTAssertTrue(nextButton.waitForExistence(timeout: 5), "expected the pinned bar's gold Next primary on step 1")
 
         RunLoop.current.run(until: Date().addingTimeInterval(0.5))
         attachScreenshot(app, name: "submenu-followup-polish-event-setup-details-screen-merged-row")
 
-        XCTAssertTrue(eventTimeLabel.isHittable || eventTimeLabel.exists, "EVENT TIME card must render on-screen")
-        XCTAssertTrue(groupLabel.isHittable || groupLabel.exists, "GROUP card must render on-screen, side-by-side with EVENT TIME")
+        XCTAssertTrue(eventTimeLabel.isHittable || eventTimeLabel.exists, "Time row must render on-screen")
+        XCTAssertTrue(groupLabel.isHittable || groupLabel.exists, "Group row must render on-screen with the Time row")
     }
 }

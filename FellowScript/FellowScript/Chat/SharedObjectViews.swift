@@ -69,6 +69,8 @@ enum SharedPayload: Equatable {
 struct PendingChatShare: Equatable {
     let contact: FSContact
     let payload: SharedPayload
+    /// Set when the share targets a thread of `contact` (a group).
+    var thread: FSThreadSummary? = nil
 }
 
 struct ChatShareDraft: Identifiable {
@@ -431,6 +433,9 @@ struct ShareToChatSheet: View {
     @State private var groups:  [FSContact] = []
     @State private var loaded = false
     @State private var failed = false
+    private var threadsPickable: Bool {
+        appState.capabilities.isEnabled("threads") && appState.capabilities.sharedObjectsEnabled
+    }
 
     var body: some View {
         ZStack {
@@ -499,6 +504,10 @@ struct ShareToChatSheet: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Send to \(c.name)")
+                if c.type == .group, threadsPickable {
+                    ShareGroupThreadsRows(group: c, service: appState.service,
+                                          userId: appState.currentUser?.user_id ?? "") { send(to: c, thread: $0) }
+                }
             }
         }
     }
@@ -517,8 +526,8 @@ struct ShareToChatSheet: View {
 
     /// Hands the share to the target chat (it sends over the one chat socket once
     /// loaded) and opens that chat on the Chat tab.
-    private func send(to contact: FSContact) {
-        appState.pendingChatShare = PendingChatShare(contact: contact, payload: draft.payload)
+    private func send(to contact: FSContact, thread: FSThreadSummary? = nil) {
+        appState.pendingChatShare = PendingChatShare(contact: contact, payload: draft.payload, thread: thread)
         appState.pendingChatContact = contact
         dismiss()
     }

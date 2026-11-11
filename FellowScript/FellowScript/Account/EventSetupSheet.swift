@@ -1,82 +1,95 @@
-// Multi-step sheet for creating a new heartbeat event.
-// Step 1: Recurrence (Daily / Weekly / Monthly)
-// Step 2: Day picker (weekday pills for Weekly, 1-31 grid for Monthly; skipped for Daily)
-// Step 3: Agent picker (if more than one), time, and prompt
+// Scheduled devotion form (TA1, Forms kit): FSFormScaffold with the
+// WHO & WHEN / PROMPT / REPEAT stepper rail and a pinned Back / Next / Save bar.
+// Task 20261105-onboarding-redo: visual/structure change only. The save
+// contract (onSave arguments, idempotency key, timestamps, group and
+// notesPublic rules) is unchanged. Recurrence keeps Daily / Weekly / Monthly
+// with the existing day pickers, now inline in the REPEAT step.
+//
+// Onboarding hooks: reports sheet-opened and step-reached signals to
+// OnboardingEngine (no-ops outside a walkthrough), shows the coach card, and
+// can prefill a starter prompt.
 
 import SwiftUI
 
 struct EventSetupSheet: View {
     let agents:   [FSAgent]
-    // Task 20260902-group-tagged-devotions: the user's own groups, sourced
-    // by the caller from the existing NetworkService.fetchContacts(userId:)
-    // data (no new fetch path) so the group picker below can list them.
+    // Task 20260902-group-tagged-devotions: the user's own groups, sourced by the
+    // caller from the existing NetworkService.fetchContacts(userId:) data.
     var groups:   [String: FSGroup] = [:]
     var existing: FSHeartbeat? = nil
-    // notesPublic: task 20260903-notes-public-repurpose, step 6 -- the
-    // deny-by-default edit-permission choice for every note this event
-    // generates on fire, mirroring notes.public's post-repurpose meaning.
-    // idempotencyKey (task 20260905-heartbeat-timezone-duplicate-bugs, step
-    // 4): a fresh UUID generated once per Save tap (see the toolbar action
-    // below), threaded all the way to the server's `idempotency_key` body
-    // field so a double-submit that still manages to fire this closure
-    // twice for the same attempt is deduped server-side rather than
-    // creating two rows.
+    /// Prefilled prompt for a new devotion (onboarding starter). Ignored when editing.
+    var starterPrompt: String? = nil
+    // notesPublic: deny-by-default edit-permission choice for notes this event generates.
+    // idempotencyKey: a fresh UUID per Save tap, threaded to the server so a
+    // double-submit is deduped (task 20260905-heartbeat-timezone-duplicate-bugs).
     let onSave:   (_ agentId: String, _ prompt: String, _ timestamps: [String?], _ groupId: String?, _ notesPublic: Bool, _ idempotencyKey: String) -> Void
 
     @Environment(\.dismiss) private var dismiss
+    @ObservedObject private var onboarding = OnboardingEngine.shared
 
-    // In-flight/disable guard (task 20260905-heartbeat-timezone-duplicate-bugs,
-    // step 4): PillButton has no built-in debounce or disabled-while-saving
-    // state, and the toolbar action below dispatches onSave as a
-    // fire-and-forget call before calling dismiss() -- a rapid double-tap
-    // before the sheet actually finishes dismissing could otherwise invoke
-    // onSave twice. This is a complementary client-side UX guard only; the
-    // durable fix is the server-side idempotency_key + UNIQUE index (step 2).
+    // In-flight guard: complements the server-side idempotency_key + UNIQUE index.
     @State private var isSaving = false
 
-    enum Recurrence { case daily, weekly, monthly }
-    enum SetupScreen: Hashable { case days, details }
+    enum Recurrence: Hashable { case daily, weekly, monthly }
 
+    @State private var step = 0
     @State private var selectedAgentId:   String       = ""
     @State private var recurrence:        Recurrence   = .daily
     @State private var selectedWeekdays:  Set<Int>     = []
     @State private var selectedMonthDays: Set<Int>     = []
     @State private var selectedTime                    = Date()
     @State private var prompt                          = ""
-    @State private var path:              [SetupScreen] = []
+    @State private var promptError:       String?      = nil
+    @State private var daysError:         String?      = nil
     // "" means no group / personal.
     @State private var selectedGroupId:   String       = ""
-    // Deny-by-default (task 20260903-notes-public-repurpose, step 6): only
-    // meaningful once a group is selected -- an ungrouped/personal event's
-    // notes have no other group member who could edit them.
+    // Deny-by-default: only meaningful once a group is selected.
     @State private var notesPublic:       Bool         = false
+    @State private var seeded = false
 
+    private static let steps = ["Who & when", "Prompt", "Repeat"]
     private var isEditing: Bool { existing != nil }
+    private var lastStep: Bool { step == Self.steps.count - 1 }
+    private var promptTrimmed: String { prompt.trimmingCharacters(in: .whitespaces) }
 
     var body: some View {
-        NavigationStack(path: $path) {
-            recurrenceScreen
-                .navigationDestination(for: SetupScreen.self) { screen in
-                    switch screen {
-                    case .days:    dayPickerScreen
-                    case .details: detailsScreen
-                    }
+        FSFormScaffold(
+            title: isEditing ? "Edit scheduled devotion" : "New scheduled devotion",
+            dirty: !isSaving && (!promptTrimmed.isEmpty && existing == nil || step > 0),
+            rail: AnyView(FSStepperRail(steps: Self.steps, current: step,
+                                        maxReachable: isEditing ? Self.steps.count - 1 : step,
+                                        onSelect: { goTo($0) })),
+            onClose: { dismiss() },
+            content: {
+                switch step {
+                case 0:  whoAndWhenCards
+                case 1:  promptCard
+                default: repeatCards
                 }
-        }
+            },
+            bar: {
+                FSPinnedActionBar(
+                    secondaryTitle: step == 0 ? "Cancel" : "Back",
+                    onSecondary: { if step == 0 { dismiss() } else { goTo(step - 1) } },
+                    primaryTitle: lastStep ? (isEditing ? "Update" : "Save") : "Next",
+                    primaryDimmed: primaryDimmed,
+                    saving: isSaving,
+                    onPrimary: primaryTapped
+                )
+            }
+        )
         .preferredColorScheme(.dark)
-        // Shared keyboard-dismiss convention (task
-        // 20260831-interaction-polish-conventions) — applied at the
-        // NavigationStack root so it covers detailsScreen's prompt
-        // TextEditor regardless of which pushed screen is showing.
         .dismissesKeyboardOnScrollAndTap()
+        .onboardingCoach(surfaces: [.devotionSheet])
         .onAppear {
-            if selectedAgentId.isEmpty {
-                selectedAgentId = agents.first?.id ?? ""
-            }
-            if let hb = existing {
-                prefill(from: hb)
-            }
+            guard !seeded else { return }
+            seeded = true
+            if selectedAgentId.isEmpty { selectedAgentId = agents.first?.id ?? "" }
+            if let hb = existing { prefill(from: hb) }
+            else if prompt.isEmpty, let starterPrompt { prompt = starterPrompt }
+            if !isEditing { onboarding.report(.devotionSheetOpened) }
         }
+        .onDisappear { onboarding.surfaceDismissed(.devotionSheet) }
     }
 
     // ── Pre-fill helpers ──────────────────────────────────────────────────────
@@ -106,377 +119,197 @@ struct EventSetupSheet: View {
         let count = nonNil.count
         if count == 31 {
             recurrence = .daily
-            path = [.details]
         } else {
             recurrence = .monthly
             selectedMonthDays = Set(nonNil.map { $0.0 + 1 })
-            path = [.days, .details]
         }
     }
 
-    // ── Step 1: Recurrence ────────────────────────────────────────────────────
+    // ── Navigation ────────────────────────────────────────────────────────────
 
-    private var recurrenceScreen: some View {
-        ScrollView {
-            VStack(spacing: Theme.spacingLG) {
-                Text("How often?")
-                    .font(.system(size: Theme.fontDisplayMD, weight: .heavy))
-                    .foregroundColor(Theme.parchment)
-                    .padding(.top, Theme.spacingXL)
-
-                Text("Choose how often this scheduled devotion should arrive.")
-                    .font(.system(size: Theme.fontSM))
-                    .foregroundColor(Theme.textMuted)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, Theme.spacingLG)
-
-                VStack(spacing: Theme.spacingMD) {
-                    recurrenceCard(.daily,   icon: "sun.max",              title: "Daily",
-                                   description: "Every day of the month")
-                    recurrenceCard(.weekly,  icon: "calendar.badge.clock", title: "Weekly",
-                                   description: "Selected days of the week")
-                    recurrenceCard(.monthly, icon: "calendar",             title: "Monthly",
-                                   description: "Selected days of the month")
-                }
-                .padding(.horizontal, Theme.spacingLG)
-
-                Spacer(minLength: Theme.spacingXL)
-            }
-            .frame(maxWidth: .infinity)
+    private var primaryDimmed: Bool {
+        if isSaving { return true }
+        switch step {
+        case 0:  return selectedAgentId.isEmpty
+        case 1:  return promptTrimmed.isEmpty
+        default: return needsDays || promptTrimmed.isEmpty || selectedAgentId.isEmpty
         }
-        // Warm-bloom-ground background (task 20260902-submenu-visual-redesign,
-        // via the shared Theme.warmBloomBackground() modifier) — same
-        // treatment on this and the other two steps below so the whole
-        // multi-step flow reads consistently.
-        .warmBloomBackground()
-        .navigationTitle(isEditing ? "Edit scheduled devotion" : "New scheduled devotion")
-        .navigationBarTitleDisplayMode(.inline)
-        // Follow-up polish (task 20260902-submenu-followup-polish): ghost-
-        // chip Cancel (see ChatRootView.swift's sheetGhostCancelLabel for the
-        // shared recipe/rationale) plus a `.principal` title item -- this
-        // screen has no trailing toolbar item at all, so the default inline
-        // title was never actually centered (it centers within the
-        // leading/trailing gap, and an empty trailing side still counts as
-        // asymmetric against a non-empty leading Cancel).
-        .toolbar {
-            ToolbarItem(placement: .navigationBarLeading) {
-                Button(action: { dismiss() }) { cancelGhostChip }
-                    .buttonStyle(.plain)
+    }
+
+    private var needsDays: Bool {
+        (recurrence == .weekly && selectedWeekdays.isEmpty) || (recurrence == .monthly && selectedMonthDays.isEmpty)
+    }
+
+    /// Dimmed stays tappable: the tap runs validation and shows why (spec D8).
+    private func primaryTapped() {
+        guard !isSaving else { return }
+        switch step {
+        case 0:
+            if !selectedAgentId.isEmpty { goTo(1) }
+        case 1:
+            if promptTrimmed.isEmpty { promptError = "Add a prompt so your study partner knows what to write." }
+            else { goTo(2) }
+        default:
+            // Edit mode can reach this step via the rail with an earlier step now invalid:
+            // never save an empty prompt or a missing agent.
+            if selectedAgentId.isEmpty { goTo(0) }
+            else if promptTrimmed.isEmpty { promptError = "Add a prompt so your study partner knows what to write."; goTo(1) }
+            else if needsDays { daysError = "Choose at least one day." }
+            else { saveDevotion() }
+        }
+    }
+
+    private func goTo(_ target: Int) {
+        guard target != step, target >= 0, target < Self.steps.count else { return }
+        // Create mode: forward moves only through the validated primary button.
+        step = target
+        if target == 1 { onboarding.report(.devotionPromptStepReached) }
+        if target == 2 { onboarding.report(.devotionRepeatStepReached) }
+    }
+
+    // ── Step 1: WHO & WHEN ────────────────────────────────────────────────────
+
+    @ViewBuilder private var whoAndWhenCards: some View {
+        FSFormCard(title: "Details") {
+            VStack(alignment: .leading, spacing: 16) {
+                if agents.count > 1 {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Written by").font(.fsLabel).foregroundColor(Theme.textPrimary)
+                        Picker("Written by", selection: $selectedAgentId) {
+                            ForEach(agents) { agent in Text(agent.displayLabel).tag(agent.id) }
+                        }
+                        .labelsHidden()
+                        .tint(Theme.gold)
+                    }
+                }
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Group").font(.fsLabel).foregroundColor(Theme.textPrimary)
+                    Menu {
+                        Button(action: { selectedGroupId = "" }) {
+                            Label("No Group", systemImage: selectedGroupId.isEmpty ? "checkmark" : "person.crop.circle")
+                        }
+                        if !sortedGroups.isEmpty {
+                            Divider()
+                            ForEach(sortedGroups) { group in
+                                Button(action: { selectedGroupId = group.id }) {
+                                    Label(group.title.isEmpty ? "Untitled Group" : group.title,
+                                          systemImage: selectedGroupId == group.id ? "checkmark" : "person.3")
+                                }
+                            }
+                        }
+                    } label: {
+                        HStack {
+                            Text(selectedGroupLabel).font(.fsBody).foregroundColor(Theme.textPrimary)
+                            Spacer()
+                            Image(systemName: "chevron.up.chevron.down").font(.system(size: 12, weight: .semibold)).foregroundColor(Theme.textSecondary)
+                        }
+                        .padding(.horizontal, 14)
+                        .frame(minHeight: Theme.formFieldHeight)
+                        .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Theme.fieldFill))
+                        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(Theme.fieldBorder, lineWidth: 1))
+                    }
+                    .accessibilityLabel("Group, \(selectedGroupLabel)")
+                    Text("Optionally tie this devotion's notes to one of your groups.")
+                        .font(.fsHelper).foregroundColor(Theme.textSecondary)
+                }
+                HStack {
+                    Text("Time").font(.fsLabel).foregroundColor(Theme.textPrimary)
+                    Spacer()
+                    DatePicker("Time", selection: $selectedTime, displayedComponents: .hourAndMinute)
+                        .labelsHidden()
+                        .tint(Theme.gold)
+                }
+                .frame(minHeight: 44)
             }
-            .suppressAutomaticGlassChrome()
-            ToolbarItem(placement: .principal) {
-                Text(isEditing ? "Edit scheduled devotion" : "New scheduled devotion")
-                    .font(.system(size: 17, weight: .semibold))
-                    .foregroundColor(Theme.parchment)
+        }
+        // Hidden (not disabled) outside a group: an ungrouped event has no other editor.
+        if !selectedGroupId.isEmpty {
+            FSFormCard(title: "Permissions") {
+                FSToggleRow(title: notesPublic ? "Group can edit" : "Owner only",
+                            helper: "Whether other members of \(selectedGroupLabel) may edit the notes this devotion writes.",
+                            isOn: $notesPublic)
             }
         }
     }
 
-    private func recurrenceCard(_ r: Recurrence, icon: String, title: String, description: String) -> some View {
-        Button(action: {
-            recurrence = r
-            path = r == .daily ? [.details] : [.days]
-        }) {
-            HStack(spacing: Theme.spacingMD) {
-                ZStack {
-                    Circle().fill(Theme.gold.opacity(0.12)).frame(width: 44, height: 44)
-                    Image(systemName: icon).foregroundColor(Theme.gold)
-                }
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(title).font(.system(size: Theme.fontBody)).foregroundColor(Theme.parchment)
-                    Text(description).font(.system(size: Theme.fontSM)).foregroundColor(Theme.textMuted)
-                }
-                Spacer()
-                Image(systemName: "chevron.right")
-                    .foregroundColor(Theme.textMuted).font(.caption)
-            }
-            .fsCard()
+    // ── Step 2: PROMPT ────────────────────────────────────────────────────────
+
+    private var promptCard: some View {
+        FSFormCard(title: "Prompt") {
+            Text("Every day at your chosen time, your AI study partner writes a devotion from this prompt and saves it as a note, even when the app is closed.")
+                .font(.fsHelper).foregroundColor(Theme.textSecondary)
+            FSField(label: "Prompt", required: true, text: $prompt,
+                    state: promptError.map { .error($0) } ?? .normal,
+                    multiline: true, minLines: 5)
+                .onChange(of: prompt) { _, _ in promptError = nil }
         }
-        .buttonStyle(.plain)
     }
 
-    // ── Step 2: Day picker ────────────────────────────────────────────────────
+    // ── Step 3: REPEAT ────────────────────────────────────────────────────────
 
-    private var dayPickerScreen: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: Theme.spacingLG) {
-                if recurrence == .weekly {
-                    weekdayPicker
-                } else {
-                    monthDayPicker
-                }
-                Spacer(minLength: Theme.spacingXL)
+    @ViewBuilder private var repeatCards: some View {
+        FSFormCard(title: "Repeat") {
+            FSSegmented(options: [(Recurrence.daily, "Daily"), (Recurrence.weekly, "Weekly"), (Recurrence.monthly, "Monthly")],
+                        selection: $recurrence)
+                .onChange(of: recurrence) { _, _ in daysError = nil }
+            switch recurrence {
+            case .daily:
+                Text("Every day of the month.").font(.fsHelper).foregroundColor(Theme.textSecondary)
+            case .weekly:
+                weekdayPicker
+            case .monthly:
+                monthDayPicker
             }
-            .padding(Theme.spacingLG)
-        }
-        .warmBloomBackground()
-        .navigationTitle("Select Days")
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            ToolbarItem(placement: .navigationBarTrailing) {
-                Button("Next") { path.append(.details) }
-                    .foregroundColor(Theme.gold)
-                    .disabled(recurrence == .weekly ? selectedWeekdays.isEmpty : selectedMonthDays.isEmpty)
+            if let daysError {
+                Text(daysError).font(.fsHelper).foregroundColor(Theme.error)
             }
         }
     }
 
     private var weekdayPicker: some View {
-        let days: [(String, Int)] = [
-            ("Mon", 2), ("Tue", 3), ("Wed", 4), ("Thu", 5),
-            ("Fri", 6), ("Sat", 7), ("Sun", 1)
-        ]
-        return VStack(alignment: .leading, spacing: Theme.spacingMD) {
-            Text("Which days of the week?")
-                .font(.system(size: Theme.fontDisplayMD, weight: .heavy))
-                .foregroundColor(Theme.parchment)
-
-            LazyVGrid(columns: Array(repeating: .init(.flexible()), count: 4), spacing: 10) {
-                ForEach(days, id: \.1) { day in
-                    let sel = selectedWeekdays.contains(day.1)
-                    Button(action: {
-                        if sel { selectedWeekdays.remove(day.1) } else { selectedWeekdays.insert(day.1) }
-                    }) {
-                        FSChipLabel(title: day.0, selected: sel)
-                    }
-                    .accessibilityAddTraits(sel ? .isSelected : [])
-                }
+        let days: [(String, Int)] = [("Mon", 2), ("Tue", 3), ("Wed", 4), ("Thu", 5), ("Fri", 6), ("Sat", 7), ("Sun", 1)]
+        return LazyVGrid(columns: Array(repeating: .init(.flexible()), count: 4), spacing: 10) {
+            ForEach(days, id: \.1) { day in
+                let sel = selectedWeekdays.contains(day.1)
+                Button(action: {
+                    if sel { selectedWeekdays.remove(day.1) } else { selectedWeekdays.insert(day.1) }
+                    daysError = nil
+                }) { FSChipLabel(title: day.0, selected: sel) }
+                .buttonStyle(.plain)
+                .accessibilityAddTraits(sel ? .isSelected : [])
             }
         }
     }
 
     private var monthDayPicker: some View {
-        VStack(alignment: .leading, spacing: Theme.spacingMD) {
-            Text("Which days of the month?")
-                .font(.system(size: Theme.fontDisplayMD, weight: .heavy))
-                .foregroundColor(Theme.parchment)
-
-            // Sizing/style brought in line with BibleReaderView's
-            // chapterGridStep(for:) (task 20260909-day-picker-button-sizing):
-            // fixed 44pt minHeight (not just a square aspect ratio) so every
-            // chip clears Apple's 44pt touch-target guidance, fontHeading
-            // instead of fontXS, and the themed radiusSM corner radius
-            // instead of a hardcoded value. Column count stays at 7 (not the
-            // chapter grid's 5) since 31 values read naturally as a
-            // calendar-style grid and the chapter grid's column count isn't
-            // itself part of what was asked to match. The always-visible
-            // faint-gold unselected background is kept (vs. the chapter
-            // grid's transparent-unless-current treatment) because up to 31
-            // of these chips can be selected at once, unlike the chapter
-            // grid's single current-chapter highlight.
-            LazyVGrid(columns: Array(repeating: .init(.flexible()), count: 7), spacing: 10) {
-                ForEach(1...31, id: \.self) { day in
-                    let sel = selectedMonthDays.contains(day)
-                    Button(action: {
-                        if sel { selectedMonthDays.remove(day) } else { selectedMonthDays.insert(day) }
-                    }) {
-                        FSChipLabel(title: "\(day)", selected: sel, compact: true)
-                    }
-                    .accessibilityLabel("Day \(day)")
-                    .accessibilityAddTraits(sel ? .isSelected : [])
-                }
+        LazyVGrid(columns: Array(repeating: .init(.flexible()), count: 7), spacing: 10) {
+            ForEach(1...31, id: \.self) { day in
+                let sel = selectedMonthDays.contains(day)
+                Button(action: {
+                    if sel { selectedMonthDays.remove(day) } else { selectedMonthDays.insert(day) }
+                    daysError = nil
+                }) { FSChipLabel(title: "\(day)", selected: sel, compact: true) }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Day \(day)")
+                .accessibilityAddTraits(sel ? .isSelected : [])
             }
-        }
-    }
-
-    // ── Step 3: Details (agent + time + prompt) ───────────────────────────────
-
-    // Visual redesign (task 20260902-submenu-visual-redesign): converted from
-    // native Form/Section to ScrollView/VStack + widgetCard(), matching
-    // recurrenceScreen/dayPickerScreen's existing shell above in this same
-    // file — this was the one screen in the flow still on Form. Same section
-    // order, same headers (carried over verbatim), same group-picker Menu
-    // content/behavior (untouched — that's task 20260902-group-tagged-
-    // devotions' logic, only its visual container changes here).
-    private var detailsScreen: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: Theme.spacingLG) {
-                if agents.count > 1 {
-                    VStack(alignment: .leading, spacing: Theme.spacingSM) {
-                        FSEyebrow(title: "WRITTEN BY")
-                        Picker("Written by", selection: $selectedAgentId) {
-                            ForEach(agents) { agent in
-                                Text(agent.displayLabel).tag(agent.id)
-                            }
-                        }
-                        .font(.system(size: Theme.fontBody))
-                        .foregroundColor(Theme.parchment)
-                    }
-                    .fsCard()
-                }
-
-                // Follow-up polish (task 20260902-submenu-followup-polish,
-                // item 2): Event Time and Group were two stacked full-width
-                // cards, which the reporter flagged as an awkward layout --
-                // combined into one row/card here. Both controls' own
-                // behavior is untouched: the DatePicker binding below and
-                // the group-picker Menu's content/logic (task
-                // 20260902-group-tagged-devotions) are moved verbatim, just
-                // re-parented into a shared HStack instead of two
-                // `.fsCard()`s. Spacing between the two halves uses the
-                // existing Theme.spacingMD scale rather than an ad hoc value.
-                //
-                // Testing bounce fix (still 20260902-submenu-followup-polish):
-                // an even 50/50 split left the GROUP half too narrow for its
-                // gold Menu pill, truncating "No Group" to "No Gro...". The
-                // compact hourAndMinute DatePicker only needs its own
-                // intrinsic width, so EVENT TIME no longer stretches to fill
-                // half the row -- it sizes to content and GROUP (still
-                // `maxWidth: .infinity`) absorbs the rest of the row's width.
-                HStack(alignment: .top, spacing: Theme.spacingMD) {
-                    VStack(alignment: .leading, spacing: Theme.spacingSM) {
-                        FSEyebrow(title: "DEVOTION TIME")
-                        DatePicker("Time", selection: $selectedTime, displayedComponents: .hourAndMinute)
-                            .font(.system(size: Theme.fontBody))
-                            .labelsHidden()
-                            .accentColor(Theme.gold)
-                    }
-                    .fixedSize(horizontal: true, vertical: false)
-
-                    // Task 20260902-group-tagged-devotions: gold pill-button
-                    // trigger (same visual recipe as Chat/PillButton.swift's
-                    // amber-gradient pill — Theme.goldGradient + Theme.ink
-                    // text on a Capsule) that drops down a submenu of the
-                    // user's groups, plus a "No Group" option. Selecting a
-                    // group here is what sets group_id on the heartbeat;
-                    // when it fires, the note it generates inherits this
-                    // group_id automatically.
-                    VStack(alignment: .leading, spacing: Theme.spacingSM) {
-                        FSEyebrow(title: "GROUP")
-                        HStack {
-                            Spacer()
-                            Menu {
-                                Button(action: { selectedGroupId = "" }) {
-                                    Label("No Group", systemImage: selectedGroupId.isEmpty ? "checkmark" : "person.crop.circle")
-                                }
-                                if !sortedGroups.isEmpty {
-                                    Divider()
-                                    ForEach(sortedGroups) { group in
-                                        Button(action: { selectedGroupId = group.id }) {
-                                            Label(group.title.isEmpty ? "Untitled Group" : group.title,
-                                                  systemImage: selectedGroupId == group.id ? "checkmark" : "person.3")
-                                        }
-                                    }
-                                }
-                            } label: {
-                                HStack(spacing: 6) {
-                                    Image(systemName: "person.3.fill").font(.system(size: 13, weight: .bold))
-                                    Text(selectedGroupLabel).font(.system(size: 15, weight: .bold))
-                                }
-                                .foregroundColor(Theme.ink)
-                                .padding(.horizontal, 18)
-                                .padding(.vertical, 10)
-                                .background(Theme.goldGradient)
-                                .clipShape(Capsule())
-                                .topEdgeHighlight(Capsule())
-                                // Testing bounce fix: hug the label's own
-                                // content width (same recipe as this file's
-                                // cancelGhostChip) so the pill never gets
-                                // squeezed/truncated by its half of the row,
-                                // regardless of group-name length.
-                                .fixedSize()
-                            }
-                            Spacer()
-                        }
-                        .padding(.vertical, 4)
-                        Text("Optionally tie this scheduled devotion's notes to one of your groups. Leave as No Group to keep it personal.")
-                            .font(.system(size: Theme.fontXS))
-                            .foregroundColor(Theme.textMuted)
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                }
-                .fsCard()
-
-                // Edit-permission control (task 20260903-notes-public-repurpose,
-                // step 6): only meaningful once this event is tied to a group --
-                // an ungrouped/personal event's notes have no other group
-                // member who could edit them, so the control is hidden rather
-                // than shown disabled, mirroring NoteEditorView's own
-                // edit-permission toggle (hidden outside a group context).
-                if !selectedGroupId.isEmpty {
-                    VStack(alignment: .leading, spacing: Theme.spacingSM) {
-                        FSEyebrow(title: "EDIT PERMISSION")
-                        Toggle(isOn: $notesPublic) {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(notesPublic ? "Group Can Edit" : "Owner Only")
-                                    .font(.system(size: Theme.fontBody))
-                                    .foregroundColor(Theme.parchment)
-                                Text("Whether other members of \(selectedGroupLabel) may edit the notes this scheduled devotion writes.")
-                                    .font(.system(size: Theme.fontXS))
-                                    .foregroundColor(Theme.textMuted)
-                            }
-                        }
-                        .tint(Theme.gold)
-                    }
-                    .fsCard()
-                }
-
-                VStack(alignment: .leading, spacing: Theme.spacingSM) {
-                    FSEyebrow(title: "PROMPT")
-                    Text("Every day at your chosen time, your AI study partner writes a devotion from this prompt and saves it as a note, even when the app is closed.")
-                        .font(.system(size: Theme.fontSM))
-                        .foregroundColor(Theme.textMuted)
-                    FSField(label: "Prompt", required: true, text: $prompt, multiline: true, minLines: 5)
-                }
-                .fsCard()
-
-                Spacer(minLength: Theme.spacingXL)
-            }
-            .padding(Theme.spacingLG)
-        }
-        .warmBloomBackground()
-        .navigationTitle("Details")
-        .navigationBarTitleDisplayMode(.inline)
-        // Follow-up polish (task 20260902-submenu-followup-polish):
-        // Update/Save reuses PillButton's amber-gradient recipe directly
-        // (same as the other three sheets' primary actions). A `.principal`
-        // title item keeps "Details" centered regardless of this now-wider
-        // trailing pill's width against the automatic system back button on
-        // the leading side.
-        .navigationTitle("Details")
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            ToolbarItem(placement: .principal) {
-                Text("Details")
-                    .font(.system(size: 17, weight: .semibold))
-                    .foregroundColor(Theme.parchment)
-            }
-        }
-        .safeAreaInset(edge: .bottom, spacing: 0) {
-            FSPinnedActionBar(
-                primaryTitle: isEditing ? "Update" : "Save",
-                primaryDimmed: (isSaving || prompt.trimmingCharacters(in: .whitespaces).isEmpty || selectedAgentId.isEmpty),
-                saving: isSaving,
-                onPrimary: { if !(isSaving || prompt.trimmingCharacters(in: .whitespaces).isEmpty || selectedAgentId.isEmpty) { saveDevotion() } }
-            )
         }
     }
 
     private func saveDevotion() {
-        // In-flight guard (task
-        // 20260905-heartbeat-timezone-duplicate-bugs, step 4):
-        // bail out immediately if a save is already dispatched
-        // for this attempt -- combined with .disabled(isSaving)
-        // below, a rapid double-tap before dismiss() actually
-        // removes the sheet can't fire onSave a second time.
+        // In-flight guard: a rapid double-tap can't fire onSave twice.
         guard !isSaving else { return }
         isSaving = true
-        // One token per attempt, generated here (not regenerated
-        // on any internal retry of this same attempt) -- see the
-        // onSave doc comment above.
         let idempotencyKey = UUID().uuidString
         onSave(selectedAgentId,
-               prompt.trimmingCharacters(in: .whitespaces),
+               promptTrimmed,
                buildTimestamps(),
                selectedGroupId.isEmpty ? nil : selectedGroupId,
-               // Fail closed: an ungrouped event can't carry a
-               // meaningful edit-permission grant regardless of
-               // whatever the (hidden) toggle's stale state is.
+               // Fail closed: an ungrouped event can't carry an edit-permission grant.
                selectedGroupId.isEmpty ? false : notesPublic,
                idempotencyKey)
         dismiss()
     }
-
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 
@@ -488,20 +321,6 @@ struct EventSetupSheet: View {
         guard !selectedGroupId.isEmpty else { return "No Group" }
         let title = groups[selectedGroupId]?.title ?? ""
         return title.isEmpty ? "Group" : title
-    }
-
-    // Ghost-chip Cancel label (see ChatRootView.swift's sheetGhostCancelLabel
-    // for the shared recipe/rationale comment -- bespoke per-sheet copy here
-    // rather than a new cross-file shared component per this task's spec).
-    private var cancelGhostChip: some View {
-        Text("Cancel")
-            .font(.system(size: Theme.fontSM))
-            .foregroundColor(Theme.textSecondary)
-            .fixedSize()
-            .padding(.horizontal, 16)
-            .frame(height: 36)
-            .background(Capsule().fill(Theme.parchment.opacity(0.06)))
-            .overlay(Capsule().stroke(Theme.parchment.opacity(0.12), lineWidth: 1))
     }
 
     // Formats/stores the selected time as literal local wall-clock "HH:mm"

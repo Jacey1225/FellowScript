@@ -11,6 +11,18 @@ struct ContentView: View {
     @StateObject private var startup = StartupCoordinator()
     // Task 20261008-post-tour-prompts: first-run notifications + subscribe prompts.
     @StateObject private var postTour = PostTourPromptsCoordinator()
+    // Task 20261105-push-prompt-sheet: shared coordinator (owned by FellowScriptApp,
+    // evaluated on .active); this view supplies its suppression inputs.
+    @EnvironmentObject private var pushPrompt: PushPromptCoordinator
+    @State private var postTourSeenThisSession = false
+    // Task 20261105-take-tour-prompt: sheet for users who skipped the walkthrough.
+    @EnvironmentObject private var tourPrompt: TourPromptCoordinator
+    @State private var tourFlowSeenThisSession = false
+    @State private var pushPromptShownThisSession = false
+    @State private var tourStartRequested = false
+    @State private var showTourSurvey = false
+    // Task 20261105-onboarding-redo: the hands-on walkthrough runs over this view.
+    @ObservedObject private var onboarding = OnboardingEngine.shared
     @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var selectedTab: Tab = .home
@@ -25,6 +37,58 @@ struct ContentView: View {
     }
 
     var body: some View {
+        // Split in two: one modifier chain this long exceeds the type-checker budget.
+        baseBody
+        // Task 20261105-take-tour-prompt: lowest priority. The push sheet gets
+        // first claim (evaluated here too) so the two can never race; this
+        // prompt only shows when nothing above it is up or owed.
+        .onChange(of: pushPrompt.state) { _, state in
+            if state != .hidden { pushPromptShownThisSession = true }
+        }
+        .onChange(of: onboarding.blocksPostTourPrompts) { _, blocks in
+            if blocks { tourFlowSeenThisSession = true }
+        }
+        .onAppear { if onboarding.blocksPostTourPrompts { tourFlowSeenThisSession = true } }
+        .task(id: tourPromptSuppression) {
+            guard !tourPromptSuppression.isSuppressed else { return }
+            await pushPrompt.evaluate()
+            tourPrompt.evaluate(suppression: tourPromptSuppression)
+        }
+        // Task 20261106-chat-tour: lowest priority. The Chat tab offer card reads
+        // these inputs; the coordinator never shows it over anything above it.
+        .task(id: chatTourSuppression) {
+            ChatTourOfferCoordinator.shared.suppression = chatTourSuppression
+        }
+        .onAppear {
+            let chatVM = startup.chatVM
+            let state = appState
+            ChatTourOfferCoordinator.shared.optionsProvider = {
+                ChatTourOptions.make(friendCount: chatVM.friends.count, capabilities: state.capabilities)
+            }
+        }
+        .sheet(isPresented: Binding(
+            get: { tourPrompt.isPresented },
+            set: { if !$0 { tourPrompt.dismiss() } }
+        ), onDismiss: {
+            // Present the survey only after the sheet is fully gone.
+            if tourStartRequested { tourStartRequested = false; showTourSurvey = true }
+        }) {
+            TourPromptSheet(
+                onPrimary: { tourStartRequested = true; tourPrompt.accept() },
+                onSecondary: { tourPrompt.dismiss() }
+            )
+        }
+        // Replay path: survey, then the existing engine. Never touches the
+        // PostTourPromptsStore keys.
+        .fullScreenCover(isPresented: $showTourSurvey) {
+            OnboardingSurveyView(onFinish: { picks in
+                showTourSurvey = false
+                OnboardingEngine.shared.startReplay(picks: picks)
+            }, onCancel: { showTourSurvey = false })
+        }
+    }
+
+    private var baseBody: some View {
         ZStack {
             Theme.bgPage.ignoresSafeArea()
 
@@ -199,6 +263,7 @@ struct ContentView: View {
         .onChange(of: appState.pendingChatContact) { _, target in
             if target != nil { selectedTab = .chat }
         }
+        .modifier(AskAiOpensChatTab(pending: appState.pendingAskAiOpen, selectedTab: $selectedTab))
         // Announcements free-limit card ("See plans") -> Account tab.
         .onReceive(NotificationCenter.default.publisher(for: .fsOpenSubscriptionPlans)) { _ in
             selectedTab = .account
@@ -238,12 +303,63 @@ struct ContentView: View {
             }
         }
         .motionAwareAnimation(.easeInOut(duration: 0.25), value: appState.isAuthenticated, reduceMotion: reduceMotion)
+        // Task 20261105-push-prompt-sheet: install the suppression inputs and
+        // re-evaluate whenever they change (so a sheet held back by the loading
+        // screen or a call appears once the screen is clear, not only on the
+        // next .active). The authorization status is still read fresh each time.
+        .onChange(of: postTour.current) { _, current in
+            if current != nil { postTourSeenThisSession = true }
+        }
+        .task(id: pushPromptSuppression) {
+            let inputs = pushPromptSuppression
+            pushPrompt.suppression = { inputs }
+            await pushPrompt.evaluate()
+        }
         // Loading screen → mainTabView crossfade — a single ~350ms dissolve
         // at whatever point the video happened to be in its loop, not a
         // hard cut and not a wait for the loop to finish (see
         // LoadingScreenView / StartupCoordinator).
         .motionAwareAnimation(.easeOut(duration: 0.35), value: startup.isReady, reduceMotion: reduceMotion)
         .tint(Theme.gold)
+        // Task 20261105-onboarding-redo: coach card + spotlight over the live app
+        // (sheets host their own), then the recap. The recap sits BEFORE the
+        // existing push and subscribe prompts (they wait on `blocksPostTourPrompts`).
+        .onboardingCoach(surfaces: WorkspaceLayoutMode.resolve(sizeClass: horizontalSizeClass,
+                                                               flagEnabled: WorkspaceLayout.isFeatureEnabled()) == .workspace
+                         ? [.root] : [.root, .accountScreen])
+        .overlay {
+            if onboarding.isRecap && walkthroughReady {
+                OnboardingRecapView().transition(.opacity)
+            }
+        }
+        .motionAwareAnimation(.easeInOut(duration: 0.25), value: onboarding.isRecap, reduceMotion: reduceMotion)
+        .task(id: walkthroughReady) {
+            guard walkthroughReady else { return }
+            onboarding.configure(service: appState.service, userId: appState.currentUser?.user_id ?? "")
+            // Signed in and ready: start a saved first-run flow (no-op otherwise).
+            onboarding.startIfPending()
+            routeOnboarding()
+        }
+        .onChange(of: onboarding.currentCue?.id) { _, _ in routeOnboarding() }
+    }
+
+    /// Main screen ready, signed in, no blocking cover: the walkthrough may run.
+    private var walkthroughReady: Bool {
+        hasCompletedOnboarding && appState.isAuthenticated && startup.isReady
+            && !appState.termsReacceptRequired && !appState.needsProfileCompletion
+    }
+
+    /// Phone: show the tab the current cue is about. (iPad routes in WorkspaceView.)
+    private func routeOnboarding() {
+        guard walkthroughReady, let dest = onboarding.currentCue?.destination else { return }
+        guard WorkspaceLayoutMode.resolve(sizeClass: horizontalSizeClass,
+                                          flagEnabled: WorkspaceLayout.isFeatureEnabled()) == .phoneTabs else { return }
+        switch dest {
+        case .account: selectedTab = .account
+        case .chat:    selectedTab = .chat
+        case .notes:   selectedTab = .notes
+        case .bible:   selectedTab = .bible
+        }
     }
 
     /// Friend / group / verse links present only on a ready, signed-in main screen
@@ -265,8 +381,86 @@ struct ContentView: View {
         }
     }
 
+    /// Everything that must keep the push prompt away. The sheet is mounted by
+    /// DashboardView, so anything but a signed-in, ready, phone-layout Home tab
+    /// with no call, other cover, or sheet counts as suppression. Leaving Home
+    /// (Bible reader, Notes, Chat, Account) counts as an active session.
+    private var pushPromptSuppression: PushPromptSuppression {
+        PushPromptSuppression(
+            postTourPromptOwed: postTour.current != nil,
+            postTourAnsweredThisSession: postTourSeenThisSession,
+            inCall: call.inCall || call.isExpanded,
+            readingSession: selectedTab != .home,
+            loadingScreen: !startup.isReady,
+            otherPresentationActive: !appState.isAuthenticated
+                || !hasCompletedOnboarding
+                || onboarding.isActive
+                || onboarding.blocksPostTourPrompts
+                || tourPrompt.isPresented
+                || showTourSurvey
+                || appState.termsReacceptRequired
+                || appState.needsProfileCompletion
+                || appState.pendingInviteToken != nil
+                || startup.updateAvailable != nil
+                || WorkspaceLayoutMode.resolve(sizeClass: horizontalSizeClass,
+                                               flagEnabled: WorkspaceLayout.isFeatureEnabled()) == .workspace
+        )
+    }
+
+    /// Inputs for the tour prompt. Unlike the push sheet it is hosted here, so it
+    /// works in both phone and workspace layouts; only the phone layout has a
+    /// Home-tab "reading session" rule.
+    private var tourPromptSuppression: TourPromptSuppression {
+        let phone = WorkspaceLayoutMode.resolve(sizeClass: horizontalSizeClass,
+                                                flagEnabled: WorkspaceLayout.isFeatureEnabled()) == .phoneTabs
+        return TourPromptSuppression(
+            walkthroughActive: onboarding.isActive || onboarding.blocksPostTourPrompts || tourFlowSeenThisSession,
+            replayActive: onboarding.state != nil || showTourSurvey,
+            postTourOwed: postTour.current != nil || PostTourPromptsStore().nextPrompt() != nil,
+            postTourSeenThisSession: postTourSeenThisSession,
+            pushPromptActive: pushPrompt.state != .hidden,
+            pushPromptShownThisSession: pushPromptShownThisSession,
+            inCall: call.inCall || call.isExpanded,
+            readingSession: phone && selectedTab != .home,
+            loadingScreen: !startup.isReady,
+            otherPresentationActive: !appState.isAuthenticated
+                || !hasCompletedOnboarding
+                || appState.termsReacceptRequired
+                || appState.needsProfileCompletion
+                || appState.pendingInviteToken != nil
+                || startup.updateAvailable != nil
+        )
+    }
+
+    /// Inputs for the chat tour offer, in strict priority order (see ChatTourOfferSuppression).
+    private var chatTourSuppression: ChatTourOfferSuppression {
+        let phone = WorkspaceLayoutMode.resolve(sizeClass: horizontalSizeClass,
+                                                flagEnabled: WorkspaceLayout.isFeatureEnabled()) == .phoneTabs
+        return ChatTourOfferSuppression(
+            walkthroughActive: onboarding.state != nil || showTourSurvey,
+            firstRunBlocking: onboarding.blocksPostTourPrompts || tourFlowSeenThisSession,
+            postTourOwed: postTour.current != nil || PostTourPromptsStore().nextPrompt() != nil,
+            postTourSeenThisSession: postTourSeenThisSession,
+            pushPromptActive: pushPrompt.state != .hidden,
+            pushPromptShownThisSession: pushPromptShownThisSession,
+            tourPromptPresented: tourPrompt.isPresented,
+            tourPromptEligible: TourPromptStore().isEligible(),
+            inCall: call.inCall || call.isExpanded,
+            loadingScreen: !startup.isReady,
+            otherPresentationActive: !appState.isAuthenticated
+                || !hasCompletedOnboarding
+                || appState.termsReacceptRequired
+                || appState.needsProfileCompletion
+                || appState.pendingInviteToken != nil
+                || startup.updateAvailable != nil,
+            onChatTab: phone ? selectedTab == .chat : true
+        )
+    }
+
     private var canPresentPostTourPrompts: Bool {
-        hasCompletedOnboarding && appState.isAuthenticated && startup.isReady
+        // Walkthrough, add-a-friend and recap finish first (task 20261105-onboarding-redo).
+        !onboarding.blocksPostTourPrompts
+        && hasCompletedOnboarding && appState.isAuthenticated && startup.isReady
             && !appState.termsReacceptRequired && !appState.needsProfileCompletion
             && appState.pendingInviteToken == nil
     }
@@ -347,5 +541,18 @@ struct ContentView: View {
         .padding(.horizontal, 16)
         .padding(.top, 8)
         .transition(.move(edge: .top).combined(with: .opacity))
+    }
+}
+
+/// Ask AI deep link: jump to the Chat tab. A separate modifier keeps
+/// ContentView.body within the type-checker's budget.
+private struct AskAiOpensChatTab: ViewModifier {
+    let pending: Bool
+    @Binding var selectedTab: ContentView.Tab
+
+    func body(content: Content) -> some View {
+        content.onChange(of: pending) { _, open in
+            if open { selectedTab = .chat }
+        }
     }
 }

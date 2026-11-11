@@ -151,7 +151,9 @@ struct NoteEditorView: View {
         // tap-outside-to-dismiss for free, with no change to the existing
         // scroll-to-dismiss feel.
         .dismissesKeyboardOnScrollAndTap()
-        .onAppear { populate() }
+        .onboardingCoach(surfaces: [.noteEditor])
+        .onAppear { populate(); OnboardingEngine.shared.report(.noteEditorOpened) }
+        .onDisappear { OnboardingEngine.shared.surfaceDismissed(.noteEditor) }
         .task { await loadNoteCharLimit() }
         // Free-plan note cap: shared upgrade prompt above the editor; Subscribe closes the editor.
         .upgradePrompt(onSubscribe: { dismiss() })

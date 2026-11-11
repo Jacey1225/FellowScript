@@ -1,0 +1,7 @@
+/* Task 20261030-chat-announcements: in-timeline announcement row + composer dialog. */
+.chat-announcement-row { align-self: stretch; display: flex; flex-direction: column; align-items: flex-end; gap: 4px; margin: 0.5rem 0; font-family: 'Inter', sans-serif; }
+.chat-announcement-card { position: relative; width: min(100%, 340px); aspect-ratio: 3 / 1; }
+.chat-announcement-card .announce-widget-card { position: absolute; inset: 0; }
+.chat-announcement-meta { font-size: 0.7rem; color: rgba(242,242,242,0.6); }
+.chat-announcement-error { font-size: 0.72rem; color: rgba(242,242,242,0.75); }
+.chat-announcement-dialog { padding: 0.75rem; overflow-y: auto; }

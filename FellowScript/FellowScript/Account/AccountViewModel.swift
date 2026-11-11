@@ -22,6 +22,11 @@ final class AccountViewModel: ObservableObject {
 
     @Published var profileData:     FSUser?          = nil
     @Published var agents:          [FSAgent]         = []
+    /// Task 20261106-remove-agents-ask-ai: capability `ask_ai_default_agent`,
+    /// set by AccountView before load(). On: no agent list is fetched or
+    /// cached; the single local Ask AI handle stands in and events come from
+    /// the agent-id-free heartbeat list. Off: unchanged.
+    var askAiEnabled = false
     @Published var events:          [FSHeartbeat]     = []
     // Task 20260902-group-tagged-devotions: the user's own groups, keyed by
     // id, for EventSetupSheet's gold group-picker button. Sourced from the
@@ -273,7 +278,7 @@ final class AccountViewModel: ObservableObject {
         }
         let agentsCacheResult: [FSAgent]? = await DiskCache.shared.load([FSAgent].self, forKey: "agents:\(uid)")
         RefreshDiagnostics.cacheRead(key: "agents:\(uid)", count: agentsCacheResult?.count)
-        if isInitialLoad, let cached = agentsCacheResult {
+        if isInitialLoad, !askAiEnabled, let cached = agentsCacheResult {
             agents = cached
         }
         let eventsCacheResult: [FSHeartbeat]? = await DiskCache.shared.load([FSHeartbeat].self, forKey: "events:\(uid)")
@@ -288,7 +293,10 @@ final class AccountViewModel: ObservableObject {
         }
 
         async let fetchedUser          = service.fetchUser(userId: user.user_id)
-        async let fetchedAgents        = service.fetchAgents(userId: user.user_id)
+        let askAiOn = askAiEnabled
+        async let fetchedAgents: [FSAgent] = {
+            askAiOn ? [FSAgent.askAi] : try await service.fetchAgents(userId: user.user_id)
+        }()
         // Dedicated COUNT(*) endpoint rather than fetching+counting the
         // capped/paginated notes collection -- a user with more than one
         // page of notes would otherwise show a truncated total here.
@@ -540,7 +548,8 @@ final class AccountViewModel: ObservableObject {
                         // succeeding agent's real data land in `events` below
                         // instead of being discarded alongside the failing
                         // agent's (non-)contribution.
-                        let existing = events.filter { $0.agent_id == agentId }
+                        // Ask AI lists every heartbeat user-wide, so its baseline is all events.
+                        let existing = askAiOn ? events : events.filter { $0.agent_id == agentId }
                         if !existing.isEmpty {
                             allEvents.append(contentsOf: existing)
                         }
@@ -716,8 +725,10 @@ final class AccountViewModel: ObservableObject {
         if !wasCancelled {
             if let fresh = profileData { await DiskCache.shared.save(fresh, forKey: "user:\(uid)") }
             RefreshDiagnostics.cacheWrite(key: "user:\(uid)", count: 1)
-            await DiskCache.shared.save(agents,        forKey: "agents:\(uid)")
-            RefreshDiagnostics.cacheWrite(key: "agents:\(uid)", count: agents.count)
+            if !askAiOn {
+                await DiskCache.shared.save(agents,        forKey: "agents:\(uid)")
+                RefreshDiagnostics.cacheWrite(key: "agents:\(uid)", count: agents.count)
+            }
             await DiskCache.shared.save(events,        forKey: "events:\(uid)")
             RefreshDiagnostics.cacheWrite(key: "events:\(uid)", count: events.count)
             await DiskCache.shared.save([noteCount, highlightCount], forKey: "counts:\(uid)")
@@ -743,8 +754,18 @@ final class AccountViewModel: ObservableObject {
         do {
             try await service.addHeartbeat(userId: uid, agentId: agentId, heartbeat: hb, idempotencyKey: idempotencyKey)
             events.append(hb)
+            // Onboarding: the devotion is saved server-side.
+            OnboardingEngine.shared.report(.devotionSaved)
+            // Ask AI: the local row carries the handle, not the server's agent id
+            // (which a later edit must send). Reconcile with the server list; on
+            // a failed re-read keep the row already shown.
+            if agentId == FSAgent.askAiId,
+               let fresh = try? await service.fetchHeartbeats(userId: uid, agentId: FSAgent.askAiId) {
+                events = fresh
+            }
             await refreshUsage()
         } catch {
+            OnboardingEngine.shared.reportFailure(.devotionSaved, message: "We couldn't save your devotion. Try again.")
             // Free-tier cap: shared upgrade prompt instead of the inline alert.
             if UpgradePromptCenter.shared.present(for: error) { await refreshUsage(); return }
             // Other failure: don't add the event, tell the user.

@@ -155,10 +155,13 @@ final class BibleViewModel: ObservableObject {
                 // (expired session, free-tier limit, etc.) is observable here
                 // rather than silently looking like it succeeded.
                 try await service.saveHighlight(userId: userId, book: book, chapter: chapter, verse: verse, color: color)
+                // Onboarding: the highlight is saved server-side.
+                OnboardingEngine.shared.report(.highlightSaved)
             } catch {
                 if let previous { highlights[key] = previous } else { highlights.removeValue(forKey: key) }
                 if let previousReaction { reactions[key] = previousReaction }
                 saveError = error.localizedDescription
+                OnboardingEngine.shared.reportFailure(.highlightSaved, message: "We couldn't save that highlight. Try again.")
             }
         }
     }
@@ -507,6 +510,7 @@ struct BibleReaderView: View {
                 .overlay { Capsule().stroke(Theme.borderGold, lineWidth: 1) }
             }
             .buttonStyle(.plain)
+            .onboardingAnchor(.chapterTitle)
             .accessibilityLabel("Navigate to book and chapter")
 
             Button(action: cycleFontSize) {
@@ -664,6 +668,7 @@ struct BibleReaderView: View {
                                             reactionEmoji: reactionsOn ? vm.reaction(verse: v.num) : nil,
                                             inlineFill:    embedded
                                         )
+                                        .onboardingAnchor(v.num == vm.verses.first?.num ? .bibleVerses : nil)
                                         .id(v.num)
                                         // Task 20260924-bible-verse-tap-select-removal: a plain tap on
                                         // a verse row no longer toggles `selectedVerse` — that
@@ -772,6 +777,8 @@ struct BibleReaderView: View {
                         onSelect:   { book, ch in
                             vm.setBook(book)
                             vm.setChapter(ch)
+                            // Onboarding: the reader really moved to the chosen chapter.
+                            OnboardingEngine.shared.report(.chapterNavigated)
                             withAnimation(reduceMotion ? nil : .spring(response: 0.3, dampingFraction: 0.9)) {
                                 showNavSheet = false
                             }
@@ -789,6 +796,7 @@ struct BibleReaderView: View {
             // pre-existing `withAnimation` calls are touched here, only the
             // ones this task's new interaction actually drives.
             .animation(reduceMotion ? nil : .spring(response: 0.3, dampingFraction: 0.9), value: showNavSheet)
+            .onChange(of: showNavSheet) { _, open in if open { OnboardingEngine.shared.report(.chapterMenuOpened) } }
             .navigationBarTitleDisplayMode(.inline)
             .toolbar(embedded ? .hidden : .visible, for: .navigationBar)
             .containerBackground(embedded ? Color.clear : Theme.bgPage, for: .navigation)
@@ -836,6 +844,7 @@ struct BibleReaderView: View {
                         .background(Theme.gold.opacity(0.10))
                         .clipShape(Capsule())
                     }
+                    .onboardingAnchor(.chapterTitle)
                     .accessibilityLabel("Navigate to book and chapter")
                 }
                 .suppressAutomaticGlassChrome()

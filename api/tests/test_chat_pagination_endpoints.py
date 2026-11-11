@@ -20,7 +20,8 @@ KNOWN PRE-EXISTING ISSUE (documented, deliberately NOT asserted): with a junk
 (non-uuid) id in groups.users, GroupsManager.fetch_group's member username
 lookup raises InvalidTextRepresentation on the first-page route (legacy and
 paged). The junk-id case is therefore only exercised on /messages.
-DM read routes do not check friendship (same as legacy); not asserted.
+DM read routes now require an existing friendship (user-profiles D4): the
+fixture inserts user_friends rows; stranger reads 404 (covered in test_profiles.py).
 
 Run with: cd api && ../.venv/bin/python tests/test_chat_pagination_endpoints.py
 """
@@ -95,7 +96,15 @@ def walk(client, url, headers, first_body, limit):
 
 
 def row_shape_ok(rows):
-    return all(list(r) == ROW_KEYS and "attachment_key" not in r for r in rows)
+    # Task 20261030-profile-everywhere: paged rows gain ONE additive key,
+    # from_user_id, right after from_user. Every pre-existing key keeps its name and order.
+    def ok(r):
+        keys = list(r)
+        with_id = ROW_KEYS[:2] + ["from_user_id"] + ROW_KEYS[2:]
+        id_ok = "from_user_id" not in r or r["from_user_id"] == str(uuid.UUID(r["from_user_id"]))
+        return keys in (ROW_KEYS, with_id) and [k for k in keys if k != "from_user_id"] == ROW_KEYS \
+            and id_ok and "attachment_key" not in r
+    return all(ok(r) for r in rows)
 
 
 # ------------------------------------------------------------------ groups
@@ -291,6 +300,7 @@ def test_dms(client):
     me, friend, third, blk = (make_user(f"pgd{i}") for i in range(4))
     ck, ck_f = session_cookie(me), session_cookie(friend)
     gid = make_group([me, friend])
+    base.make_friends(me, friend)
     try:
         ts = datetime.now(timezone.utc) - timedelta(hours=2)
         same = ts + timedelta(seconds=30)
@@ -445,6 +455,7 @@ def test_build78_flags_off(client):
     print("build-78 compatibility fixture with flags off")
     host, other = make_user("pgb0"), make_user("pgb1")
     gid = make_group([host, other])
+    base.make_friends(host, other)
     ck = session_cookie(host)
     try:
         base_ts = datetime.now(timezone.utc) - timedelta(hours=1)

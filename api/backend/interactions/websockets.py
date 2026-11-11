@@ -514,8 +514,12 @@ class ConnectionManager(DBManager):
         # through too -- it's just as much a free-text side channel as `text`
         # itself (Security Posture Q7: don't trust a single boundary).
         attachment_filename = attachment_meta.get("filename") if attachment_kind == "file" else None
+        # Verse/note shares: the client's fallback text is discarded and rebuilt
+        # server-side, so it is not filtered here; notes' rebuilt text is
+        # filtered after resolve_share below (task 20261031-thread-verse-send-fail).
         try:
-            check_clean(text=text, attachment_filename=attachment_filename)
+            check_clean(text="" if attachment_kind in shared_objects.SHARED_KINDS else text,
+                        attachment_filename=attachment_filename)
         except ContentRejected as e:
             sender_ws = self.active_connections.get(from_user_id)
             if sender_ws:
@@ -622,6 +626,21 @@ class ConnectionManager(DBManager):
                 if sender_ws:
                     await sender_ws.send_json({"type": "error", "reason": "send_failed",
                                                "detail": "Couldn't send your message. Please try again."})
+                return
+            try:
+                # Notes carry user-authored title text -> filter the server-built
+                # line. Verses are bundled public-domain scripture (and thread
+                # sends never filter them): filtering would just reject ~0.2% of
+                # real verses again.
+                if attachment_kind != shared_objects.KIND_VERSE:
+                    check_clean(text=text)
+            except ContentRejected as e:
+                if sender_ws:
+                    await sender_ws.send_json({
+                        "type": "error",
+                        "reason": "message_rejected",
+                        "detail": rejection_message(e),
+                    })
                 return
             payload["text"] = text
             payload["attachment_meta"] = attachment_meta

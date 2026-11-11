@@ -56,6 +56,8 @@ final class ChatThreadViewModel: ObservableObject {
     // by ChatThreadView rather than requiring a backend change to stamp a
     // photo onto every message.
     @Published var photoByUsername: [String: String] = [:]
+    // Task 20261030-profile-everywhere: username -> user id for resolved group members.
+    @Published var userIdByUsername: [String: String] = [:]
     // Surfaced in the view as a small "Reconnecting…" banner. Previously a
     // dropped socket (network blip, backgrounding, Cloudflare/nginx idle
     // timeout, or the server evicting a stale connection) gave no visible
@@ -191,7 +193,10 @@ final class ChatThreadViewModel: ObservableObject {
         if let cached: [FSMessage] = await DiskCache.shared.load([FSMessage].self, forKey: "messages:\(sessionKey)") {
             messages = cached
         }
-        if let cached: [FSSession] = await DiskCache.shared.load([FSSession].self, forKey: "sessions:\(sessionKey)") {
+        // Task 20261028-dm-direct-call: friend DMs no longer have sessions
+        // (they call instead), so only group threads load/cache them.
+        if contact.type == .group,
+           let cached: [FSSession] = await DiskCache.shared.load([FSSession].self, forKey: "sessions:\(sessionKey)") {
             sessions = cached
         }
 
@@ -219,14 +224,18 @@ final class ChatThreadViewModel: ObservableObject {
             }
             if let photoUrl = contact.photoUrl { photoByUsername[contact.name] = photoUrl }
         }
-        sessions = (try? await service.fetchSessionsForContact(contactId: sessionKey)) ?? sessions
+        if contact.type == .group {
+            sessions = (try? await service.fetchSessionsForContact(contactId: sessionKey)) ?? sessions
+        }
 
         // ── Persist the fresh thread for the next open ───────────────────────────
         // A paged thread persists only its newest window (older pages the
         // user scrolled back through are not written to disk).
         await DiskCache.shared.save(pagingEnabled ? Array(messages.suffix(Self.cacheWindow)) : messages,
                                     forKey: "messages:\(sessionKey)")
-        await DiskCache.shared.save(sessions, forKey: "sessions:\(sessionKey)")
+        if contact.type == .group {
+            await DiskCache.shared.save(sessions, forKey: "sessions:\(sessionKey)")
+        }
 
         // Gate for sending client_ref on main-chat sends: pagination OR a
         // feature that needs the server id of a just-sent message (Start
@@ -325,6 +334,7 @@ final class ChatThreadViewModel: ObservableObject {
             for await result in group {
                 guard let (mid, username, url) = result else { continue }
                 photoByUsername[username] = url
+                userIdByUsername[username] = mid
                 usernameById[mid] = username
             }
         }
@@ -351,7 +361,8 @@ final class ChatThreadViewModel: ObservableObject {
             attachmentURL: message.attachmentURL, attachmentMeta: message.attachmentMeta,
             reactions: message.reactions, reply: message.reply,
             pinned: message.pinned, systemKind: message.systemKind,
-            mentions: message.mentions
+            mentions: message.mentions, announcement: message.announcement,
+            senderId: message.senderId ?? message.sender
         )
     }
 
@@ -587,7 +598,8 @@ final class ChatThreadViewModel: ObservableObject {
                 reactions: old.reactions,
                 reply: reply ?? old.reply,
                 pinned: old.pinned, systemKind: old.systemKind,
-                mentions: mentions ?? old.mentions
+                mentions: mentions ?? old.mentions, announcement: old.announcement,
+                senderId: old.senderId
             )
         }
         return true
@@ -643,6 +655,8 @@ final class ChatThreadViewModel: ObservableObject {
                 handleReactionUpdated(json)
             case "pin_updated":
                 handlePinUpdated(json)
+            case "announcement_updated":
+                handleAnnouncementSync(json)
             case "thread_deleted":
                 handleThreadDeleted(json)
             case "ping":
@@ -658,7 +672,9 @@ final class ChatThreadViewModel: ObservableObject {
         // group send is fanned out to every member in `to_users`, including the
         // sender. The backend no longer re-delivers to the sender, but this
         // stays as defense-in-depth.
-        if !fromUser.isEmpty, fromUser == wsUserId {
+        // The poster's own announcement line is a server-made row (REST post, no optimistic echo), so it is kept.
+        let ownAnnouncementLine = !fromUser.isEmpty && fromUser == wsUserId && (json["system_kind"] as? String) == "announcement"
+        if !fromUser.isEmpty, fromUser == wsUserId, !ownAnnouncementLine {
             print("[ChatThreadViewModel] dropping self-echoed inbound frame from_user=\(fromUser) -- already shown via optimistic local append")
             return
         }
@@ -674,15 +690,17 @@ final class ChatThreadViewModel: ObservableObject {
         let incoming = FSMessage(
             id:        (json["id"] as? String) ?? UUID().uuidString,
             text:      msgText,
-            mine:      false,
-            sender:    resolvedSenderName(forRawId: fromUser),
+            mine:      ownAnnouncementLine,
+            sender:    ownAnnouncementLine ? "" : resolvedSenderName(forRawId: fromUser),
             timestamp: (json["timestamp"] as? String) ?? "",
             attachmentKind: json["attachment_kind"] as? String,
             attachmentURL:  json["attachment_url"] as? String,
             attachmentMeta: attachmentMeta,
             reply: FSReplyRef(frame: json),
             systemKind: json["system_kind"] as? String,
-            mentions: FSMention.parse(json["mentions"])
+            mentions: FSMention.parse(json["mentions"]),
+            announcement: FSMessageAnnouncement.parse(json["announcement"]),
+            senderId: ownAnnouncementLine ? nil : fromUser
         )
         // Dedup by id (a live frame for a row a history fetch already
         // delivered must not render twice); a frame without an id always appends.
@@ -781,6 +799,26 @@ final class ChatThreadViewModel: ObservableObject {
             change(&st.messages)
             mainStash = st
         }
+    }
+
+    // Task 20261030-chat-announcements: an announcement line changed. Deleted drops
+    // the row now; updated/restored bump the token so the view re-reads history
+    // (a failed read keeps what is shown).
+    @Published private(set) var announcementSyncToken = 0
+
+    private func handleAnnouncementSync(_ json: [String: Any]) {
+        guard frameBelongsToCurrentGroup(json), let sync = FSAnnouncementSync(frame: json) else { return }
+        if sync.action == .deleted { mutateMain { $0.removeAnnouncementLines(announcementId: sync.announcementId) } }
+        else { announcementSyncToken += 1 }
+    }
+
+    func refreshAnnouncementLines(service: DataServiceProtocol, contact: FSContact, userId: String) async {
+        guard contact.type == .group, activeThread == nil,
+              let history = try? await service.fetchMessageHistory(userId: userId, contactId: contact.id, isGroup: true,
+                                                                   limit: pagingEnabled ? Self.initialPageLimit : nil) else { return }
+        let names = groupUsernameById
+        let lines = AnnouncementLineMerge.lines(in: history).map { resolvedMessage($0, senderName: names[$0.sender]) }
+        messages = AnnouncementLineMerge.merge(messages, fetched: lines)
     }
 
     private func removeMainMessage(_ id: String) {
@@ -1193,6 +1231,7 @@ struct ChatThreadView: View {
     // Task 20261012-message-pins: Pinned list sheet + the message briefly
     // outlined after jumping to it.
     @State private var showPinned: Bool = false
+    @State private var showAnnouncementForm: Bool = false
     // Task 20261023-group-info-row: the open group info submenu (nil = closed).
     @State private var infoCategory: GroupInfoCategory? = nil
     // Task 20261017-chat-mentions: the composer's recorded mentions, the text
@@ -1203,12 +1242,10 @@ struct ChatThreadView: View {
     @State private var mentionMembers: [FSMentionCandidate]? = nil
     @State private var highlightedMessageId: String? = nil
 
-    // ── Sessions submenu (task 20260920-chat-sessions-submenu) ────────────────
-    // Replaces the old always-visible inline SessionBanner + header
-    // "Schedule" pill pairing with one entry point: the renamed "Sessions"
-    // pill opens this floating, translucent/blurred submenu listing every
-    // session for the chat, with the create-session action folded inside it.
-    @State private var showSessionsMenu: Bool = false
+    // Task 20261028-dm-direct-call: the friend-DM header Call action.
+    @State private var dmCallStarting: Bool = false
+    @ObservedObject private var call = CallController.shared
+    @State private var dmCallError: String? = nil
     @State private var infoBadges: [GroupInfoCategory: Int] = [:]
     // Item-based (rather than reusing `showSession`'s Bool + `.first`
     // convention the old SessionBanner relied on) because any row in the
@@ -1472,6 +1509,10 @@ struct ChatThreadView: View {
             .modifier(SessionEndedWiring(
                 appEnded: appState.sessionEnded, vmEnded: vm.sessionEnded,
                 onAppEnded: { vm.noteSessionEnded() }, onVmEnded: { appState.markSessionEnded() }))
+            // Task 20261106-chat-tour: coach card on this screen and real-action signals.
+            .chatTourThreadWiring(contact: contact, ackRevision: vm.ackRevision,
+                                  failedCount: vm.failedMessageIds.count, inThread: vm.isThreadOpen,
+                                  anchorMessageId: ChatTourAnchors.lastOwnMessageId(vm.messages))
     }
 
     private var content: some View {
@@ -1496,25 +1537,6 @@ struct ChatThreadView: View {
                     threadRootCard
                 } else {
                     header.modifier(pinsPresentation)
-                    // Zero-height layer: the pin button floats over the top-right of the
-                    // messages (which scroll up to the header divider) instead of taking a row.
-                    // DMs only: in group chats the Pinned chip replaces it (20261023-group-info-row).
-                    if pinsAvailable && contact.type != .group {
-                        Color.clear.frame(height: 0)
-                            .overlay(alignment: .topTrailing) {
-                                pinButton
-                                    .padding(.top, Theme.spacingXS)
-                                    .padding(.trailing, Theme.spacingMD)
-                            }
-                            .zIndex(1)
-                    }
-                }
-
-                // Task 20261023-group-info-row: groups only, directly under the header
-                // (replaces the announcement banner and the floating pin button).
-                if GroupInfoCategory.rowShows(isGroup: contact.type == .group, isThreadOpen: vm.isThreadOpen) {
-                    GroupInfoChipRow(categories: groupInfoCategories, selected: $infoCategory, pinCount: vm.pinCount,
-                                     compact: !embedded, badges: infoBadges)
                 }
 
                 // ── Reconnecting banner (dropped-socket lifecycle state) ───
@@ -1564,7 +1586,8 @@ struct ChatThreadView: View {
                                         replyFor: { message in replyHandler(for: message) },
                                         currentUserId: appState.currentUser?.user_id,
                                         onJumpToReply: { id in jumpTarget = id },
-                                        highlightedMessageId: highlightedMessageId
+                                        highlightedMessageId: highlightedMessageId,
+                                        profileLookup: ChatProfileLookup(dmPeerId: contact.type == .group ? nil : contact.id, idByUsername: vm.userIdByUsername)
                                     )
                                         .id(row.id)
                                 case .dayDivider(_, let label):
@@ -1618,9 +1641,13 @@ struct ChatThreadView: View {
                         // Reader took over (or came back): older-page gate may have opened.
                         if pin.allowsOlderPageLoad, olderHeaderVisible { requestOlderPage() }
                     }
+                    // 20261024-chat-chips-bottom: the bottom edge fade wraps the scroll view only
+                    // (not the jump-to-latest button below, nor the panel host / toasts).
+                    .bottomEdgeFade(GroupInfoCategory.rowShows(isGroup: contact.type == .group, isThreadOpen: vm.isThreadOpen))
                     .overlay(alignment: .bottomTrailing) {
                         if isAwayFromBottom && readyForInitialScroll && !messageGroups.isEmpty {
                             jumpToLatestButton(proxy: proxy)
+                                .padding(.bottom, Theme.spacingSM)
                         }
                     }
                     .onChange(of: vm.messages.count) { _ in
@@ -1691,6 +1718,14 @@ struct ChatThreadView: View {
                     .onChange(of: vm.reactionRevision) { _ in
                         recomputeMessageGroups()
                     }
+                    // Task 20261030-chat-announcements: an announcement line was edited/restored.
+                    .onChange(of: vm.announcementSyncToken) { _ in
+                        Task {
+                            await vm.refreshAnnouncementLines(service: appState.service, contact: contact, userId: appState.currentUser?.user_id ?? "")
+                            recomputeMessageGroups()
+                        }
+                    }
+                    .environment(\.chatAnnouncementGroupId, contact.type == .group && appState.capabilities.isEnabled("chat_announcements") ? contact.id : nil)
                     // Task 20261001-message-threads: entering/leaving a thread
                     // swaps the whole list (the count can be equal across the
                     // swap, so the count-based handler alone is not enough).
@@ -1759,19 +1794,10 @@ struct ChatThreadView: View {
             // way. See AgentChatView.swift for the identical fix applied to
             // the same latent pattern there.
             .overlay(alignment: .bottom) { toastStack }
+            .collapsesAttachOnTap(showAttachSheet) { setAttachMode(false) }
             .dismissesKeyboardOnScrollAndTap()
             .safeAreaInset(edge: .bottom, spacing: 0) {
                 composer
-            }
-
-            // ── Sessions submenu overlay ────────────────────────────────
-            // A floating ZStack layer (unlike GroupMembersPanel above,
-            // which renders inline in the VStack flow) so it needs its own
-            // tap-outside-dismiss rather than relying on
-            // `.dismissesKeyboardOnScrollAndTap()`.
-            if showSessionsMenu {
-                sessionsMenuOverlay
-                    .zIndex(1)
             }
 
             // iPad workspace: Group Info replaces the thread inside the right
@@ -1787,7 +1813,7 @@ struct ChatThreadView: View {
         // dismisses the keyboard and the Sessions overlay; focusing the composer or
         // opening a thread closes it.
         .modifier(GroupInfoCoordination(category: $infoCategory, composerFocused: $composerFocused,
-                                        showSessions: $showSessionsMenu, isThreadOpen: vm.isThreadOpen))
+                                        isThreadOpen: vm.isThreadOpen))
         .task {
             let uid = appState.currentUser?.user_id ?? ""
             memberNames = contact.memberNames
@@ -2047,6 +2073,7 @@ struct ChatThreadView: View {
         Task {
             do {
                 try await vm.toggleReaction(emoji, on: message, service: appState.service, userId: uid)
+                OnboardingEngine.shared.report(.messageActionUsed)   // chat tour
             } catch {
                 // Rolled back by the view model; explicit, non-silent failure.
                 if (error as? FSReactionError) == .termsReacceptRequired { appState.refreshCapabilities(force: true) }
@@ -2109,6 +2136,7 @@ struct ChatThreadView: View {
         Task {
             do {
                 try await vm.togglePin(message, service: appState.service, userId: uid)
+                OnboardingEngine.shared.report(.messageActionUsed)   // chat tour
             } catch {
                 if (error as? FSPinError) == .termsReacceptRequired { appState.refreshCapabilities(force: true) }
                 showToast((error as? LocalizedError)?.errorDescription ?? FSPinError.fallback, seconds: 4)
@@ -2140,46 +2168,26 @@ struct ChatThreadView: View {
         }
     }
 
-    /// The pin button: right-aligned row directly under the header, below Sessions.
-    private var pinButton: some View {
-        ZStack(alignment: .topTrailing) {
-            Button { showPinned = true } label: {
-                Image(systemName: "pin")
-                    .font(.system(size: 44 * 0.4, weight: .semibold))
-                    .foregroundColor(Theme.gold)
-                    .frame(width: 44, height: 44)
-                    .background(.ultraThinMaterial, in: Circle())
-                    .background(Theme.bgPage.opacity(0.25), in: Circle())
-                    .overlay(Circle().stroke(Theme.borderGold, lineWidth: 1))
-                    .topEdgeHighlight(Circle())
-            }
-            .buttonStyle(.plain)
-            // iPad workspace: Pinned opens as a popover under the pin button.
-            .popover(isPresented: embedded ? $showPinned : .constant(false), arrowEdge: .top) {
-                PinnedMessagesSheet(vm: vm, contact: contact, service: appState.service,
-                                    userId: appState.currentUser?.user_id ?? "",
-                                    onSelect: { pin in jumpToPin(pin) })
-                    .frame(width: WorkspaceLayout.popoverWidth, height: WorkspaceLayout.pinnedPopoverHeight)
-                    .presentationCompactAdaptation(.popover)
-            }
-            if let badge = FSPinnedListCopy.badgeText(count: vm.pinCount) {
-                Text(badge)
-                    .font(.inter(Theme.fontXXS, weight: .bold))
-                    .foregroundColor(Theme.ink)
-                    .padding(.horizontal, 5)
-                    .frame(minWidth: 16, minHeight: 16)
-                    .background(Theme.gold)
-                    .clipShape(Capsule())
-                    .offset(x: 2, y: -2)
-                    .accessibilityHidden(true)
-            }
-        }
-        .accessibilityElement(children: .ignore)
-        .accessibilityAddTraits(.isButton)
-        .accessibilityLabel("Pinned messages")
-        .accessibilityValue(FSPinnedListCopy.buttonValue(count: vm.pinCount) ?? "")
-        .accessibilityHint("Opens the list of pinned messages")
-        .accessibilityAction { showPinned = true }
+    /// DMs: the Pinned chip in the "+" attach row (groups use the info-row chip). Tapping closes
+    /// the attach row, then opens the list (sheet on phone, popover on the chip when embedded).
+    private var attachPinnedChip: AttachPinnedChip? {
+        guard pinsAvailable, contact.type != .group else { return nil }
+        return AttachPinnedChip(
+            pinCount: vm.pinCount,
+            action: { setAttachMode(false); showPinned = true },
+            popoverPresented: embedded ? $showPinned : .constant(false),
+            popoverContent: {
+                AnyView(PinnedMessagesSheet(vm: vm, contact: contact, service: appState.service,
+                                            userId: appState.currentUser?.user_id ?? "",
+                                            onSelect: { pin in jumpToPin(pin) })
+                    .frame(width: WorkspaceLayout.popoverWidth, height: WorkspaceLayout.pinnedPopoverHeight))
+            })
+    }
+
+    /// Groups with chat_announcements on: the Announcement chip in the "+" attach row.
+    private var attachAnnouncementChip: AttachAnnouncementChip? {
+        guard contact.type == .group, !vm.isThreadOpen, appState.capabilities.isEnabled("chat_announcements") else { return nil }
+        return AttachAnnouncementChip(action: { setAttachMode(false); showAnnouncementForm = true })
     }
 
     private func rowActions(for message: FSMessage) -> [MessageRowAction] {
@@ -2230,6 +2238,7 @@ struct ChatThreadView: View {
         switch kind {
         case .reply:
             startReply(to: message)
+            OnboardingEngine.shared.report(.messageActionUsed)   // chat tour
         case .goToOriginal:
             if let id = message.reply?.id { jumpTarget = id }
         case .pin, .unpin:
@@ -2238,6 +2247,7 @@ struct ChatThreadView: View {
             if let text = message.copyableText {
                 UIPasteboard.general.string = text
                 showToast("Copied", seconds: 1.5)
+                OnboardingEngine.shared.report(.messageActionUsed)   // chat tour
             }
         case .startThread:
             startThread(from: message)
@@ -2449,6 +2459,7 @@ struct ChatThreadView: View {
             onGroupGone: { goBack() }
         )
         .environment(\.fsFocusJoinRequests, focusJoinRequests)
+        .environment(\.fsMemberIdByUsername, vm.userIdByUsername)
         // Task 20261001-message-threads: the Threads section opens a thread
         // through this closure (it closes the panel and switches this view
         // model into thread mode on its one socket).
@@ -2456,6 +2467,7 @@ struct ChatThreadView: View {
             showGroupInfo = false
             openThread(summary)
         })
+        .chatTourGroupInfoWiring()
     }
 
     private var inlineGroupInfo: some View {
@@ -2512,6 +2524,8 @@ struct ChatThreadView: View {
             .buttonStyle(.plain)
             .accessibilityLabel(contact.type == .group ? "Group info, \(displayName)" : contact.name)
             .accessibilityHint(contact.type == .group ? "Opens group settings, members, and shared media" : "")
+            .dmHeaderProfileTap(contact: contact)
+            .onboardingAnchor(contact.type == .group ? .groupHeaderTitle : nil)
 
             if contact.type == .group {
                 // Sessions lives in the group info chip row (20261023-group-info-row).
@@ -2519,7 +2533,7 @@ struct ChatThreadView: View {
                 RoundIconButton(systemIcon: "chevron.left") {}.hidden().accessibilityHidden(true)
             } else {
                 Spacer(minLength: 8)
-                sessionsPill
+                callPill.onboardingAnchor(.callPill)
             }
         }
         // Join-request push tap (task 20261016-push-notifications-and-ui).
@@ -2532,43 +2546,105 @@ struct ChatThreadView: View {
         }
     }
 
-    /// The gold Sessions pill: in the DM header, or the trailing item of the group chip row.
-    private var sessionsPill: some View {
+    /// The gold Call pill in the friend-DM header (task 20261028-dm-direct-call):
+    /// replaces the old Sessions pill in the same slot. Group threads never show it.
+    private var callPill: some View {
         Group {
-            if embedded {
-                PillButton(title: "Sessions", systemIcon: "phone",
+            if dmCallStarting {
+                HStack(spacing: 6) {
+                    ProgressView().controlSize(.small).tint(Theme.goldLight)
+                    Text("Calling...")
+                        .font(.inter(Theme.fontSM, weight: .semibold))
+                        .foregroundColor(Theme.goldLight)
+                }
+                .padding(.horizontal, 18).padding(.vertical, 10)
+                .background(Theme.gold.opacity(0.12))
+                .clipShape(Capsule())
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel("Starting call")
+            } else if call.inCall {
+                PillButton(title: "In call", systemIcon: "phone.fill",
+                           textColor: Theme.textSecondary,
+                           fill: AnyShapeStyle(Theme.gold.opacity(0.06))) {}
+                    .disabled(true)
+                    .accessibilityLabel("In call")
+            } else if embedded {
+                PillButton(title: "Call", systemIcon: "phone.fill",
                            textColor: Theme.goldLight,
                            fill: AnyShapeStyle(Theme.gold.opacity(0.12))) {
-                    openSessionsMenu()
+                    startDmCall()
                 }
+                .accessibilityLabel("Call \(contact.name)")
+                .accessibilityHint("Rings them and starts a voice and video call")
             } else {
-                PillButton(title: "Sessions", systemIcon: "calendar") {
-                    openSessionsMenu()
+                PillButton(title: "Call", systemIcon: "phone.fill") {
+                    startDmCall()
                 }
+                .accessibilityLabel("Call \(contact.name)")
+                .accessibilityHint("Rings them and starts a voice and video call")
             }
         }
-        .accessibilityLabel("View and schedule study sessions")
+        .frame(minHeight: 44)
+        .contentShape(Rectangle())
+        .alert("Call", isPresented: Binding(
+            get: { dmCallError != nil },
+            set: { if !$0 { dmCallError = nil } }
+        )) {
+            Button("OK", role: .cancel) { dmCallError = nil }
+        } message: {
+            Text(dmCallError ?? "")
+        }
+    }
+
+    /// Starts the call through the one existing path: server-issued session ->
+    /// CallController.start (joinCall) -> ringMembers for the single
+    /// counterpart. A failure at any step before the join throws and shows an
+    /// error; nothing is presented as a started call (throw-not-fabricate).
+    private func startDmCall() {
+        guard !dmCallStarting, contact.type == .friend,
+              let uid = appState.currentUser?.user_id, !uid.isEmpty else { return }
+        guard let dmService = appState.service as? DmCallServiceProtocol else {
+            dmCallError = DmCallError.failed.localizedDescription
+            return
+        }
+        dmCallStarting = true
+        let peer = contact
+        Task { @MainActor in
+            defer { dmCallStarting = false }
+            do {
+                var session = try await dmService.startDmCall(userId: uid, peerId: peer.id)
+                if session.title.isEmpty { session.title = peer.name }
+                CallController.shared.start(session: session, service: appState.service, userId: uid)
+                // Ring the other person (existing ring path; honors ring
+                // config + cooldown server-side). The join already happened;
+                // a refused ring is surfaced, not hidden.
+                do {
+                    let results = try await appState.service.ringMembers(
+                        userId: uid, sessionId: session.id, targetIds: [peer.id])
+                    if results[peer.id]?.sent == true {
+                        CallController.shared.sentRingTargets.insert(peer.id)
+                        CallController.shared.ring.begin(sessionId: session.id,
+                                                         targets: [(peer.id, peer.name)],
+                                                         service: appState.service, userId: uid)
+                    } else {
+                        CallController.shared.showRingDeliveryNotice("They weren't alerted. Try ringing again in a few minutes.")
+                    }
+                } catch {
+                    CallController.shared.showRingDeliveryNotice("They weren't alerted. Try ringing again in a few minutes.")
+                }
+            } catch {
+                dmCallError = (error as? DmCallError)?.localizedDescription ?? DmCallError.failed.localizedDescription
+            }
+        }
     }
 
     // ── Sessions submenu (task 20260920-chat-sessions-submenu) ────────────────
-    // Replaces the old inline SessionBanner card: tapping the header's
-    // "Sessions" pill opens this floating panel over a translucent, blurred
-    // scrim rather than a modal `.sheet` -- keeping the chat thread visible
-    // (dimmed) behind it reads as a lightweight submenu, matching the
-    // request, rather than a full context switch away from the thread.
-
-    private func openSessionsMenu() {
-        infoCategory = nil
-        withMotionAwareAnimation(.spring(response: 0.35, dampingFraction: 0.82), reduceMotion: reduceMotion) {
-            showSessionsMenu = true
-        }
-    }
+    // Group threads only (task 20261028-dm-direct-call removed the friend-DM
+    // entry point, floating card and overlay): the Sessions list lives in the
+    // group info panel (`sessionsPanelContent`).
 
     private func closeSessionsMenu() {
         if infoCategory == .sessions { infoCategory = nil }
-        withMotionAwareAnimation(.easeOut(duration: 0.18), reduceMotion: reduceMotion) {
-            showSessionsMenu = false
-        }
     }
 
     // `fetch_by_contact` (api/backend/interactions/devotion.py) returns
@@ -2601,43 +2677,6 @@ struct ChatThreadView: View {
         return vm.sessions
             .filter { (parseFlexibleISO8601($0.time_start) ?? .distantPast) < now }
             .sorted { (parseFlexibleISO8601($0.time_start) ?? .distantPast) > (parseFlexibleISO8601($1.time_start) ?? .distantPast) }
-    }
-
-    private var sessionsMenuOverlay: some View {
-        ZStack {
-            // Task 20260920-sessions-menu-background-blur: this used to be a
-            // full-screen `.ultraThinMaterial` fill, which blurred/dimmed the
-            // entire chat thread behind the card instead of just sitting
-            // behind it. Swapped for an invisible tap-catcher -- the thread
-            // stays fully visible, and `sessionsMenuCard` below already
-            // supplies its own `.regularMaterial` translucency, so the
-            // glassmorphism treatment still reads on the card itself.
-            // `.contentShape(Rectangle())` keeps the whole screen tappable
-            // for dismiss even though `Color.clear` has no fill to hit-test
-            // against on its own.
-            Color.clear
-                .ignoresSafeArea()
-                .contentShape(Rectangle())
-                .onTapGesture { closeSessionsMenu() }
-                .accessibilityLabel("Close sessions menu")
-                .accessibilityAddTraits(.isButton)
-
-            VStack {
-                sessionsMenuCard
-                    .padding(.horizontal, Theme.spacingMD)
-                Spacer()
-            }
-            .padding(.top, contact.type == .group ? 132 : 76) // clears the header (+ chip row in groups) so the card reads as anchored under the "Sessions" pill
-            .frame(maxWidth: .infinity, alignment: .trailing)
-        }
-        .transition(
-            reduceMotion
-                ? .opacity
-                : .asymmetric(
-                    insertion: .scale(scale: 0.9, anchor: .topTrailing).combined(with: .opacity),
-                    removal: .opacity
-                )
-        )
     }
 
     /// Schedule button + session list, shared by the DM floating card and the group submenu panel.
@@ -2713,40 +2752,6 @@ struct ChatThreadView: View {
             .frame(maxHeight: .infinity, alignment: .top)
     }
 
-    private var sessionsMenuCard: some View {
-        VStack(alignment: .leading, spacing: Theme.spacingSM) {
-            HStack {
-                Text(embedded ? "SESSIONS" : "Sessions")
-                    .font(.inter(embedded ? Theme.fontXS : Theme.fontSM, weight: .bold))
-                    .tracking(embedded ? 3 : 0)
-                    .foregroundColor(embedded ? Theme.goldLight : Theme.parchment)
-                    .accessibilityAddTraits(.isHeader)
-                Spacer()
-                Button {
-                    closeSessionsMenu()
-                } label: {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 11, weight: .bold))
-                        .foregroundColor(Theme.textGoldMuted)
-                        .frame(width: 24, height: 24)
-                        .background(Color.white.opacity(0.05))
-                        .clipShape(Circle())
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Close")
-            }
-
-            sessionsBody
-        }
-        .padding(Theme.spacingMD)
-        .frame(width: WorkspaceLayout.popoverWidth)
-        .background(.regularMaterial)
-        .clipShape(RoundedRectangle(cornerRadius: Theme.radiusXL))
-        .overlay(RoundedRectangle(cornerRadius: Theme.radiusXL).stroke(Theme.borderGoldDim, lineWidth: 1))
-        .topEdgeHighlight(RoundedRectangle(cornerRadius: Theme.radiusXL))
-        .accessibilityElement(children: .contain)
-    }
-
     @ViewBuilder
     private func sessionRow(_ session: FSSession) -> some View {
         Button {
@@ -2804,25 +2809,28 @@ struct ChatThreadView: View {
                     .padding(.horizontal, Theme.spacingMD)
                     .padding(.top, Theme.spacingXS)
             }
-            // Task 20260904-attach-picker-layout-polish: renders directly
-            // above the text field in a single horizontal row instead of a
-            // from-the-bottom `.sheet` — see AttachPickerRow's doc comment.
-            if showAttachSheet {
-                AttachPickerRow(
-                    grouped: embedded,
-                    onPickPhotoVideo: { showAttachSheet = false; showPhotoVideoPicker = true },
-                    onPickFile:       { showAttachSheet = false; showDocumentPicker = true },
-                    onPickGif:        { showAttachSheet = false; showGifSheet = true }
-                )
-            }
             if let picker = mentionPicker {
                 MentionPickerView(rows: picker.rows, onPick: { pickMention($0, trigger: picker.trigger) })
             }
             if let target = replyTarget, repliesEnabled {
                 replyBar(target)
             }
+            // Task 20261024-chat-chips-bottom: chips (groups) or the attach buttons, directly
+            // above the text row; inside the safeAreaInset so it rides the keyboard.
+            ComposerAccessorySlot(
+                showsChips: GroupInfoCategory.rowShows(isGroup: contact.type == .group, isThreadOpen: vm.isThreadOpen),
+                attachMode: showAttachSheet, compact: !embedded,
+                onPickPhotoVideo: { setAttachMode(false); DispatchQueue.main.async { showPhotoVideoPicker = true } },
+                onPickFile:       { setAttachMode(false); DispatchQueue.main.async { showDocumentPicker = true } },
+                onPickGif:        { setAttachMode(false); DispatchQueue.main.async { showGifSheet = true } },
+                pinned: attachPinnedChip,
+                announcement: attachAnnouncementChip
+            ) {
+                GroupInfoChipRow(categories: groupInfoCategories, selected: $infoCategory, pinCount: vm.pinCount,
+                                 compact: !embedded, badges: infoBadges)
+            }
             HStack(spacing: 10) {
-                attachButton
+                attachButton.onboardingAnchor(.composerAttach)
 
                 TextField("", text: $text,
                           prompt: Text(vm.isThreadOpen ? "Reply in thread…" : "Type a message…").foregroundColor(Theme.textSecondary), axis: .vertical)
@@ -2848,6 +2856,7 @@ struct ChatThreadView: View {
                         .clipShape(Circle())
                 }
                 .disabled(!canSend)
+                .onboardingAnchor(.composerSend)
                 .accessibilityLabel("Send message")
             }
             .padding(.horizontal, Theme.spacingMD)
@@ -2862,13 +2871,17 @@ struct ChatThreadView: View {
                 Rectangle().fill(Theme.bgPage.opacity(0.28))
             }
             .mask(
-                LinearGradient(stops: [
-                    .init(color: .clear, location: 0),
-                    .init(color: .black.opacity(0.85), location: 0.38),
-                    .init(color: .black, location: 0.6),
-                ], startPoint: .top, endPoint: .bottom)
+                VStack(spacing: 0) {
+                    LinearGradient(stops: [
+                        .init(color: .clear, location: 0),
+                        .init(color: .black.opacity(0.35), location: 0.45),
+                        .init(color: .black, location: 1),
+                    ], startPoint: .top, endPoint: .bottom)
+                    .frame(height: 40)
+                    Rectangle().fill(Color.black)
+                }
             )
-            .padding(.top, -28)
+            .padding(.top, -40)
             .ignoresSafeArea(edges: .bottom)
             .allowsHitTesting(false)
         }
@@ -2899,6 +2912,11 @@ struct ChatThreadView: View {
         .onChange(of: vm.activeThread?.id) { _, newId in if newId != nil { replyTarget = nil } }
         .modifier(MentionComposerSupport(text: $text, draft: $mentionDraft, lastText: $mentionLastText,
                                          loadKey: mentionLoadKey, load: loadMentionMembers))
+        .chatAnnouncementSheet(isPresented: $showAnnouncementForm, service: appState.service,
+                               groupId: contact.id, userId: appState.currentUser?.user_id ?? "")
+        .modifier(ComposerAttachCoordination(attachMode: $showAttachSheet, composerFocused: $composerFocused,
+                                             category: infoCategory, isThreadOpen: vm.isThreadOpen,
+                                             collapse: { setAttachMode(false) }))
     }
 
     // ── @mentions (task 20261017-chat-mentions) ──────────────────────────────
@@ -2981,12 +2999,13 @@ struct ChatThreadView: View {
     // to-retrofit-here undersized precedent; the new attach control doesn't
     // inherit it.
     private var attachButton: some View {
-        Button(action: { showAttachSheet.toggle() }) {
-            Image(systemName: "plus")
+        Button(action: { setAttachMode(!showAttachSheet) }) {
+            Image(systemName: reduceMotion && showAttachSheet ? "xmark" : "plus")
                 .font(.system(size: 36 * 0.4, weight: .semibold))
                 .foregroundColor(Theme.gold)
+                .rotationEffect(.degrees(showAttachSheet && !reduceMotion ? 45 : 0))
                 .frame(width: 36, height: 36)
-                .background(Color.white.opacity(0.05))
+                .background(showAttachSheet ? Theme.gold.opacity(0.16) : Color.white.opacity(0.05))
                 .overlay(Circle().stroke(Theme.borderGoldDim, lineWidth: 1))
                 .clipShape(Circle())
                 .topEdgeHighlight(Circle())
@@ -2995,6 +3014,20 @@ struct ChatThreadView: View {
         .frame(width: 44, height: 44)
         .contentShape(Circle())
         .accessibilityLabel("Attach a photo, video, file, or GIF")
+        .accessibilityValue(showAttachSheet ? "Open" : "")
+    }
+
+    /// Task 20261024-chat-chips-bottom: the one place attach mode changes. Opening closes any
+    /// chip panel and the Sessions card in the same transaction (soft spring, cross-fade under
+    /// Reduce Motion).
+    private func setAttachMode(_ on: Bool) {
+        guard on != showAttachSheet else { return }
+        withMotionAwareAnimation(ComposerAccessoryMotion.swap, reduceMotion: reduceMotion) {
+            if on { infoCategory = nil }
+            showAttachSheet = on
+        }
+        if on { OnboardingEngine.shared.report(.attachMenuOpened) }   // chat tour
+        UIAccessibility.post(notification: .layoutChanged, argument: nil)
     }
 
     // Matches "send is otherwise disabled only when there is neither text nor
@@ -3085,15 +3118,12 @@ struct ChatThreadView: View {
         }
     }
 
-    /// Sends a verse/note picked through "Send in chat" once this chat is loaded
-    /// and showing its main conversation (not an open thread). One-shot.
+    /// Delivers a "Send in chat" share once loaded (chat or thread; one-shot).
     private func consumePendingChatShare() {
-        guard readyForInitialScroll, !vm.isThreadOpen,
-              let pending = appState.pendingChatShare, pending.contact.id == contact.id else { return }
+        guard readyForInitialScroll, let pending = appState.pendingChatShare, pending.contact.id == contact.id,
+              ChatShareDelivery.canDeliver(pending, vm: vm) else { return }
         appState.pendingChatShare = nil
-        let uid = appState.currentUser?.user_id ?? ""
-        vm.sendMessage(text: pending.payload.fallbackText, attachment: nil, contact: contact,
-                       userId: uid, shared: pending.payload)
+        ChatShareDelivery.deliver(pending, vm: vm, appState: appState, contact: contact)
     }
 
     private func sendMessage() {
@@ -3114,6 +3144,7 @@ struct ChatThreadView: View {
         stagedAttachment = nil
         stagedUploadState = nil
         attachmentErrorMsg = nil
+        setAttachMode(false)
     }
 
     private func addMembers(_ selected: [FSContact]) {
@@ -3171,6 +3202,7 @@ struct GroupMembersPanel: View {
     // existing call site/preview/test that predates this field, falling
     // back to the initials-only treatment exactly as before.
     var photoByUsername: [String: String] = [:]
+    @Environment(\.fsMemberIdByUsername) private var memberIdByUsername   // task 20261030-profile-everywhere
     var onAddTapped: (() -> Void)?  // present when the viewer may add members
 
     var body: some View {
@@ -3212,6 +3244,7 @@ struct GroupMembersPanel: View {
                 .foregroundColor(isMe ? Theme.gold : Theme.parchment.opacity(0.70))
         }
         .accessibilityLabel(isMe ? "\(name), you" : name)
+        .groupMemberProfileTap(name: name, userId: isMe ? user?.user_id : memberIdByUsername[name], photoURL: photoURL)
     }
 
     // Subtle dashed "+" chip that sits at the end of the member row.

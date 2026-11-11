@@ -441,6 +441,7 @@ async def _fire_due_heartbeats() -> None:
     import asyncio
     import functools
     from backend.interactions.agent import AgentManager
+    from backend.interactions import flags
     from backend.interactions.push import send_push
     from backend.subscription.limits import check_limit
 
@@ -458,9 +459,22 @@ async def _fire_due_heartbeats() -> None:
     def _post_fire_lookups(agent_id_: str, user_id_: str):
         token_rows = db.lookup("device_tokens", {"user_id": user_id_})
         token = list(token_rows.values())[0].get("token") if token_rows else None
+        if flags.is_enabled("ask_ai_default_agent", user_id_):
+            # One default AI: fixed product title, canonical id in the payload.
+            # ensure_default_agent raises on failure; the heartbeat's own real
+            # agent_id is kept then (never a fabricated value).
+            am_ = AgentManager(user_id_)
+            try:
+                canonical = am_.ensure_default_agent()
+            except Exception as e:  # noqa: BLE001
+                logger.warning("canonical agent lookup failed for push payload: %s", type(e).__name__)
+                canonical = agent_id_
+            finally:
+                am_.close()
+            return token, "", canonical
         agent_row = db.lookup("agents", {"_id": agent_id_})
         agent_name = list(agent_row.values())[0].get("name", "") if agent_row else ""
-        return token, agent_name
+        return token, agent_name, agent_id_
 
     loop = asyncio.get_running_loop()
     db = DBManager()
@@ -534,7 +548,7 @@ async def _fire_due_heartbeats() -> None:
                     # (LLM/parse/claim failure) both mean no push is warranted.
                     continue
 
-                token, agent_name = await loop.run_in_executor(
+                token, agent_name, push_agent_id = await loop.run_in_executor(
                     None, functools.partial(_post_fire_lookups, agent_id, user_id)
                 )
                 if not token:
@@ -542,7 +556,8 @@ async def _fire_due_heartbeats() -> None:
                 if not await async_is_push_enabled(user_id, "reminders"):
                     continue  # task 20261012-notification-settings: opted out
 
-                title = agent_name or "Scheduled Event"
+                ask_ai = flags.is_enabled("ask_ai_default_agent", user_id)
+                title = agent_name or ("Scheduled Devotion" if ask_ai else "Scheduled Event")
                 # No prompt/note content in the alert -- a remote push transits
                 # Apple's infrastructure and is composed directly by this
                 # backend, a different trust surface than the old per-device
@@ -552,8 +567,9 @@ async def _fire_due_heartbeats() -> None:
                 ok = await send_push(
                     token,
                     title,
-                    "Your agent responded to a scheduled event. Check your notes.",
-                    data={"heartbeat_id": heartbeat_id, "agent_id": agent_id},
+                    ("Your scheduled devotion is ready. Check your notes." if ask_ai
+                     else "Your agent responded to a scheduled event. Check your notes."),
+                    data={"heartbeat_id": heartbeat_id, "agent_id": push_agent_id},
                 )
                 if not ok:
                     logger.warning(
@@ -630,7 +646,7 @@ async def _fire_due_session_reminders() -> None:
         db.cur.execute(
             "SELECT _id, time_start FROM devotions "
             "WHERE time_start IS NOT NULL AND time_start <= NOW() "
-            "AND reminder_sent_at IS NULL"
+            "AND reminder_sent_at IS NULL AND call_kind IS NULL AND position('|' in COALESCE(group_id, '')) = 0"
         )
         return [(str(r[0]), r[1]) for r in db.cur.fetchall()]
 
@@ -837,7 +853,7 @@ def _delete_session_if_still_candidate(db, session_id: str, chime_meeting_id: st
     room_meetings = [r[0] for r in db.cur.fetchall()]
     db.cur.execute(
         "DELETE FROM devotions WHERE _id = %s "
-        "AND recurring = FALSE "
+        "AND recurring = FALSE AND call_kind IS NULL AND position('|' in COALESCE(group_id, '')) = 0 "
         "AND time_end IS NOT NULL "
         "AND time_end <= NOW() - (%s * INTERVAL '1 second') "
         "AND COALESCE(chime_meeting_id, '') = %s "
@@ -929,7 +945,7 @@ async def _auto_delete_expired_sessions() -> None:
     def _scan_candidates():
         db.cur.execute(
             "SELECT _id, chime_meeting_id FROM devotions "
-            "WHERE recurring = FALSE "
+            "WHERE recurring = FALSE AND call_kind IS NULL AND position('|' in COALESCE(group_id, '')) = 0 "
             "AND time_end IS NOT NULL "
             "AND time_end <= NOW() - (%s * INTERVAL '1 second')",
             (SESSION_AUTO_DELETE_GRACE_SECONDS,),
@@ -1216,7 +1232,7 @@ async def _advance_recurring_sessions() -> None:
     def _scan_candidates():
         db.cur.execute(
             "SELECT _id, chime_meeting_id FROM devotions "
-            "WHERE recurring = TRUE "
+            "WHERE recurring = TRUE AND call_kind IS NULL AND position('|' in COALESCE(group_id, '')) = 0 "
             "AND time_end IS NOT NULL "
             "AND time_end <= NOW() - (%s * INTERVAL '1 second')",
             (SESSION_RECURRING_ADVANCE_GRACE_SECONDS,),
@@ -1352,6 +1368,15 @@ def start_scheduler() -> None:
     scheduler.add_job(fire_due_announcement_pushes, "interval",
                       seconds=ANNOUNCEMENT_PUSH_POLL_INTERVAL_SECONDS,
                       id="announcement_push_fire", replace_existing=True)
+    # Scheduled announcements posted to the chat timeline (task 20261030-chat-
+    # announcements): the unique index on messages.announcement_id, not the poll
+    # rate, guarantees one line per announcement. Inert per poster while the
+    # chat_announcements flag is off.
+    from backend.interactions.chat_announcements import (
+        POLL_INTERVAL_SECONDS as CHAT_ANNOUNCEMENT_POLL_SECONDS, fire_due_chat_announcements,
+    )
+    scheduler.add_job(fire_due_chat_announcements, "interval", seconds=CHAT_ANNOUNCEMENT_POLL_SECONDS,
+                      id="chat_announcement_fire", replace_existing=True)
     # One-hour-before reminder for scheduled announcements and the opt-in daily
     # prayer / check-in / deep-question reminders (task 20261016). Both claim an
     # atomic dedup marker before sending, so the poll rate never causes repeats.
@@ -1391,6 +1416,11 @@ def start_scheduler() -> None:
     # _advance_recurring_sessions' own docstring.
     scheduler.add_job(_advance_recurring_sessions, "interval", seconds=SESSION_RECURRING_ADVANCE_POLL_INTERVAL_SECONDS,
                       id="session_recurring_advance", replace_existing=True)
+    # Ring lifecycle (task 20261028-dm-direct-call): server-side expiry of
+    # unanswered rings (RING_TIMEOUT_SECONDS) plus the VoIP ring_cancel push.
+    from backend.interactions.ring_lifecycle import RING_EXPIRY_POLL_INTERVAL_SECONDS, run_ring_expiry_job
+    scheduler.add_job(run_ring_expiry_job, "interval", seconds=RING_EXPIRY_POLL_INTERVAL_SECONDS,
+                      id="ring_expiry", replace_existing=True, max_instances=1)
     # Midday/guilt reminders: a 15-minute poll is coarse enough to be cheap
     # but fine enough that the local-noon / >24h windows are never missed by
     # more than 15 minutes — each job's own dedup marker (not job frequency)

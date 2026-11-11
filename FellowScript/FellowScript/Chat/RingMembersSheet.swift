@@ -213,6 +213,13 @@ struct RingMembersSheet: View {
 
     @MainActor
     private func apply(results: [String: RingResult], to targets: [String]) {
+        var rungNow: [(id: String, name: String)] = []
+        defer {
+            // Caller-side ringing/declined/no-answer banner on the call screen.
+            if !rungNow.isEmpty {
+                call.ring.begin(sessionId: session.id, targets: rungNow, service: service, userId: userId)
+            }
+        }
         for id in targets {
             // A target missing from the response shouldn't happen per
             // contract, but fail safe rather than hanging in `sending`
@@ -224,6 +231,7 @@ struct RingMembersSheet: View {
             if result.sent {
                 rowStates[id] = .sent
                 call.sentRingTargets.insert(id)
+                rungNow.append((id, candidates.first(where: { $0.id == id })?.name ?? "Someone"))
                 continue
             }
             switch result.reason {

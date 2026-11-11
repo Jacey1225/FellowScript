@@ -176,24 +176,33 @@ def resolve_share(mgr, sender_id: str, kind: str, client_meta) -> tuple[dict, st
 class SharedNoteReader(MessageReactionsManager):
     """Read-only access to a note through the chat message that shares it."""
 
+    def _chat_grant(self, uid: str, mid: str) -> "tuple[str, str] | None":
+        """``(note_id, sender_id)`` when chat message ``mid`` grants ``uid`` the note, else None."""
+        if self._resolve(uid, mid) is None:
+            return None
+        self.cur.execute(
+            "SELECT attachment_kind, attachment_meta, from_user::text FROM messages "
+            "WHERE _id = %s::uuid AND deleted_at IS NULL", (mid,),
+        )
+        row = self.cur.fetchone()
+        if not row or row[0] != KIND_NOTE or not row[2]:
+            return None
+        nid = _canon((row[1] or {}).get("note_id"))
+        return (nid, row[2].lower()) if nid else None
+
     def open_note(self, message_id: str) -> dict | None:
         uid, mid = _canon(self.user_id), _canon(message_id)
         if not (uid and mid):
             return None
         try:
-            if self._resolve(uid, mid) is None:
+            grant = self._chat_grant(uid, mid)
+            if grant is None:
+                # Not a chat message: it may be a thread message (thread-aware grant).
+                from backend.interactions.thread_shared_objects import thread_note_grant  # lazy: imports this module
+                grant = thread_note_grant(self, uid, mid)
+            if grant is None:
                 return None
-            self.cur.execute(
-                "SELECT attachment_kind, attachment_meta, from_user::text FROM messages "
-                "WHERE _id = %s::uuid AND deleted_at IS NULL", (mid,),
-            )
-            row = self.cur.fetchone()
-            if not row or row[0] != KIND_NOTE or not row[2]:
-                return None
-            sender = row[2].lower()
-            nid = _canon((row[1] or {}).get("note_id"))
-            if nid is None:
-                return None
+            nid, sender = grant
             note = _load_note(self, nid)
             # Re-check at read time that the sender could still share this note.
             if note is None or not sender_may_share_note(self, sender, note):

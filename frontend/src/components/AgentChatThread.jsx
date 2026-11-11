@@ -94,7 +94,7 @@ export default function AgentChatThread({ chatUi, agent, messages, user, onBack,
               <RobotOutlined style={{ color: 'rgba(255,198,26,0.4)', fontSize: '1.1rem' }} />
             </div>
             <Text style={{ fontSize: '0.72rem', color: 'rgba(242,242,242,0.22)', fontFamily: 'inherit', fontStyle: 'italic' }}>
-              {chatUi ? `Ask ${agentLabel(agent)} anything` : 'Your spiritual guide is ready. Ask anything.'}
+              {chatUi?.askAi ? 'Ask AI is ready. Ask anything.' : chatUi ? `Ask ${agentLabel(agent)} anything` : 'Your spiritual guide is ready. Ask anything.'}
             </Text>
           </div>
         )}

@@ -1,12 +1,14 @@
 import React from 'react';
 import { Select, Typography } from 'antd';
 import { useHighlightsPanel } from '../../context/ReaderPanelContexts.jsx';
+import ProfileLink from '../profile/ProfileLink.jsx';
+import { INLINE_LINK_STYLE } from '../profile/profileLinkStyles.js';
 
 const { Text, Title } = Typography;
 
 // ── Highlight card ────────────────────────────────────────────────────────────
 
-function HighlightCard({ book, chapter, verse, color, username, onNavigate }) {
+function HighlightCard({ book, chapter, verse, color, username, userId, onNavigate }) {
   return (
     <div
       onClick={() => onNavigate(book, chapter, verse)}
@@ -38,7 +40,7 @@ function HighlightCard({ book, chapter, verse, color, username, onNavigate }) {
           fontSize: '0.52rem', letterSpacing: '0.06em', borderRadius: 4,
           padding: '0.1rem 0.4rem',
         }}>
-          {username}
+          <ProfileLink userId={userId} username={username} style={INLINE_LINK_STYLE}>{username}</ProfileLink>
         </span>
       )}
     </div>
@@ -70,6 +72,9 @@ export default function HighlightsPanel() {
           Object.entries(hl).map(([key, color]) => ({
             ...parseKey(key), color,
             username: groupUsernames?.[uid] || uid.slice(0, 4),
+            // Only a resolved name is a profile target; the uid.slice(0, 4)
+            // fallback is a placeholder and stays plain text.
+            userId: groupUsernames?.[uid] && groupUsernames[uid] !== uid.slice(0, 4) ? uid : undefined,
             sortKey: key,
           }))
         )
@@ -122,7 +127,7 @@ export default function HighlightsPanel() {
               <HighlightCard
                 key={`${h.sortKey}-${i}`}
                 book={h.book} chapter={h.chapter} verse={h.verse}
-                color={h.color} username={h.username}
+                color={h.color} username={h.username} userId={h.userId}
                 onNavigate={onNavigateVerse || (() => {})}
               />
             ))

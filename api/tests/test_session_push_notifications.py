@@ -335,7 +335,10 @@ def test_creation_push_notifies_other_group_members_not_creator(client):
 
 
 def test_creation_push_dm_session_notifies_the_other_participant(client):
-    print("\n=== 2. A DM session (group_id='uidA|uidB') notifies the one other participant ===")
+    # Task 20261028-dm-direct-call: DM sessions can no longer be scheduled
+    # (410), so creating one must notify nobody and leave no row. A DM call is
+    # started via POST /devotions/dm-call + /devotions/ring instead.
+    print("\n=== 2. A DM session (group_id='uidA|uidB') is refused (410): no row, no push ===")
     uid_a, token_a = signup(client, f"crpushdm_a_{uuid.uuid4().hex[:8]}")
     uid_b, _ = signup(client, f"crpushdm_b_{uuid.uuid4().hex[:8]}")
     dm_key = f"{uid_a}|{uid_b}"
@@ -351,12 +354,16 @@ def test_creation_push_dm_session_notifies_the_other_participant(client):
     }
     try:
         r = client.post("/devotions/", json=payload, headers=cookie_header(token_a))
-        check("create DM session -> 201", r.status_code == 201, str(r.status_code) + " " + r.text)
+        check("create DM session -> 410", r.status_code == 410, str(r.status_code) + " " + r.text)
 
-        tokens_pushed = {c[0] for c in push.calls}
-        check("the other DM participant (b) was pushed", f"tok-{uid_b}" in tokens_pushed, str(push.calls))
-        check("the creator (a) was NOT pushed", f"tok-{uid_a}" not in tokens_pushed, str(push.calls))
-        check("exactly one push sent for a 2-person DM", len(push.calls) == 1, str(push.calls))
+        check("no push sent to either DM participant", len(push.calls) == 0, str(push.calls))
+        db = DBManager()
+        try:
+            db.cur.execute("SELECT 1 FROM devotions WHERE _id = %s", (devo_id,))
+            row_exists = db.cur.fetchone() is not None
+        finally:
+            db.close()
+        check("no devotions row was created for the refused DM session", not row_exists)
     finally:
         restore_push()
         cleanup(user_ids=[uid_a, uid_b])

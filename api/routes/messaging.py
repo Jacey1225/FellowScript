@@ -2,9 +2,10 @@ from fastapi import APIRouter, BackgroundTasks, HTTPException, Request, WebSocke
 from backend.interactions.websockets import ConnectionManager
 from backend.interactions.thread_send import send_thread_message
 from backend.interactions.friends import FriendsManager
+from backend.interactions.profile_limits import friend_accept_dependency, friend_request_dependency
 from backend.interactions import flags, friend_request_notifier
 from backend.interactions.chat_config import get_pagination_config
-from backend.interactions.devotion import DevotionManager
+from backend.interactions.devotion import DevotionManager, is_legacy_dm_session
 from backend.interactions.attachments import generate_upload_policy, AttachmentConfigError
 from backend.interactions.gif_search import search_gifs, browse_gifs, GifConfigError, GifSearchError
 from backend.auth.dependencies import get_current_user, require_match, authenticate_ws
@@ -23,6 +24,22 @@ manager      = ConnectionManager()
 logger       = logging.getLogger(__name__)
 
 _CHIME_ERROR_DETAIL = "Could not start the call. Please try again."
+
+
+def _enforce_dm_call_rules(db: DevotionManager, session: dict, user_id: str) -> None:
+    """Task 20261028-dm-direct-call security review: the /chime routes are a
+    second entry to the same Chime meeting as /devotions/join-call, so they
+    must apply the same DM rules. Legacy scheduled DM rows are inert (410), and
+    the ad hoc DM call row also requires the caller to be in the verified,
+    non-blocked friendship roster (fail closed). Group sessions: no change."""
+    if is_legacy_dm_session(session):
+        raise HTTPException(
+            status_code=410,
+            detail="Scheduled sessions are no longer available in direct messages. Start a call instead.",
+        )
+    if session.get("call_kind") and user_id not in db.real_group_roster(str(session.get("group_id") or "")):
+        raise HTTPException(status_code=403, detail="Not authorized")
+
 
 _SIGNAL_TYPES = frozenset({
     "call-invite", "call-accept", "call-reject", "call-end",
@@ -91,6 +108,7 @@ def _get_or_create_meeting(session_id: str, user_id: str) -> dict:
             raise HTTPException(status_code=404, detail="Session not found")
         if not db.is_authorized(session, user_id):
             raise HTTPException(status_code=403, detail="Not authorized")
+        _enforce_dm_call_rules(db, session, user_id)
 
         chime_meeting_id = session.get("chime_meeting_id", "")
         meeting_data     = session.get("chime_meeting") or {}
@@ -217,6 +235,7 @@ async def join_meeting(session_id: str, user_id: str, _: str = Depends(require_m
             raise HTTPException(status_code=404, detail="Session not found")
         if not db.is_authorized(session, user_id):
             raise HTTPException(status_code=403, detail="Not authorized")
+        _enforce_dm_call_rules(db, session, user_id)
         chime_meeting_id = session.get("chime_meeting_id", "")
         if not chime_meeting_id:
             raise HTTPException(status_code=400, detail="No active meeting for this session")
@@ -337,14 +356,16 @@ async def gif_search(
         raise HTTPException(status_code=502, detail="Couldn't reach the GIF search provider — please try again.")
 
 
-@ws_router.post("/friend-request")
+@ws_router.post("/friend-request", dependencies=[friend_request_dependency])
 async def send_request(
     user_id: str, friend_user: str, background: BackgroundTasks,
     _: str = Depends(require_match("user_id")),
 ) -> None:
     friend_manager = FriendsManager(user_id)
     try:
-        friend_manager.send_add_request(friend_user)
+        result = friend_manager.send_add_request(friend_user)
+        if result and "error" in result:
+            raise HTTPException(status_code=result.get("status", 400), detail=result["error"])
         if friend_manager.new_request_recipient_id:  # essential push, never fails the request
             background.add_task(friend_request_notifier.notify_friend_request,
                                 friend_manager.new_request_recipient_id, user_id)
@@ -352,11 +373,13 @@ async def send_request(
         friend_manager.close()
 
 
-@ws_router.post("/add-friend", status_code=204)
+@ws_router.post("/add-friend", status_code=204, dependencies=[friend_accept_dependency])
 async def add_friend(host_user: str, user_to_add: str, _: str = Depends(require_match("host_user"))) -> None:
     friend_manager = FriendsManager(host_user)
     try:
-        friend_manager.add_friend(user_to_add)
+        result = friend_manager.add_friend(user_to_add)
+        if result and "error" in result:  # uniform refusal, same as POST /friends/{id}/add
+            raise HTTPException(status_code=404, detail=result["error"])
     finally:
         friend_manager.close()
 

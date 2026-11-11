@@ -130,3 +130,29 @@ describe('newClientRef', () => {
     expect(a).not.toBe(b);
   });
 });
+
+// Task 20261030-profile-everywhere (step 14): paged rows map from_user_id to senderId.
+describe('parsePage senderId (from_user_id)', () => {
+  const ID = '0a1b2c3d-1111-4222-8333-444455556666';
+  const one = (extra, mine = false) => parsePage({ messages: [row('a', 'x', { ...extra, mine })], page: { has_more: false } }).messages[0];
+
+  test('a UUID from_user_id on another sender becomes senderId; the sender name is untouched', () => {
+    const m = one({ from_user_id: ID });
+    expect(m.senderId).toBe(ID);
+    expect(m.sender).toBe('ada');
+  });
+  test('absent from_user_id (deleted/system author, or old server) leaves no senderId', () => {
+    expect('senderId' in one({})).toBe(false);
+  });
+  test.each([['empty', ''], ['null', null], ['number', 5], ['display name', 'ada'], ['path-like', '../admin'], ['uuid plus suffix', `${ID}/x`], ['short', ID.slice(0, 8)]])(
+    'malformed from_user_id (%s) is ignored (deny-by-default)', (_l, v) => {
+      expect('senderId' in one({ from_user_id: v })).toBe(false);
+    });
+  test('my own row never gets a senderId', () => {
+    expect('senderId' in one({ from_user_id: ID }, true)).toBe(false);
+  });
+  test('no other private field leaks in with the id', () => {
+    const m = one({ from_user_id: ID, email: 'a@b.c', bio: 'secret bio' });
+    expect(JSON.stringify(m)).not.toMatch(/a@b\.c|secret bio/);
+  });
+});

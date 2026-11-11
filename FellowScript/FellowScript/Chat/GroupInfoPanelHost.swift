@@ -204,13 +204,12 @@ struct GroupInfoPanelHost: View {
 struct GroupInfoCoordination: ViewModifier {
     @Binding var category: GroupInfoCategory?
     var composerFocused: FocusState<Bool>.Binding
-    @Binding var showSessions: Bool
     let isThreadOpen: Bool
 
     func body(content: Content) -> some View {
         content
             .onChange(of: category) { _, c in
-                if c != nil { composerFocused.wrappedValue = false; showSessions = false }
+                if c != nil { composerFocused.wrappedValue = false }
             }
             .onChange(of: composerFocused.wrappedValue) { _, focused in if focused { category = nil } }
             .onChange(of: isThreadOpen) { _, open in if open { category = nil } }

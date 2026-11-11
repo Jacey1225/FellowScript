@@ -1,5 +1,7 @@
 # Agent Chats
 
+> With the `ask_ai_default_agent` flag on, agents are replaced by one built-in AI and this chat list is the **Ask AI** section of Messages; see [Ask AI](ask-ai.md). The per-agent text below describes the flag-off behaviour and the legacy `/agent/...` routes (kept as compatibility shims).
+
 Each AI study partner (agent) can have more than one conversation. Instead of a single running thread, you can start a new chat for an agent whenever you want a fresh topic, and come back to older chats later.
 
 Multiple chats are available on iOS, in the iPad Agent Chat dock, and in the desktop and web app. The feature sits behind the `agent_chats` feature flag, which is on in production. With the flag off, every client falls back to the single-chat behaviour.

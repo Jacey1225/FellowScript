@@ -1,0 +1,21 @@
+{
+  "task_id": "20261030-thread-share-notes-verses",
+  "clarification_needed": [],
+  "agents_required": {
+    "backend": true,
+    "frontend": true,
+    "design": false,
+    "security": true,
+    "testing": true
+  },
+  "steps": [
+    { "n": 1, "name": "Backend: allow shared_verse/shared_note in api/backend/interactions/thread_send.py via shared_objects.resolve_share (server-built meta and fallback text, chat_shared_objects + threads flags, uniform not_allowed/send_failed, reject attachment_key on shared kinds, fail-closed); apply clean_shared_note_meta in thread history serialization (threads.py); push and live frame use fallback text. Defaults Q1-Q6 apply (no new flag, no mention data, no schema change). Keep touched large files from growing.", "routed_to": "backend", "checkpoint": null },
+    { "n": 2, "name": "Backend: thread-aware note read grant in new api/backend/interactions/thread_shared_objects.py, wired thinly into SharedNoteReader.open_note / routes/shared_objects.py. Viewer must be a current member of the thread's group (Q4, no wider authorization change), no block pair with sender, thread message not soft-deleted, sender still allowed via sender_may_share_note; grant re-checked at read time; single uniform 404; ids-only logs.", "routed_to": "backend", "checkpoint": "backend step 1 passed" },
+    { "n": 3, "name": "Security review of the server changes: threat model for forged meta, non-member read, block pair, suspended user, deleted thread message, now-private note, flag off, unknown thread, attachment_key on shared kinds, uniform denials, log hygiene. Stop and ask if the permission rule itself would have to change.", "routed_to": "security", "checkpoint": "backend steps 1 and 2 passed" },
+    { "n": 4, "name": "Testing: pytest for thread_send shared kinds, thread history cleaning, and the note-grant denial matrix; run the full backend suite.", "routed_to": "testing", "checkpoint": "security step 3 passed" },
+    { "n": 5, "name": "Frontend iOS: add thread destinations to ShareToChatSheet (recent threads per group, cap 10 by last_activity_at, from the existing threads list fetch; minimal row, no redesign); let AppState.pendingChatShare / consumePendingChatShare open the thread, wait for its first page, then send once through the existing thread sendMessage path (local echo, failed/retry, preserve cache on failed refresh); render shared cards in thread bubbles and note open from a thread bubble with the thread-aware read. New logic in new files (e.g. ChatThreadView+Share.swift); ChatThreadView.swift must not grow.", "routed_to": "frontend", "checkpoint": "backend steps 1 and 2 passed" },
+    { "n": 6, "name": "Frontend web and Tauri desktop (same bundle): thread destinations in components/ShareToChatModal.jsx, performShare/pendingShareRef flow targeting a thread via useMessaging thread_message frame, shared object rendering and note open in ChatThread.jsx using the thread-aware read. New logic in new files (e.g. lib/threadShare.js); ChatThread.jsx, useMessaging.js and Reader.jsx must not grow.", "routed_to": "frontend", "checkpoint": "backend steps 1 and 2 passed" },
+    { "n": 7, "name": "Testing: Swift unit tests for the thread share flow (single serialized simulator run, never concurrent with other xcodebuild runs) and vitest for thread share destination, send and render; run both full suites plus a check that no oversized file grew and nothing was pushed or deployed.", "routed_to": "testing", "checkpoint": "frontend steps 5 and 6 passed" },
+    { "n": 8, "name": "Security final pass on client changes: no client-trusted meta, no note text in logs, no fabricated state on failure, flag gating respected, docs updated where the share feature is documented.", "routed_to": "security", "checkpoint": "testing step 7 passed" }
+  ]
+}

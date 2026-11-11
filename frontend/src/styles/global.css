@@ -935,6 +935,7 @@ body {
   font-size: var(--pt-md);
   line-height: 1.5;
   word-break: break-word;
+  overflow-wrap: anywhere; /* reply/body text always wraps, never clips (20261105) */
   /* Frosted-glass bubble (20260826-glass-verse-selector-messages, per the
      reference image's translucent/blurred rounded bubbles) — the lightest
      blur in this nesting chain (.dv-groupview panel 16px -> .chat-overlay

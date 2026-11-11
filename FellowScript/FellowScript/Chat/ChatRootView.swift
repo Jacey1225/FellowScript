@@ -49,6 +49,8 @@ struct ChatRootView: View {
     @State private var newAgentRole    = ""
     @State private var activeContact:  FSContact? = nil
     @State private var activeAgent:    FSAgent?   = nil
+    // Task 20261030-user-profiles: friend whose profile sheet is open
+    @State private var profileContact: FSContact? = nil
     // Guideline 1.2 report/block
     @State private var reportTarget:      FSContact? = nil
     @State private var blockConfirmTarget: FSContact? = nil
@@ -87,6 +89,13 @@ struct ChatRootView: View {
                     .padding(.horizontal, 20)
                     .padding(.top, 18)
 
+                // Task 20261106-chat-tour: one-time dismissible offer (Friends/Groups only).
+                if selectedSegment < 2 {
+                    ChatTourOfferCard()
+                        .padding(.horizontal, 20)
+                        .padding(.top, 12)
+                }
+
                 // Task 20261001-ios-explorer-entry: Groups segment only, and
                 // only when /app/capabilities enables explorer_browse with a
                 // valid link (hidden on any failure).
@@ -107,7 +116,7 @@ struct ChatRootView: View {
                         switch selectedSegment {
                         case 0: friendsList
                         case 1: groupsList
-                        default: agentsList
+                        default: aiSegment
                         }
                     }
                 }
@@ -120,11 +129,16 @@ struct ChatRootView: View {
         .dismissesKeyboardOnScrollAndTap()
         .task {
             vm.capabilities = appState.capabilities
+            if appState.pendingAskAiOpen {
+                if appState.capabilities.askAiEnabled { selectedSegment = 2 }
+                appState.pendingAskAiOpen = false
+            }
             await vm.load(service: appState.service, userId: appState.currentUser?.user_id ?? "")
         }
         // Task 20261001-chat-pagination: keep the preview gate current; the
         // next load/refresh uses it.
         .onChange(of: appState.capabilities) { _, caps in vm.capabilities = caps }
+        .modifier(AskAiChatLifecycle(selectedSegment: $selectedSegment, activeAgent: activeAgent, vm: vm))
         // Task 20261016-notification-badges-logic: the unread aggregate is now
         // recomputed app-wide by BadgeCountsStore (attached to this shared
         // view model at startup), so it no longer depends on this tab.
@@ -168,20 +182,42 @@ struct ChatRootView: View {
         }
         .sheet(item: $activeAgent) { agent in
             AgentChatView(agent: agent)
+                .onboardingCoach(surfaces: [.agentChatSheet])
+                .onDisappear { OnboardingEngine.shared.surfaceDismissed(.agentChatSheet) }
         }
         .sheet(isPresented: $showAddFriend) {
             AddFriendSheet { username in
                 let uid = appState.currentUser?.user_id ?? ""
                 Task {
-                    try? await appState.service.sendFriendRequest(userId: uid, username: username)
+                    do {
+                        try await appState.service.sendFriendRequest(userId: uid, username: username)
+                        // Onboarding: the request was really sent (server accepted it).
+                        OnboardingEngine.shared.report(.friendRequestSent)
+                    } catch {
+                        // Previously swallowed; outside onboarding this stays silent.
+                        OnboardingEngine.shared.reportFailure(.friendRequestSent, message: "We couldn't send that request. Try again.")
+                    }
                 }
             }
+            .onboardingCoach(surfaces: [.addFriendSheet])
+            .onAppear { OnboardingEngine.shared.report(.addFriendSheetOpened) }
+            .onDisappear { OnboardingEngine.shared.surfaceDismissed(.addFriendSheet) }
+        }
+        // Task 20261105-onboarding-redo: coach signals and cue-driven segment.
+        .modifier(ChatOnboardingRouting(selectedSegment: $selectedSegment, activeContact: $activeContact))
+        .sheet(item: $profileContact) { contact in
+            ProfileView(viewerId: appState.currentUser?.user_id ?? "", targetId: contact.id,
+                        service: appState.service)
         }
         .sheet(isPresented: $showAddGroup) {
             AddGroupSheet(friends: vm.friends) { title, memberIds in
                 let uid = appState.currentUser?.user_id ?? ""
                 Task { await vm.createGroup(title: title, memberIds: memberIds, userId: uid, service: appState.service) }
             }
+            // Task 20261106-chat-tour: coach card on the sheet, opened/dismissed signals.
+            .onboardingCoach(surfaces: [.addGroupSheet])
+            .onAppear { OnboardingEngine.shared.report(.addGroupSheetOpened) }
+            .onDisappear { OnboardingEngine.shared.surfaceDismissed(.addGroupSheet) }
         }
         .sheet(isPresented: $showNewAgent) {
             NewAgentSheet(role: $newAgentRole) {
@@ -199,7 +235,7 @@ struct ChatRootView: View {
         } message: {
             Text(vm.groupError ?? "")
         }
-        .alert("Couldn't Create Agent", isPresented: Binding(
+        .alert(agentErrorTitle, isPresented: Binding(
             get: { vm.agentError != nil },
             set: { if !$0 { vm.agentError = nil } }
         )) {
@@ -298,8 +334,10 @@ struct ChatRootView: View {
     private var embeddedList: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 4) {
+                ChatTourOfferCard().padding(.bottom, 8)   // task 20261106-chat-tour
                 collapsibleHeader(.friends, title: "FRIENDS") {
                     sectionIconButton("person.badge.plus", label: "Add friend") { showAddFriend = true }
+                        .onboardingAnchor(.friendsPlusButton)
                 }
                 if !collapsedSections.contains(.friends) {
                     if vm.friends.isEmpty {
@@ -309,11 +347,13 @@ struct ChatRootView: View {
                     }
                     ForEach(vm.friends) { contact in
                         embeddedRow(contact)
+                            .onboardingFrameAnchor(contact.id == vm.friends.first?.id ? .firstFriendRow : nil)
                     }
                 }
 
                 collapsibleHeader(.groups, title: "GROUPS") {
                     sectionIconButton("plus", label: "New group") { showAddGroup = true }
+                        .onboardingAnchor(.groupsPlusButton)
                 }
                 .padding(.top, 14)
                 if !collapsedSections.contains(.groups) {
@@ -328,6 +368,7 @@ struct ChatRootView: View {
                     }
                     ForEach(vm.groups) { contact in
                         embeddedRow(contact)
+                            .onboardingFrameAnchor(contact.id == vm.groups.first?.id ? .firstGroupRow : nil)
                     }
                 }
             }
@@ -406,13 +447,14 @@ struct ChatRootView: View {
     private func embeddedRow(_ contact: FSContact) -> some View {
         HStack(spacing: 0) {
             Button { activeContact = contact } label: {
-                ContactRow(contact: contact, compact: true)
+                ContactRow(contact: contact, compact: true, onViewProfile: { profileContact = contact })
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .accessibilityLabel(appState.rowAccessibilityLabel("Chat with \(contact.name)", contact: contact))
             Menu {
                 if contact.type == .friend {
+                    Button("View profile", systemImage: "person.crop.circle") { profileContact = contact }
                     Button("Remove", systemImage: "person.badge.minus", role: .destructive) {
                         vm.removeFriend(id: contact.id, userId: appState.currentUser?.user_id ?? "")
                     }
@@ -480,7 +522,8 @@ struct ChatRootView: View {
                     .overlay(Image(systemName: "plus").font(.system(size: 16, weight: .bold)).foregroundColor(Color(hex: "#24170A")))
                     .shadow(color: .black.opacity(0.4), radius: 10, x: 0, y: 6)
             }
-            .accessibilityLabel(selectedSegment == 0 ? "Add friend" : selectedSegment == 1 ? "New group" : "New agent")
+            .onboardingAnchor(selectedSegment == 0 ? .friendsPlusButton : selectedSegment == 1 ? .groupsPlusButton : nil)
+            .accessibilityLabel(selectedSegment == 0 ? "Add friend" : selectedSegment == 1 ? "New group" : (askAiOn ? "New AI chat" : "New agent"))
         }
         .padding(.horizontal, 20)
         .padding(.top, 12)
@@ -492,7 +535,7 @@ struct ChatRootView: View {
         HStack(spacing: 4) {
             segmentButton(0, "Friends")
             segmentButton(1, "Groups")
-            segmentButton(2, "Agents")
+            segmentButton(2, askAiOn ? "Ask AI" : "Agents")
         }
         .padding(5)
         .background(
@@ -516,6 +559,7 @@ struct ChatRootView: View {
                 .clipShape(Capsule())
         }
         .buttonStyle(.plain)
+        .onboardingAnchor(index == 2 ? .agentsSegment : nil)
         .accessibilityLabel(label)
         .accessibilityAddTraits(isActive ? .isSelected : [])
     }
@@ -554,12 +598,14 @@ struct ChatRootView: View {
                             Task {
                                 await vm.sendNudge(userId: appState.currentUser?.user_id ?? "", friendId: contact.id)
                             }
-                        }
+                        },
+                        onViewProfile: { profileContact = contact }
                     )
                         .listRowBackground(Color.clear)
                         .listRowSeparator(.hidden)
                         .listRowInsets(EdgeInsets(top: 5, leading: 20, bottom: 5, trailing: 20))
                         .onTapGesture { activeContact = contact }
+                        .onboardingFrameAnchor(contact.id == filteredFriends.first?.id ? .firstFriendRow : nil)
                         .swipeActions(edge: .trailing) {
                             Button(role: .destructive) {
                                 vm.removeFriend(id: contact.id, userId: appState.currentUser?.user_id ?? "")
@@ -568,6 +614,10 @@ struct ChatRootView: View {
                             }
                         }
                         .swipeActions(edge: .leading) {
+                            Button { profileContact = contact } label: {
+                                Label("Profile", systemImage: "person.crop.circle")
+                            }
+                            .tint(Theme.gold)
                             Button { blockConfirmTarget = contact } label: {
                                 Label("Block", systemImage: "hand.raised.fill")
                             }
@@ -715,6 +765,7 @@ struct ChatRootView: View {
                         .listRowBackground(Color.clear)
                         .listRowSeparator(.hidden)
                         .listRowInsets(EdgeInsets(top: 5, leading: 20, bottom: 5, trailing: 20))
+                        .onboardingFrameAnchor(contact.id == filteredGroups.first?.id ? .firstGroupRow : nil)
                         .swipeActions(edge: .trailing) {
                             Button(role: .destructive) {
                                 vm.leaveGroup(id: contact.id, userId: appState.currentUser?.user_id ?? "")
@@ -818,6 +869,7 @@ struct ChatRootView: View {
                         .listRowSeparator(.hidden)
                         .listRowInsets(EdgeInsets(top: 5, leading: 20, bottom: 5, trailing: 20))
                         .onTapGesture { activeAgent = agent }
+                        .onboardingAnchor(agent.id == filteredAgents.first?.id ? .studyPartnerRow : nil)
                         .accessibilityLabel("Chat with agent: \(agent.displayLabel)")
                 }
                 .listStyle(.plain)
@@ -846,7 +898,95 @@ struct ChatRootView: View {
         switch selectedSegment {
         case 0: showAddFriend = true
         case 1: showAddGroup  = true
-        default: showNewAgent = true
+        default:
+            if askAiOn { startNewAskAiChat() } else { showNewAgent = true }
+        }
+    }
+
+    // ── Ask AI (flag ask_ai_default_agent) ─────────────────────────────────────
+    // Task 20261106-remove-agents-ask-ai. Flag off = the agents list above,
+    // unchanged. Flag on: the third segment lists the user's chats with the one
+    // built-in AI; rows open that chat (via the last-visited store) and "+"
+    // starts a new one. The list is cached; a failed refresh keeps it.
+    @ViewBuilder private var aiSegment: some View {
+        if askAiOn { askAiList } else { agentsList }
+    }
+    private var askAiOn: Bool { appState.capabilities.askAiEnabled }
+    private var agentErrorTitle: String { askAiOn ? "Couldn't Start Chat" : "Couldn't Create Agent" }
+
+    private func openAskAi(chatId: String?) {
+        let uid = appState.currentUser?.user_id ?? ""
+        if let chatId {
+            AgentLastVisitedChatStore().set(chatId, userId: uid, agentId: FSAgent.askAiId)
+        }
+        activeAgent = FSAgent.askAi
+    }
+
+    private func startNewAskAiChat() {
+        let uid = appState.currentUser?.user_id ?? ""
+        Task {
+            if let chat = await vm.createAskAiChat(userId: uid) { openAskAi(chatId: chat.id) }
+        }
+    }
+
+    private var filteredAskAiChats: [FSAgentChat] {
+        guard !searchQuery.isEmpty else { return vm.askAiChats }
+        return vm.askAiChats.filter { $0.displayTitle.localizedCaseInsensitiveContains(searchQuery) }
+    }
+
+    private var askAiList: some View {
+        VStack(spacing: 0) {
+            if vm.askAiRefreshFailed {
+                HStack {
+                    Text(vm.askAiChats.isEmpty ? "Couldn't load your chats." : "Couldn't refresh. Showing saved chats.")
+                        .font(.inter(Theme.fontSM))
+                        .foregroundColor(Theme.textSecondary)
+                    Spacer()
+                    Button("Retry") {
+                        Task { await vm.refresh(service: appState.service, userId: appState.currentUser?.user_id ?? "") }
+                    }
+                    .font(.inter(Theme.fontSM))
+                    .foregroundColor(Theme.gold)
+                    .frame(minWidth: 44, minHeight: 44)
+                }
+                .padding(.horizontal, 20)
+                .padding(.top, Theme.spacingSM)
+            }
+            if vm.askAiChats.isEmpty {
+                if vm.askAiRefreshFailed {
+                    Spacer()
+                } else {
+                    VStack(spacing: Theme.spacingMD) {
+                        emptyState(icon: "brain", message: "No AI chats yet.", hint: "")
+                        Button("Start a chat") { startNewAskAiChat() }
+                            .font(.inter(Theme.fontBody, weight: .bold))
+                            .foregroundColor(Theme.gold)
+                            .frame(minHeight: 44)
+                    }
+                }
+            } else if filteredAskAiChats.isEmpty {
+                noMatchesState
+            } else {
+                List(filteredAskAiChats) { chat in
+                    AskAiChatRow(chat: chat)
+                        .listRowBackground(Color.clear)
+                        .listRowSeparator(.hidden)
+                        .listRowInsets(EdgeInsets(top: 5, leading: 20, bottom: 5, trailing: 20))
+                        .onTapGesture { openAskAi(chatId: chat.id) }
+                        .accessibilityElement(children: .combine)
+                        .accessibilityAddTraits(.isButton)
+                        .accessibilityLabel("AI chat: \(chat.displayTitle)")
+                }
+                .listStyle(.plain)
+                .refreshable {
+                    await vm.refresh(service: appState.service, userId: appState.currentUser?.user_id ?? "")
+                }
+                .scrollContentBackground(.hidden)
+                .contentMargins(.top, Theme.spacingSM, for: .scrollContent)
+                .contentMargins(.bottom, 110, for: .scrollContent)
+                .scrollTopEdgeFeather()
+                .padding(.top, Theme.spacingLG)
+            }
         }
     }
 
@@ -899,6 +1039,12 @@ final class ChatViewModel: ObservableObject {
     @Published var friends:   [FSContact] = []
     @Published var groups:    [FSContact] = []
     @Published var agents:    [FSAgent]   = []
+    /// Task 20261106-remove-agents-ask-ai: the user's chats with the one
+    /// built-in AI (flag ask_ai_default_agent). Cached under askAiChats:<uid>.
+    @Published var askAiChats: [FSAgentChat] = []
+    /// True when the last Ask AI chat-list refresh threw; the cached list (if
+    /// any) stays on screen and the UI shows a non-blocking retry banner.
+    @Published var askAiRefreshFailed = false
     @Published var isLoading  = true
     /// Bumped only when a contacts fetch succeeds (never for the cache-first
     /// render or a failed fetch). BadgeCountsStore seeds the unread baseline on it.
@@ -929,9 +1075,11 @@ final class ChatViewModel: ObservableObject {
                 users: [userId] + memberIds
             )
             await load(service: service, userId: userId)
+            OnboardingEngine.shared.report(.groupCreated)   // chat tour: the server accepted it
         } catch {
             groupErrorFromHome = fromHome
             groupError = (error as? LocalizedError)?.errorDescription ?? "Could not create group."
+            OnboardingEngine.shared.reportFailure(.groupCreated, message: "We couldn't create that group. Try again.")
         }
     }
     // Same pattern for createAgent — NetworkService.createAgent now uses
@@ -1029,8 +1177,16 @@ final class ChatViewModel: ObservableObject {
             agents = cached
         }
 
+        let askAi = capabilities.askAiEnabled
+        if askAi, let cached: [FSAgentChat] = await DiskCache.shared.load([FSAgentChat].self, forKey: "askAiChats:\(userId)") {
+            askAiChats = cached
+        }
+
         async let contactsTask = try? service.fetchContacts(userId: userId, capabilities: capabilities)
-        async let agentsTask   = try? service.fetchAgents(userId: userId)
+        // Flag on: no agents are fetched or cached (agents:<uid> is left
+        // untouched); the AI chat list is fetched instead.
+        async let agentsTask: [FSAgent]? = askAi ? nil : (try? service.fetchAgents(userId: userId))
+        async let askAiTask: [FSAgentChat]? = askAi ? (try? service.fetchAgentChats(userId: userId, agentId: FSAgent.askAiId)) : nil
 
         // Bug fix (cache-clobber sweep, task
         // 20260905-pull-to-refresh-cache-clobber): `try?` collapsed a failed
@@ -1051,6 +1207,17 @@ final class ChatViewModel: ObservableObject {
         if let fetchedAgents = await agentsTask {
             agents = fetchedAgents
         }
+        // Throw-not-fabricate / preserve-cache: only a proven success replaces
+        // the Ask AI list; a failure keeps what is shown and flags the banner.
+        if askAi {
+            if let fetchedChats = await askAiTask {
+                askAiChats = fetchedChats
+                askAiRefreshFailed = false
+                await DiskCache.shared.save(fetchedChats, forKey: "askAiChats:\(userId)")
+            } else {
+                askAiRefreshFailed = true
+            }
+        }
 
         // ── Write fresh data back to the cache ───────────────────────────────────
         // agents:<uid> multi-writer audit (task 20260910-refresh-clobber-
@@ -1065,7 +1232,22 @@ final class ChatViewModel: ObservableObject {
         // split -- see AccountViewModel.swift's matching comment.
         await DiskCache.shared.save(friends, forKey: "friends:\(userId)")
         await DiskCache.shared.save(groups,  forKey: "groupContacts:\(userId)")
-        await DiskCache.shared.save(agents,  forKey: "agents:\(userId)")
+        if !askAi { await DiskCache.shared.save(agents, forKey: "agents:\(userId)") }
+    }
+
+    /// Starts a new Ask AI chat; on success it is prepended to the list and
+    /// cache. On failure (including the chat cap) `agentError` carries the
+    /// message and nothing is fabricated.
+    func createAskAiChat(userId: String) async -> FSAgentChat? {
+        do {
+            let chat = try await service.createAgentChat(userId: userId, agentId: FSAgent.askAiId)
+            askAiChats.insert(chat, at: 0)
+            await DiskCache.shared.save(askAiChats, forKey: "askAiChats:\(userId)")
+            return chat
+        } catch {
+            agentError = (error as? LocalizedError)?.errorDescription ?? "Could not start a new chat."
+            return nil
+        }
     }
 
     func createAgent(role: String, userId: String) async {
@@ -1194,6 +1376,9 @@ struct ContactRow: View {
     var onNudge: (() -> Void)? = nil
     /// iPad workspace list row: 32pt avatar + name only, no card (screenshot 3).
     var compact: Bool = false
+    /// Task 20261030-user-profiles: tapping a friend's avatar opens their
+    /// profile (the row body still opens the chat). nil for groups/agents.
+    var onViewProfile: (() -> Void)? = nil
     @EnvironmentObject var appState: AppState
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -1201,15 +1386,20 @@ struct ContactRow: View {
         if compact { compactBody } else { fullBody }
     }
 
+    /// Avatar tap target; a no-op unless this is a friend row with a handler.
+    private func profileTap<V: View>(_ avatar: V) -> some View {
+        avatar.onTapGesture { if contact.type == .friend { onViewProfile?() } }
+    }
+
     private var compactBody: some View {
         HStack(spacing: 10) {
-            AvatarView(
+            profileTap(AvatarView(
                 initial: String(contact.name.prefix(1)).uppercased(),
                 photoURL: contact.photoUrl,
                 diameter: WorkspaceLayout.compactRowAvatar,
                 fillColor: Theme.gold.opacity(0.2),
                 textColor: Theme.goldLight
-            )
+            ))
             .overlay(alignment: .topLeading) {
                 if appState.hasUnread(contact) {
                     Circle().fill(Theme.error).frame(width: 10, height: 10)
@@ -1238,13 +1428,13 @@ struct ContactRow: View {
             // fillColor: .clear -- AvatarView only takes a flat Color, so the
             // original gradient backdrop lives in `.background` below instead
             // and shows through underneath the initial/photo exactly as before.
-            AvatarView(
+            profileTap(AvatarView(
                 initial: String(contact.name.prefix(1)).uppercased(),
                 photoURL: contact.photoUrl,
                 diameter: 48,
                 fillColor: .clear,
                 textColor: Theme.goldLight
-            )
+            ))
             .background(
                 Circle().fill(LinearGradient(colors: [Color(hex: "#EDAB3C").opacity(0.32), Color(hex: "#B8761D").opacity(0.2)],
                                              startPoint: .topLeading, endPoint: .bottomTrailing))
@@ -1431,6 +1621,65 @@ struct AgentRow: View {
     }
 }
 
+// Ask AI navigation/refresh hooks, kept out of ChatRootView.body so that
+// already-large expression stays type-checkable.
+private struct AskAiChatLifecycle: ViewModifier {
+    @EnvironmentObject var appState: AppState
+    @Binding var selectedSegment: Int
+    let activeAgent: FSAgent?
+    let vm: ChatViewModel
+
+    func body(content: Content) -> some View {
+        content
+            // Account -> "Open Ask AI" (flag ask_ai_default_agent): land on the Ask AI segment.
+            .onChange(of: appState.pendingAskAiOpen) { _, open in
+                if open, appState.capabilities.askAiEnabled { selectedSegment = 2 }
+                if open { appState.pendingAskAiOpen = false }
+            }
+            // A chat just closed, so titles/activity may have changed.
+            .onChange(of: activeAgent?.id) { _, id in
+                if id == nil, appState.capabilities.askAiEnabled {
+                    Task { await vm.refresh(service: appState.service, userId: appState.currentUser?.user_id ?? "") }
+                }
+            }
+    }
+}
+
+// ── Ask AI chat row (flag ask_ai_default_agent) ───────────────────────────────
+struct AskAiChatRow: View {
+    let chat: FSAgentChat
+
+    var body: some View {
+        HStack(spacing: 13) {
+            Circle()
+                .fill(LinearGradient(colors: [Color(hex: "#EDAB3C").opacity(0.28), Color(hex: "#B8761D").opacity(0.16)],
+                                     startPoint: .topLeading, endPoint: .bottomTrailing))
+                .frame(width: 48, height: 48)
+                .overlay(Circle().stroke(Theme.gold.opacity(0.5), lineWidth: 1))
+                .overlay(Image(systemName: "brain").foregroundColor(Theme.goldLight))
+                .accessibilityHidden(true)
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(chat.displayTitle)
+                    .font(.system(size: 15.5, weight: .heavy))
+                    .foregroundColor(Theme.parchment)
+                    .lineLimit(1)
+                let when = AgentChatDateLabel.label(chat.lastMessageAt ?? chat.createdAt)
+                if !when.isEmpty {
+                    Text(when)
+                        .font(.system(size: 12))
+                        .foregroundColor(Theme.textSecondary)
+                }
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 13)
+        .frame(minHeight: 44)
+        .glassCard(cornerRadius: 20)
+    }
+}
+
 // ── Add friend sheet ──────────────────────────────────────────────────────────
 // Visual redesign (task 20260902-submenu-visual-redesign): moved off native
 // Form/Section onto the shared warm-bloom-ground background + widgetCard()
@@ -1451,6 +1700,9 @@ struct AddFriendSheet: View {
             content: {
                 FSFormCard(title: "Search by username") {
                     FSField(label: "Username", required: true, text: $username,
+                            // Task 20261030-user-profiles: the server answers identically for any
+                            // username, so the sheet never claims the person exists.
+                            helper: "If that username exists, a friend request is sent.",
                             accessibilityName: "Enter username to add as friend",
                             contentType: .username, capitalization: .never, autocorrect: false,
                             submitLabel: .send,
@@ -1533,3 +1785,34 @@ struct AddGroupSheet: View {
     }
 }
 
+
+/// Walkthrough hooks for the Chat tab: report the Agents segment being shown and
+/// show the segment each cue is about (an already-satisfied cue advances).
+private struct ChatOnboardingRouting: ViewModifier {
+    @Binding var selectedSegment: Int
+    /// Chat tour: closing the open conversation when a cue is about the lists again.
+    @Binding var activeContact: FSContact?
+    @ObservedObject private var onboarding = OnboardingEngine.shared
+
+    func body(content: Content) -> some View {
+        content
+            .onChange(of: selectedSegment) { _, seg in
+                if seg == 2 { OnboardingEngine.shared.report(.agentsSegmentShown) }
+            }
+            .onChange(of: onboarding.currentCue?.id) { _, id in route(id) }
+            .onAppear { route(onboarding.currentCue?.id) }
+    }
+
+    private func route(_ cueID: String?) {
+        switch cueID {
+        case "friend.open", "chat.openDM", "chat.needFriend": if selectedSegment != 0 { selectedSegment = 0 }
+        case "chat.groupPlus":
+            if selectedSegment != 1 { selectedSegment = 1 }
+            if activeContact != nil { activeContact = nil }   // leave the DM from step 5
+        case "chat.groupOpen": if selectedSegment != 1 { selectedSegment = 1 }
+        case "learn.agents": if selectedSegment == 2 { OnboardingEngine.shared.report(.agentsSegmentShown) }
+        case "learn.open": if selectedSegment != 2 { selectedSegment = 2 }
+        default: break
+        }
+    }
+}

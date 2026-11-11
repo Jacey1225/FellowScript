@@ -114,6 +114,7 @@ struct WorkspaceView: View {
     let startup: StartupCoordinator
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
+    @ObservedObject private var onboarding = OnboardingEngine.shared
     @StateObject private var drag = WorkspaceDragState()
     @AppStorage(WorkspaceLayout.moveHintKey) private var moveHintDismissed = false
     @State private var showAccount = false
@@ -169,7 +170,10 @@ struct WorkspaceView: View {
                 state.notice = nil
             }
         }
-        .sheet(isPresented: $showAccount) { AccountView().environmentObject(appState) }
+        .sheet(isPresented: $showAccount) {
+            // The Account sheet sits above the root overlay: host its coach cards here.
+            AccountView().environmentObject(appState).onboardingCoach(surfaces: [.accountScreen])
+        }
         .sheet(isPresented: $showNewAgent) {
             NewAgentSheet(role: $newAgentRole) {
                 let role = newAgentRole
@@ -195,9 +199,26 @@ struct WorkspaceView: View {
         .onChange(of: appState.pendingNoteDraft?.id) { _, id in
             if id != nil { animate { state.select(.notes) } }
         }
+        // Task 20261105-onboarding-redo: route the walkthrough's current cue to its screen.
+        .onChange(of: onboarding.currentCue?.id) { _, _ in routeOnboarding() }
+        .onAppear { routeOnboarding() }
         .onAppear { state.setUser(appState.currentUser?.user_id) }
         .onChange(of: appState.currentUser?.user_id) { _, id in state.setUser(id) }
         .preferredColorScheme(.dark)
+    }
+
+    private func routeOnboarding() {
+        guard let cue = onboarding.currentCue, let dest = onboarding.isActive ? cue.destination : nil else { return }
+        if dest == .account { showAccount = true; return }
+        showAccount = false
+        animate {
+            switch dest {
+            case .chat:  state.select(cue.id.hasPrefix("learn.") ? .agentChat : .messages)
+            case .notes: state.select(.notes)
+            case .bible: state.select(.bible)
+            case .account: break
+            }
+        }
     }
 
     // MARK: Chrome

@@ -109,6 +109,10 @@ register("chat_shared_objects")
 # GET /groups/{u}/{g}/media and the Media chip. Exposed in capabilities as
 # features.group_media. Ships OFF; never flipped by the pipeline.
 register("group_media")
+# Announcements as chat timeline lines (task 20261030-chat-announcements): gates the post_to_chat create
+# field, the timeline line, its payload/frames. Exposed in capabilities as features.chat_announcements.
+# Ships OFF; never flipped by the pipeline.
+register("chat_announcements")
 register("explorer_publish")
 register("explorer_browse", no_canary=True)
 register("join_requests")
@@ -165,6 +169,11 @@ register("chat_replies")
 # the mention push, the ``mentions`` key in payloads/frames and GET .../mention-members; exposed in
 # capabilities for the clients' picker. Canary allowed. Ships OFF.
 register("chat_mentions")
+# Ask AI / single default agent (task 20261106-remove-agents-ask-ai). Gates the agent-id-free
+# /ask-ai routes, legacy /agent/* id remapping onto the canonical agent, the user-wide chat cap,
+# call-time default prompt and the fixed scheduled-devotion push copy. Implies multi-chat.
+# Exposed in capabilities for clients. Ships OFF; flip only AFTER the merge script has run.
+register("ask_ai_default_agent")
 
 
 def _load_snapshot() -> dict[str, tuple[str, frozenset[str]]]:

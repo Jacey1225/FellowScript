@@ -199,11 +199,55 @@ struct FellowScriptApp: App {
     // already treats scenePhase as its one source of truth for
     // foreground/background transitions.
     @Environment(\.scenePhase) private var scenePhase
+    // Task 20261105-push-prompt-sheet: derives the push prompt sheet state from
+    // UNUserNotificationCenter on every .active (never cached). Starts fully
+    // suppressed (fail closed); ContentView installs the real suppression
+    // inputs once it is on screen. Launch with UI-TESTING-PUSH-PROMPT for a
+    // deterministic primer (add "push-prompt-denied" for the Settings variant).
+    @StateObject private var pushPrompt = FellowScriptApp.makePushPromptCoordinator()
+
+    private static func makePushPromptCoordinator() -> PushPromptCoordinator {
+        let args = ProcessInfo.processInfo.arguments
+        let startSuppressed: () -> PushPromptSuppression = { PushPromptSuppression(loadingScreen: true) }
+        guard args.contains("UI-TESTING-PUSH-PROMPT"),
+              let defaults = UserDefaults(suiteName: "UI-TESTING-PUSH-PROMPT") else {
+            return PushPromptCoordinator(suppression: startSuppressed)
+        }
+        // Isolated, freshly reset defaults; post-tour store reports "deferred"
+        // with nothing owed so the primer is eligible without touching real state.
+        defaults.removePersistentDomain(forName: "UI-TESTING-PUSH-PROMPT")
+        defaults.set(true, forKey: PostTourPromptsStore.pushDeferredKey)
+        let status: UNAuthorizationStatus = args.contains("push-prompt-denied") ? .denied : .notDetermined
+        return PushPromptCoordinator(
+            store: PushPromptStore(defaults: defaults),
+            postTourStore: PostTourPromptsStore(defaults: defaults, arguments: []),
+            suppression: startSuppressed,
+            statusProvider: { status }
+        )
+    }
+
+    // Task 20261105-take-tour-prompt: "Take a quick tour" sheet for users who
+    // skipped the walkthrough. Launch with UI-TESTING-TOUR-PROMPT for a
+    // deterministic skipped-outcome state in isolated defaults.
+    @StateObject private var tourPrompt = FellowScriptApp.makeTourPromptCoordinator()
+
+    private static func makeTourPromptCoordinator() -> TourPromptCoordinator {
+        let args = ProcessInfo.processInfo.arguments
+        guard args.contains(TourPromptStore.uiTestEnableArgument),
+              let defaults = UserDefaults(suiteName: TourPromptStore.uiTestEnableArgument) else {
+            return TourPromptCoordinator()
+        }
+        defaults.removePersistentDomain(forName: TourPromptStore.uiTestEnableArgument)
+        defaults.set(TourPromptOutcome.skipped.rawValue, forKey: TourPromptStore.outcomeKey)
+        return TourPromptCoordinator(store: TourPromptStore(defaults: defaults, arguments: args))
+    }
 
     var body: some Scene {
         WindowGroup {
             RootView()
                 .environmentObject(appState)
+                .environmentObject(pushPrompt)
+                .environmentObject(tourPrompt)
                 .environment(\.fsCapabilities, appState.capabilities)
                 .preferredColorScheme(.dark)
                 .onReceive(NotificationCenter.default.publisher(for: .apnsTokenReceived)) { note in
@@ -282,6 +326,9 @@ struct FellowScriptApp: App {
         .onChange(of: scenePhase) { phase in
             if phase == .active {
                 appState.requestPushNotifications()
+                // Task 20261105-push-prompt-sheet: re-derive the prompt state
+                // from the live authorization status (never cached).
+                Task { await pushPrompt.evaluate() }
                 // Task 20261002-shared-foundation: re-read capabilities (throttled).
                 appState.refreshCapabilities()
                 // Task 20260916-call-background-persistence: resume local

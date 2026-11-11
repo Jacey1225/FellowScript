@@ -7,6 +7,7 @@
 // section files.
 
 import SwiftUI
+import UserNotifications
 
 extension AccountView {
 
@@ -31,6 +32,38 @@ extension AccountView {
     }
 
     /// Task 20261012-notification-settings: entry row to the Notifications sub-page.
+    /// Task 20261105-onboarding-redo: replay the guided walkthrough. Hidden while one is running.
+    @ViewBuilder var replayOnboardingSection: some View {
+        if OnboardingEngine.shared.isChatTour {
+            ChatTourEndRow()   // task 20261106-chat-tour: always a way out of a stuck chat tour
+        } else if !OnboardingEngine.shared.isActive && !OnboardingEngine.shared.blocksPostTourPrompts {
+            VStack(alignment: .leading, spacing: Theme.spacingSM) {
+                sectionLabel("Guided tour")
+                Button(action: { showReplaySurvey = true }) {
+                    HStack {
+                        Label("Replay onboarding", systemImage: "play.circle")
+                            .font(.system(size: Theme.fontBody))
+                            .foregroundColor(Theme.parchment)
+                        Spacer()
+                        Image(systemName: "chevron.right")
+                            .font(.caption)
+                            .foregroundColor(Theme.textMuted)
+                    }
+                    .frame(minHeight: 44)
+                    .contentShape(Rectangle())
+                }
+                .accessibilityLabel("Replay onboarding")
+                .accessibilityHint("Pick what you want help with and walk through it again")
+                ChatTourReplayRow()   // task 20261106-chat-tour; empty unless the flag is on
+                Text("Walk through the parts of the app you want help with, step by step.")
+                    .font(.system(size: Theme.fontXS))
+                    .foregroundColor(Theme.textMuted)
+            }
+            .padding(.horizontal, 18).padding(.vertical, 16)
+            .glassCard(cornerRadius: 20)
+        }
+    }
+
     var notificationsSection: some View {
         VStack(alignment: .leading, spacing: Theme.spacingSM) {
             sectionLabel("Notifications")
@@ -45,11 +78,47 @@ extension AccountView {
                         .foregroundColor(Theme.textMuted)
                 }
             }
+            .onboardingAnchor(.notificationSettingsRow)
             .accessibilityLabel("Notification settings")
             .accessibilityHint("Choose which push notifications you receive")
+
+            // Task 20261105-push-prompt-sheet: .provisional users get quiet
+            // delivery only. No sheet; a low-key row that opens iOS Settings
+            // (no requestAuthorization call).
+            if pushIsProvisional {
+                Divider().background(Theme.borderGray)
+                Button(action: openSystemNotificationSettings) {
+                    HStack {
+                        Label("Turn on alerts", systemImage: "bell.badge")
+                            .font(.system(size: Theme.fontBody))
+                            .foregroundColor(Theme.parchment)
+                        Spacer()
+                        Image(systemName: "arrow.up.right")
+                            .font(.caption)
+                            .foregroundColor(Theme.textMuted)
+                    }
+                    .frame(minHeight: 44)
+                    .contentShape(Rectangle())
+                }
+                .accessibilityLabel("Turn on alerts")
+                .accessibilityHint("Opens iOS Settings so notifications can show as alerts")
+                .accessibilityIdentifier("account.turnOnAlerts")
+            }
         }
         .padding(.horizontal, 18).padding(.vertical, 16)
         .glassCard(cornerRadius: 20)
+    }
+
+    @MainActor
+    func refreshPushProvisional() async {
+        let status = await UNUserNotificationCenter.current().notificationSettings().authorizationStatus
+        pushIsProvisional = (status == .provisional)
+    }
+
+    func openSystemNotificationSettings() {
+        if let url = URL(string: UIApplication.openSettingsURLString) {
+            UIApplication.shared.open(url)
+        }
     }
 
     var legalSection: some View {

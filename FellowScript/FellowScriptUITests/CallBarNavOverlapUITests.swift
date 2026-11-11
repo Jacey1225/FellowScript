@@ -102,10 +102,6 @@ final class CallBarNavOverlapUITests: XCTestCase {
 
         let getStarted = onboardingButton(containing: "Get Started")
         if getStarted.waitForExistence(timeout: 8) { getStarted.tap() } else { attachScreenshot(app, name: "DEBUG-no-get-started") }
-        let surveySkip = onboardingButton(containing: "Skip →")
-        if surveySkip.waitForExistence(timeout: 5) { surveySkip.tap() } else { attachScreenshot(app, name: "DEBUG-no-survey-skip") }
-        let beginTour = onboardingButton(containing: "Begin the Tour")
-        if beginTour.waitForExistence(timeout: 5) { beginTour.tap() } else { attachScreenshot(app, name: "DEBUG-no-begin-tour") }
         let tourSkip = onboardingButton(containing: "Skip")
         if tourSkip.waitForExistence(timeout: 5) { tourSkip.tap() } else { attachScreenshot(app, name: "DEBUG-no-tour-skip") }
         let signInCta = onboardingButton(containing: "Sign In")

@@ -82,8 +82,6 @@ final class ChatReactionsLiveUITests: XCTestCase {
                 app.buttons.matching(NSPredicate(format: "label CONTAINS[c] %@", text)).firstMatch
             }
             waitHittableThenTap(app.buttons["Get Started"], timeout: 10)
-            waitHittableThenTap(onboardingButton(containing: "Skip →"))
-            waitHittableThenTap(onboardingButton(containing: "Begin the Tour →"))
             waitHittableThenTap(app.buttons["Skip"])
             waitHittableThenTap(onboardingButton(containing: "Sign In"))
 

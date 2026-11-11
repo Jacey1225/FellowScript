@@ -212,6 +212,12 @@ def test_send_group(client):
         send(a, [], gid, "r-long", reply_to=long_t)
         lab = label(a, sql("SELECT _id::text FROM messages WHERE text='r-long'")[0][0])
         check("long label capped at 200", len(lab["reply_to_text"]) == 200, str(len(lab["reply_to_text"])))
+        # the reply's OWN body is never truncated (only the quote label above is): long text plus one unbroken token
+        long_body = ("word " * 300) + "U" * 400
+        send(a, [], gid, long_body, reply_to=long_t)
+        row = sql("SELECT _id::text, text FROM messages WHERE reply_to_id=%s AND text LIKE 'word word%%'", (long_t,))
+        check("long reply body stored in full", len(row) == 1 and row[0][1] == long_body, str(len(row[0][1]) if row else row))
+        check("long reply body still has the capped label", len(label(a, row[0][0])["reply_to_text"]) == 200)
         att = make_msg(b, gid, "", kind="image", key=f"attachments/{b}/x.jpg")
         send(a, [], gid, "r-att", reply_to=att)
         lab = label(a, sql("SELECT _id::text FROM messages WHERE text='r-att'")[0][0])

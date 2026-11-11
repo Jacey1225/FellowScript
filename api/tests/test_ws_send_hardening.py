@@ -491,7 +491,7 @@ def source_checks():
     check("exactly one authorize_send call in websockets.py", wsrc.count("authorize_send(") == 1)
     i = wsrc.index("authorize_send(")
     check("authorize_send call sits before save_message", i < wsrc.index("self.save_message(Message(**payload))"))
-    check("authorize_send call sits after check_clean", wsrc.index("check_clean(text=text") < i)
+    check("authorize_send call sits after check_clean", wsrc.index("check_clean(text=") < i)
 
 
 def main():

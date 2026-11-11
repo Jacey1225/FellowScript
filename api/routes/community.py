@@ -6,6 +6,9 @@ from backend.interactions.groups import (
     GroupFullError, GroupsManager, MEDIA_KINDS, InvalidMemberError, ListedGroupOwnerOnlyError, normalize_group_title,
 )
 from backend.interactions.friends import  FriendsManager, is_nudge_enabled
+from backend.interactions.profile_limits import (
+    friend_accept_dependency, friend_decline_dependency, friend_request_dependency,
+)
 from backend.interactions.push import send_push
 from backend.interactions.push_preferences import async_is_push_enabled
 from backend.interactions import flags, friend_request_notifier, member_joined_notifier, paging
@@ -615,7 +618,7 @@ def fetch_friend_messages(
         manager.close()
 
 
-@friend_router.post("/{user_id}/request")
+@friend_router.post("/{user_id}/request", dependencies=[friend_request_dependency])
 async def send_friend_request(
     user_id: str, friend_username: str, background: BackgroundTasks,
     _: str = Depends(require_match("user_id")),
@@ -626,15 +629,19 @@ async def send_friend_request(
         user_id: UUID of the requesting user.
         friend_username: Username of the intended recipient.
 
+    The response is identical whether or not the username exists, is blocked
+    or suspended (security D5, no enumeration oracle); only a self-request
+    (400) and the pending-request cap (429) are reported distinctly.
+
     Raises:
-        HTTPException 404: If no user with the given username is found, or
-            if the user attempts to add themselves.
+        HTTPException 400: If the user attempts to add themselves.
+        HTTPException 429: Over the friend-request rate limit or pending cap.
     """
     manager = FriendsManager(user_id)
     try:
         result = manager.send_add_request(friend_username)
         if result and "error" in result:
-            raise HTTPException(status_code=404, detail=result["error"])
+            raise HTTPException(status_code=result.get("status", 400), detail=result["error"])
         if manager.new_request_recipient_id:  # essential push, never fails the request
             background.add_task(friend_request_notifier.notify_friend_request,
                                 manager.new_request_recipient_id, user_id)
@@ -642,7 +649,7 @@ async def send_friend_request(
         manager.close()
 
 
-@friend_router.post("/{user_id}/add", status_code=204)
+@friend_router.post("/{user_id}/add", status_code=204, dependencies=[friend_accept_dependency])
 async def add_friend(user_id: str, friend_username: str, _: str = Depends(require_match("user_id"))) -> None:
     """Accept a friend request and create a mutual friendship.
 
@@ -650,14 +657,44 @@ async def add_friend(user_id: str, friend_username: str, _: str = Depends(requir
         user_id: UUID of the user accepting the request.
         friend_username: Username of the user to add.
 
+    Requires a pending request from ``friend_username`` (security D1).
+
     Raises:
-        HTTPException 404: If the target user is not found.
+        HTTPException 404: Uniform refusal for an unknown user, a blocked or
+            suspended user, or no pending request from that user.
     """
     manager = FriendsManager(user_id)
     try:
         result = manager.add_friend(friend_username)
         if result and "error" in result:
             raise HTTPException(status_code=404, detail=result["error"])
+    finally:
+        manager.close()
+
+
+@friend_router.post("/{user_id}/requests/{sender_id}/decline", status_code=204,
+                    dependencies=[friend_decline_dependency])
+async def decline_friend_request(
+    user_id: str, sender_id: str, _: str = Depends(require_match("user_id")),
+) -> None:
+    """Decline (delete) the pending friend request from ``sender_id`` to the caller.
+
+    Recipient-only: ``user_id`` must be the signed-in caller and only a row
+    addressed to the caller is removed. The response is the same 204 whether or
+    not a request exists and whether the sender is unknown, blocked or
+    suspended (no enumeration oracle). No cooldown is recorded.
+
+    Args:
+        user_id: UUID of the caller (the request's recipient).
+        sender_id: UUID of the user whose request is declined.
+    """
+    try:
+        sender = str(uuid.UUID(sender_id))
+    except (ValueError, AttributeError, TypeError):
+        return
+    manager = FriendsManager(user_id)
+    try:
+        manager.decline_request_by_id(sender)
     finally:
         manager.close()
 

@@ -15,7 +15,9 @@
 import { parseReactions } from './reactions.js';
 import { replyFromWire } from './replies.js';
 import { pinFields } from './pins.js';
+import { announcementFields } from './chatAnnouncements.js';
 import { mentionFields, mentionsFromWire } from './mentions.js';
+import { isProfileId } from './profileId.js';
 
 export const INITIAL_PAGE_LIMIT = 30;
 export const OLDER_PAGE_LIMIT = 30;
@@ -50,6 +52,9 @@ export function toMessage(row, mine) {
     attachmentUrl: row.attachment_url || null,
   };
   if (id) { msg.id = id; msg.key = id; }
+  // Task 20261030-profile-everywhere: paged rows carry the author's id as
+  // `from_user_id` (absent for deleted/system authors); a profile-tap target only.
+  if (!isMine && isProfileId(row.from_user_id)) msg.senderId = row.from_user_id;
   // Task 20261011-desktop-chat-replies-reactions: only present while the
   // server flags are on for the viewer (absent keys leave the shape unchanged).
   const reactions = parseReactions(row.reactions);
@@ -58,6 +63,8 @@ export function toMessage(row, mine) {
   if (reply) msg.reply = reply;
   // Task 20261012-message-pins: `pinned` / `system_kind` only while the flag is on.
   Object.assign(msg, pinFields(row));
+  // Task 20261030-chat-announcements: announcement lines carry their card.
+  Object.assign(msg, announcementFields(row));
   // Task 20261017-chat-mentions: `mentions` only while the flag is on for the
   // viewer; an invalid range set is dropped (message renders plain).
   Object.assign(msg, mentionFields(row, row.text));

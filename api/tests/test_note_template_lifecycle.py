@@ -40,7 +40,7 @@ import json
 import re
 import sys
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from db import DBManager
 from backend.errors import TemplateDerivationError, TimelineGenerationError
@@ -115,8 +115,18 @@ def fires_today_ts() -> list:
     return ts
 
 
+def window_offsets() -> list:
+    """Every offset in the timeline window on which fires_today_ts() fires.
+    Day-of-month is the schedule key, so in a 30-day month "today" also lands
+    on offset 30 (e.g. Nov 5 and Dec 5): a stub that only answers offset 0
+    makes the test fail for whole months (Apr, Jun, Sep, Nov)."""
+    start = datetime.now(timezone.utc).date()
+    return [k for k in range(31) if (start + timedelta(days=k)).day == start.day]
+
+
 def tl_response(passage="1 Thessalonians 5:12-15", theme="Peace"):
-    return json.dumps({"days": {"0": {"instruction": "Cover the passage", "theme": theme, "passage": passage}},
+    entry = {"instruction": "Cover the passage", "theme": theme, "passage": passage}
+    return json.dumps({"days": {str(k): entry for k in window_offsets()},
                        "coverage_summary": "covered"})
 
 
@@ -294,7 +304,7 @@ def main():
         hb_a = hid
 
         M.tmpl = Script(FREEFORM_JSON)
-        M.tl = Script(json.dumps({"days": {"0": "just write"}, "coverage_summary": "s"}))
+        M.tl = Script(json.dumps({"days": {str(k): "just write" for k in window_offsets()}, "coverage_summary": "s"}))
         db = M(uid)
         try:
             hid_ff = db.add_heartbeat(AgentHeartbeats(agent_id=aid, user_id=uid, timestamps=fires_today_ts(), prompt="Write something nice"))

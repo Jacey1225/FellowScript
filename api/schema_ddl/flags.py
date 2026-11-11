@@ -36,6 +36,7 @@ SEED_FLAG_NAMES = (
     "chat_shared_objects",
     "chat_mentions",
     "group_media",
+    "chat_announcements",
 )
 
 
