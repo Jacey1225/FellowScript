@@ -1,0 +1,82 @@
+/* Per-verse Ask AI overlay (20261112-verse-ask-ai). Fixed, portaled to body,
+   never in the text flow. Tokens only: glass values are the reader-dock
+   --panel-glass-bg / --border-glass / --shadow-glass pair (declared there on
+   the dockview scope) with literal fallbacks equal to those values, so the
+   overlay renders correctly even though it is portaled outside that scope. */
+.va-layer { position: fixed; inset: 0; z-index: 400; pointer-events: none; }
+.va-gold { color: var(--gold); }
+
+.va-glass {
+  position: fixed; box-sizing: border-box; pointer-events: auto;
+  background: var(--panel-glass-bg, rgba(32,24,17,0.52));
+  -webkit-backdrop-filter: blur(var(--chat-glass-blur)) saturate(150%);
+  backdrop-filter: blur(var(--chat-glass-blur)) saturate(150%);
+  border: 1px solid var(--border-glass, rgba(237,230,214,0.10));
+  box-shadow: var(--shadow-glass, 0 8px 24px rgba(0,0,0,0.35));
+  animation: vaIn 0.16s ease-out;
+}
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .va-glass { background: var(--card-bg-2); }
+}
+.va-reduced { animation: vaFade 0.12s linear; }
+@keyframes vaIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+@keyframes vaFade { from { opacity: 0; } to { opacity: 1; } }
+
+.va-pill {
+  min-height: 44px; border-radius: var(--radius-pill);
+  display: flex; align-items: center; gap: 0.5rem; padding: 4px 4px 4px 0.9rem;
+}
+.va-pill-icon { display: inline-flex; font-size: 1rem; flex: none; }
+.va-input {
+  flex: 1; min-width: 0; resize: none; border: 0; outline: 0; background: transparent;
+  color: var(--parchment); caret-color: var(--gold);
+  font: 400 0.85rem/1.4 'Inter', sans-serif; padding: 0.55rem 0; max-height: 72px;
+}
+.va-input::placeholder { color: rgba(242,242,242,0.55); }
+.va-counter { font: 600 0.62rem 'Space Grotesk', sans-serif; color: rgba(242,242,242,0.6); }
+.va-counter-limit { color: #ff8a80; }
+
+.va-send {
+  flex: none; width: 44px; height: 44px; padding: 0; border: 0; background: transparent;
+  display: inline-flex; align-items: center; justify-content: center; cursor: pointer; border-radius: 50%;
+}
+.va-send-circle {
+  width: 36px; height: 36px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center;
+  background: var(--gold); color: var(--ink);
+}
+.va-send[aria-disabled="true"] .va-send-circle { background: rgba(255,198,26,0.25); color: rgba(10,10,10,0.5); }
+.va-send[aria-disabled="true"] { cursor: default; }
+.va-send:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+.va-send .ant-spin-dot-item { background-color: var(--ink); }
+
+.va-panel { border-radius: var(--radius-md); padding: 14px; overflow-y: auto; scrollbar-width: none; display: flex; flex-direction: column; gap: 0.6rem; }
+.va-panel::-webkit-scrollbar { display: none; }
+.va-panel-head { display: flex; align-items: center; gap: 0.6rem; min-height: 28px; }
+.va-label { font: 600 0.62rem 'Space Grotesk', sans-serif; letter-spacing: 0.12em; text-transform: uppercase; color: rgba(255,198,26,0.7); }
+.va-ref { font: 400 0.72rem 'Inter', sans-serif; color: rgba(242,242,242,0.6); flex: 1; }
+.va-close {
+  width: 44px; height: 44px; margin: -8px -10px -8px 0; border: 0; background: transparent; cursor: pointer;
+  color: rgba(242,242,242,0.6); display: inline-flex; align-items: center; justify-content: center; border-radius: 50%;
+}
+.va-close:hover, .va-close:focus-visible { color: var(--parchment); }
+.va-close:focus-visible, .va-text-btn:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+.va-asked {
+  font: 400 0.8rem/1.4 'Inter', sans-serif; color: rgba(242,242,242,0.85);
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere;
+}
+.va-loading { display: flex; align-items: center; gap: 0.5rem; font: 400 0.85rem 'Inter', sans-serif; color: rgba(242,242,242,0.6); }
+.va-answer-wrap { border-left: 2px solid var(--gold-dim); padding-left: 0.75rem; }
+.va-answer {
+  font: 400 0.88rem/1.55 'Inter', sans-serif; color: var(--parchment); white-space: pre-wrap; overflow-wrap: anywhere;
+  animation: vaFade 0.18s ease-out;
+}
+.va-answer-reduced { animation-duration: 0.12s; animation-timing-function: linear; }
+.va-error { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; font: 400 0.85rem/1.45 'Inter', sans-serif; color: rgba(242,242,242,0.85); }
+.va-error-icon { color: #ff8a80; }
+.va-foot { display: flex; align-items: center; border-top: 1px solid var(--card-border); padding-top: 0.4rem; }
+.va-text-btn {
+  min-height: 44px; padding: 0 0.4rem; background: transparent; border: 0; cursor: pointer;
+  font: 600 0.78rem 'Space Grotesk', sans-serif; color: var(--gold);
+}
+.va-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.va-gold .anticon, .msg-action-icon.va-gold { color: var(--gold); }

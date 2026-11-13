@@ -21,6 +21,7 @@ from backend.interactions.groups import GroupsManager
 from backend.interactions import flags
 from backend.interactions.agent_chats import AgentChatStore, ask_ai_enabled, multi_chat_enabled
 from backend.interactions import agent_memory
+from backend.interactions.verse_context import VerseContextError, build_verse_message, parse_verse_context
 from backend.interactions.agent_memory_config import get_agent_memory_config
 from fastapi import WebSocket
 from starlette.websockets import WebSocketDisconnect
@@ -1596,6 +1597,51 @@ class AgentManager(DBManager):
                     })
                     continue
                 message_times.append(now_monotonic)
+
+                # Per-verse Ask AI (task 20261112-verse-ask-ai): optional verse_context on the
+                # same frame. Ephemeral one-shot on the same _call_api path: nothing is saved,
+                # no chat is touched, no memory is read. Fail closed: only with the
+                # ask_ai_default_agent flag on, and invalid context is a visible error frame.
+                if payload.get("verse_context") is not None:
+                    verse_err = None
+                    verse_msg = ""
+                    if not ask_ai_enabled(self.user_id):
+                        verse_err = "Ask AI isn't available right now."
+                    else:
+                        try:
+                            v_ctx, v_question = parse_verse_context(payload.get("verse_context"), user_content)
+                            verse_msg = build_verse_message(v_ctx, v_question)
+                        except VerseContextError as v_err:
+                            verse_err = str(v_err)
+                    if verse_err is None:
+                        try:
+                            verse_reply = await loop.run_in_executor(
+                                None,
+                                functools.partial(self._call_api, agent_role,
+                                                  [{"role": "user", "content": verse_msg}]),
+                            )
+                        except Exception as api_err:
+                            logger.error("OpenRouter API error for verse ask, agent %s: %s", agent_id, api_err)
+                            verse_err = "I'm having trouble connecting right now. Please try again in a moment."
+                    if verse_err is not None:
+                        await ws.send_json({
+                            "role":      "error",
+                            "content":   verse_err,
+                            "agent_id":  agent_id,
+                            "chat_id":   "",
+                            "ephemeral": True,
+                            "timestamp": str(datetime.now()),
+                        })
+                        continue
+                    await ws.send_json({
+                        "role":      "assistant",
+                        "content":   verse_reply,
+                        "agent_id":  agent_id,
+                        "chat_id":   "",
+                        "ephemeral": True,
+                        "timestamp": str(datetime.now()),
+                    })
+                    continue
 
                 # Per-chat memory: read BEFORE the new turn is saved so the
                 # window never contains the message being sent.

@@ -480,6 +480,11 @@ struct BibleReaderView: View {
     @State private var sharePayload:     SharePayload? = nil   // task 20261011-ios-share-notes-highlights
     @State private var chatShare:        ChatShareDraft? = nil // task 20261012-share-verses-notes-in-chat
     @State private var pendingScrollVerse: Int? = nil
+    // Task 20261112-verse-ask-ai: per-verse Ask AI overlay (see BibleReaderView+VerseAsk.swift).
+    @State var verseAsk: VerseAskSession? = nil
+    @State var verseFrames = VerseFrameStore()
+    @Environment(\.floatingTabBarReserve) var tabBarReserve
+    var verseRefPrefix: String { "\(vm.curBook) \(vm.curChapter)" }
     @State private var contentOpacity:   Double = 1
 
     private var fontSize: CGFloat { Theme.bibleFontSizes[min(fontSizeIndex, Theme.bibleFontSizes.count - 1)] }
@@ -669,6 +674,7 @@ struct BibleReaderView: View {
                                             inlineFill:    embedded
                                         )
                                         .onboardingAnchor(v.num == vm.verses.first?.num ? .bibleVerses : nil)
+                                        .background { if verseAskAvailable { VerseFrameProbe(verse: v.num, store: verseFrames) } }
                                         .id(v.num)
                                         // Task 20260924-bible-verse-tap-select-removal: a plain tap on
                                         // a verse row no longer toggles `selectedVerse` — that
@@ -697,6 +703,9 @@ struct BibleReaderView: View {
                                         .accessibilityLabel(verseAccessibilityLabel(v.num, v.text))
                                         .accessibilityActions {
                                             Button("Share verse \(v.num)") { shareVerse(verse: v.num, text: v.text) }
+                                            if verseAskAvailable {
+                                                Button("Ask AI about verse \(v.num)") { beginVerseAsk(verse: v.num, text: v.text) }
+                                            }
                                             if appState.capabilities.sharedObjectsEnabled {
                                                 Button("Send verse \(v.num) in chat") { sendVerseInChat(verse: v.num, text: v.text) }
                                             }
@@ -710,7 +719,8 @@ struct BibleReaderView: View {
                                         }
                                     }
                                 }
-                                .padding(.bottom, 60)
+                                // End-of-chapter room: the last lines scroll fully above the floating tab bar.
+                                .padding(.bottom, max(60, tabBarReserve + 28))
                                 .frame(maxWidth: embedded ? WorkspaceLayout.bibleColumnMaxWidth : .infinity, alignment: .leading)
                                 .frame(maxWidth: .infinity, alignment: .leading)
                             }
@@ -787,7 +797,13 @@ struct BibleReaderView: View {
                     .transition(.move(edge: .top).combined(with: .opacity))
                     .zIndex(10)
                 }
+
+                // Task 20261112-verse-ask-ai: overlay-only layer above the page.
+                verseAskLayer.zIndex(11)
             }
+            // The keyboard must never resize the page layer (text stays put);
+            // only the Ask AI overlay reads the keyboard frame and clamps itself.
+            .ignoresSafeArea(.keyboard)
             // Reduce Motion (preference profile Q14.3): task
             // 20260831-interaction-polish-conventions made this panel
             // dismissible by a new gesture (tap outside), so its open/close
@@ -797,6 +813,8 @@ struct BibleReaderView: View {
             // ones this task's new interaction actually drives.
             .animation(reduceMotion ? nil : .spring(response: 0.3, dampingFraction: 0.9), value: showNavSheet)
             .onChange(of: showNavSheet) { _, open in if open { OnboardingEngine.shared.report(.chapterMenuOpened) } }
+            .onChange(of: vm.curChapter) { _, _ in if verseAsk != nil { closeVerseAsk() } }
+            .onChange(of: vm.curBook) { _, _ in if verseAsk != nil { closeVerseAsk() } }
             .navigationBarTitleDisplayMode(.inline)
             .toolbar(embedded ? .hidden : .visible, for: .navigationBar)
             .containerBackground(embedded ? Color.clear : Theme.bgPage, for: .navigation)
@@ -1067,6 +1085,8 @@ struct BibleReaderView: View {
             Label("Copy", systemImage: "doc.on.doc")
         }
         .accessibilityLabel("Copy verse \(verse)")
+
+        verseAskMenuButton(verse: verse, text: text)
 
         Button(action: {
             let draft = VerseNoteDraft(book: vm.curBook, chapter: vm.curChapter, verse: verse, text: text)

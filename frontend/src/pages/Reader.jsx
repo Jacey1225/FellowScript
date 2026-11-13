@@ -468,7 +468,8 @@ export default function Reader() {
     applyHighlights, setHighlight, clearHighlight,
     bookmarks, addBookmark, removeBookmark,
     onShareVerse: shareEnabled ? requestVerseShare : undefined,
-  }), [shareEnabled, requestVerseShare, user, curBook, curChapter, curVerse, books, chapterHTML, loading, loadError, preamble,
+    askAiEnabled,
+  }), [askAiEnabled, shareEnabled, requestVerseShare, user, curBook, curChapter, curVerse, books, chapterHTML, loading, loadError, preamble,
        getChapterCount, verseCount, handleNavigate, handlePrev, handleNext,
        applyHighlights, setHighlight, clearHighlight, bookmarks, addBookmark, removeBookmark]);
 

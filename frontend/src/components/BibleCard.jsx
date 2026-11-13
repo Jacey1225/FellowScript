@@ -7,7 +7,7 @@ const { Text } = Typography;
 export default function BibleCard({
   loading, loadError, curBook, curChapter, chapterHTML,
   chapterCount, preamble, onPrev, onNext, onVerseClick,
-  applyHighlights,
+  applyHighlights, onVerseContextMenu,
 }) {
   const bodyRef = useRef(null);
 
@@ -77,6 +77,7 @@ export default function BibleCard({
         className="card-body"
         dangerouslySetInnerHTML={{ __html: chapterHTML }}
         onClick={handleClick}
+        onContextMenu={onVerseContextMenu}
       />
 
       {/* Navigation */}

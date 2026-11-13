@@ -22,6 +22,15 @@ struct FloatingTabBar: View {
     static let inCallBottomPadding: CGFloat =
         MinimizedCallBar.bottomInset + MinimizedCallBar.height + Theme.spacingMD
 
+    /// Pill height (46 button + 7pt padding each side) and the default gap to the
+    /// bottom safe area. `reservedHeight` is how far the bar reaches above the
+    /// bottom safe area, so screens can keep content and overlays clear of it.
+    static let pillHeight: CGFloat = 46 + 7 * 2
+    static let restingBottomPadding: CGFloat = 26
+    static func reservedHeight(inCallBarVisible: Bool) -> CGFloat {
+        pillHeight + (inCallBarVisible ? inCallBottomPadding : restingBottomPadding)
+    }
+
     @EnvironmentObject var appState: AppState
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -115,6 +124,19 @@ struct FloatingTabBar: View {
                 .shadow(color: .black.opacity(0.8), radius: 18, x: 0, y: 8)
         )
         .padding(.horizontal, 14)
-        .padding(.bottom, inCallBarVisible ? Self.inCallBottomPadding : 26)
+        .padding(.bottom, inCallBarVisible ? Self.inCallBottomPadding : Self.restingBottomPadding)
+    }
+}
+
+private struct FloatingTabBarReserveKey: EnvironmentKey {
+    static let defaultValue: CGFloat = 0
+}
+
+extension EnvironmentValues {
+    /// Height the floating tab bar covers above the bottom safe area; 0 when no
+    /// bar floats over the screen (iPad workspace, sheets).
+    var floatingTabBarReserve: CGFloat {
+        get { self[FloatingTabBarReserveKey.self] }
+        set { self[FloatingTabBarReserveKey.self] = newValue }
     }
 }

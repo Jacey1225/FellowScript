@@ -517,9 +517,24 @@ struct ContentView: View {
                     .toolbar(.hidden, for: .tabBar)
             }
             .accentColor(Theme.accentColor)
+            .environment(\.floatingTabBarReserve,
+                         FloatingTabBar.reservedHeight(inCallBarVisible: call.inCall && !call.isExpanded))
 
             FloatingTabBar(selection: $selectedTab,
                            inCallBarVisible: call.inCall && !call.isExpanded)
+                // The bar is a ZStack sibling of the TabView, and the ZStack's
+                // frame shrinks to sit above the keyboard, so the bar used to
+                // ride up on top of the keyboard and cover whatever the screen
+                // shows there (Ask AI pill/panel). A bare .ignoresSafeArea on
+                // the small bar does not move it (it keeps its size inside the
+                // already-shrunk frame), so give it a full-height frame first
+                // and let THAT ignore the keyboard region: the bar stays pinned
+                // to the bottom and the keyboard simply covers it. Transparent
+                // frame area is not hit-testable, and only the tab content
+                // (not the TabView) is left keyboard-avoiding, so Chat's
+                // composer still rises normally.
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+                .ignoresSafeArea(.keyboard, edges: .bottom)
         }
     }
 

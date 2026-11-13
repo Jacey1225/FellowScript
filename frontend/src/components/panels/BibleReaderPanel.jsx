@@ -4,6 +4,8 @@ import BibleCard       from '../BibleCard.jsx';
 import BookmarkButton  from '../BookmarkButton.jsx';
 import HighlightPicker from '../HighlightPicker.jsx';
 import { useBibleReaderPanel } from '../../context/ReaderPanelContexts.jsx';
+import { VerseAskMenu, VerseAskOverlay } from '../VerseAskAi.jsx';
+import { verseContextFromSpan } from '../../lib/verseAsk.js';
 
 const FONT_SIZES = [
   { size: '1.08rem', lineHeight: '1.9'  },
@@ -24,7 +26,7 @@ export default function BibleReaderPanel() {
     onNavigate, onPrev, onNext, onVerseSelected,
     applyHighlights, setHighlight, clearHighlight,
     bookmarks, addBookmark, removeBookmark,
-    onShareVerse,
+    onShareVerse, askAiEnabled,
   } = useBibleReaderPanel() || {};
 
   const scrollRef   = useRef(null);
@@ -33,6 +35,9 @@ export default function BibleReaderPanel() {
   const [pickerVisible, setPickerVisible] = useState(false);
   const [pickerPos,     setPickerPos]     = useState({ x: 0, y: 0 });
   const [selectedVerse, setSelectedVerse] = useState(null);
+  // Per-verse Ask AI: right-click menu, then a fixed overlay (never in flow).
+  const [verseMenu, setVerseMenu] = useState(null); // { x, y, span }
+  const [verseAsk,  setVerseAsk]  = useState(null); // { reference, text, verseNum, anchor }
 
   const [fontSizeIdx, setFontSizeIdx] = useState(() => {
     try { return Math.min(parseInt(localStorage.getItem('fs_font_size') || '0', 10), FONT_SIZES.length - 1); }
@@ -92,6 +97,60 @@ export default function BibleReaderPanel() {
     setPickerPos({ x: Math.max(8, Math.min(rect.left, window.innerWidth - 220)), y: rect.top > 80 ? rect.top - 52 : rect.bottom + 8 });
     setPickerVisible(true);
   }, [onVerseSelected]);
+
+  const openVerseMenu = useCallback((span, x, y) => {
+    setPickerVisible(false);
+    setVerseMenu({ x, y, span });
+  }, []);
+
+  // Right-click on a verse. Only takes over when Ask AI is available, signed in
+  // and there is no active text selection or link, so otherwise the native
+  // menu (copy etc.) is untouched.
+  const handleContextMenu = useCallback((e) => {
+    if (!askAiEnabled || !user) return;
+    const span = e.target.closest?.('.verse-span');
+    if (!span || !span.id?.startsWith('vs') || e.target.closest('a[href]')) return;
+    const sel = window.getSelection?.();
+    if (sel && !sel.isCollapsed && String(sel).trim()) return;
+    e.preventDefault();
+    openVerseMenu(span, e.clientX, e.clientY);
+  }, [askAiEnabled, user, openVerseMenu]);
+
+  // Keyboard equivalent: ContextMenu key / Shift+F10 on the selected verse.
+  useEffect(() => {
+    if (!askAiEnabled || !user) return undefined;
+    const onKey = (e) => {
+      if (e.key !== 'ContextMenu' && !(e.shiftKey && e.key === 'F10')) return;
+      const span = lastSpanRef.current;
+      const ae = document.activeElement;
+      if (!span || !span.isConnected || (ae && ae !== document.body && /^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName))) return;
+      e.preventDefault();
+      const r = span.getBoundingClientRect();
+      openVerseMenu(span, r.left + 16, r.bottom);
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [askAiEnabled, user, openVerseMenu]);
+
+  const startVerseAsk = useCallback(() => {
+    const span = verseMenu?.span;
+    setVerseMenu(null);
+    if (!span || !span.isConnected) return;
+    const { verseNum, reference, text } = verseContextFromSpan(span, curBook, curChapter);
+    if (!text) return;
+    const v = span.getBoundingClientRect();
+    const col = (span.closest('.card-body') || span).getBoundingClientRect();
+    setVerseAsk({
+      reference, text, verseNum,
+      anchor: { verse: { top: v.top, bottom: v.bottom }, column: { left: col.left, width: col.width } },
+    });
+  }, [verseMenu, curBook, curChapter]);
+
+  const closeVerseMenu = useCallback(() => setVerseMenu(null), []);
+  const closeVerseAsk  = useCallback(() => setVerseAsk(null), []);
+
+  // A chapter change makes the captured anchor meaningless.
+  useEffect(() => { setVerseAsk(null); setVerseMenu(null); }, [curBook, curChapter]);
 
   const handleHighlightColor = useCallback(async (color) => {
     if (!selectedVerse) return;
@@ -157,6 +216,7 @@ export default function BibleReaderPanel() {
           onPrev={onPrev} onNext={onNext}
           onVerseClick={handleVerseClick}
           applyHighlights={applyHighlights}
+          onVerseContextMenu={handleContextMenu}
         />
       </div>
 
@@ -165,6 +225,14 @@ export default function BibleReaderPanel() {
         onColor={handleHighlightColor} onClear={handleClearHighlight}
         onShare={onShareVerse ? handleShareVerse : undefined}
       />
+
+      {verseMenu && <VerseAskMenu x={verseMenu.x} y={verseMenu.y} onPick={startVerseAsk} onClose={closeVerseMenu} />}
+      {verseAsk && (
+        <VerseAskOverlay
+          userId={user?.user_id} reference={verseAsk.reference} verseText={verseAsk.text}
+          verseNum={verseAsk.verseNum} anchor={verseAsk.anchor} onClose={closeVerseAsk}
+        />
+      )}
     </div>
   );
 }
