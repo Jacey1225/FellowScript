@@ -35,6 +35,12 @@ final class AppState: ObservableObject {
     /// WorkspaceView focuses the Notes panel and NotesListView opens its inline
     /// editor with the verse attached, then clears it. iPhone keeps its sheet.
     @Published var pendingNoteDraft: VerseNoteDraft? = nil
+    /// Task 20261115-ipad-askai-notegate: mirror of the inline Notes editor's unsaved draft,
+    /// restored if a rotation re-mounts the dock. Not @Published: writes happen per keystroke.
+    var noteDraftStash: NoteDraftStash? = nil
+    /// True while any note editor (sheet or inline) holds an unsaved draft; Subscribe
+    /// handlers consult it so they never close an editor with a draft in it.
+    var unsavedNoteEditorActive = false
     @Published var pendingChatContact: FSContact? = nil   // set to open a chat from another tab
     @Published var homeReselectTick = 0   // bumped when the Home tab is tapped while already on Home
     /// Task 20261106-remove-agents-ask-ai: Account's "Open Ask AI" -> Chat tab, Ask AI segment.

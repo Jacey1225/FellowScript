@@ -371,6 +371,9 @@ struct AgentChatView: View {
     /// iPad dock hosts this pane over the dock panel's own glass, like the
     /// embedded Bible/Messages panes, so it paints no ambient background.
     var embedded: Bool = false
+    /// iPad Ask AI panel: when set (with `embedded`), the Chats button returns to the
+    /// panel's inline chat list instead of presenting the modal sheet.
+    var onShowChats: (() -> Void)? = nil
     @Environment(\.dismiss) private var dismiss
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @EnvironmentObject var appState: AppState
@@ -681,6 +684,7 @@ struct AgentChatView: View {
             if vm.chatsEnabled {
                 HStack(spacing: 8) {
                     RoundIconButton(systemIcon: "bubble.left.and.bubble.right") {
+                        if embedded, let onShowChats { onShowChats(); return }
                         showChatsSheet = true
                         if vm.chatsError != nil { Task { await vm.loadChats() } }
                     }

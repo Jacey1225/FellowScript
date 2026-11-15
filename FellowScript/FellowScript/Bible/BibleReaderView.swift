@@ -1011,7 +1011,8 @@ struct BibleReaderView: View {
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: .fsOpenSubscriptionPlans)) { _ in
-            addToNoteTarget = nil
+            // An open note editor with a draft stays (it shows the Account over itself).
+            if !appState.unsavedNoteEditorActive { addToNoteTarget = nil }
         }
         .alert("Save Failed", isPresented: Binding(
             get: { vm.saveError != nil },

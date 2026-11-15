@@ -76,17 +76,12 @@ struct NotesListView: View {
     @State var chatShare:       ChatShareDraft? = nil   // task 20261012-share-verses-notes-in-chat
     @State var shareNotice:     String?  = nil
 
-    /// iPad: open the inline editor for a verse handed over by the Bible reader.
-    private func consumePendingNoteDraft() {
-        guard embedded, fixedTab != .highlights, let draft = appState.pendingNoteDraft else { return }
-        appState.pendingNoteDraft = nil
-        editingNote    = nil
-        editingId      = nil
-        editingGroupId = ""
-        inlineIsReply  = false
-        inlineDraft    = draft
-        showEditor     = true
-    }
+    /// Unsaved-note gate: the inline editor's dirty flag, and a verse handoff held
+    /// until the user answers Keep editing / Discard (see NotesListView+DraftGuard).
+    @State var editorDirty = false
+    @State var handoffDraft: VerseNoteDraft? = nil
+    /// Draft restored after a rotation re-mount (see NoteDraftStash).
+    @State var restoredDraft: NoteDraftContent? = nil
 
     var body: some View {
         ZStack(alignment: .top) {
@@ -129,7 +124,17 @@ struct NotesListView: View {
                         if ok { return nil }
                         return vm.failedSaveMessage()
                     },
-                    onClose: { showEditor = false; inlineDraft = nil; inlineIsReply = false }
+                    onClose: {
+                        showEditor = false; inlineDraft = nil; inlineIsReply = false
+                        restoredDraft = nil; appState.noteDraftStash = nil
+                    },
+                    restoredDraft: restoredDraft,
+                    onDraftChange: { content in
+                        appState.noteDraftStash = NoteDraftStash.updated(
+                            userId: appState.currentUser?.user_id, content: content, editingNote: editingNote,
+                            editingId: editingId, editingGroupId: editingGroupId,
+                            inlineDraft: inlineDraft, inlineIsReply: inlineIsReply)
+                    }
                 )
                 .id((editingId ?? "new") + (inlineDraft?.id.uuidString ?? ""))
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -233,7 +238,17 @@ struct NotesListView: View {
         }
         .animation(reduceMotion ? nil : .easeInOut(duration: 0.22), value: detailNote?.id)
         .preference(key: InlineNoteEditorShowingKey.self, value: embedded && (showEditor || inlineDetailShowing))
-        .onAppear { consumePendingNoteDraft() }
+        .onPreferenceChange(NoteDraftDirtyKey.self) { editorDirty = $0 }
+        .confirmationDialog("Discard changes?", isPresented: Binding(
+            get: { handoffDraft != nil },
+            set: { if !$0 { handoffDraft = nil } }
+        ), titleVisibility: .visible, presenting: handoffDraft) { draft in
+            Button("Discard", role: .destructive) { applyHandoff(draft) }
+            Button("Keep editing", role: .cancel) {}
+        } message: { _ in
+            Text("Your unsaved note will be replaced by the new verse note.")
+        }
+        .onAppear { restoreStashedDraft(); consumePendingNoteDraft() }
         .onChange(of: appState.pendingNoteDraft?.id) { _, _ in consumePendingNoteDraft() }
         .task {
             if let uid = appState.currentUser?.user_id {
@@ -260,8 +275,13 @@ struct NotesListView: View {
         }
         // "Subscribe" on the upgrade prompt: close any note sheets so the Account tab shows.
         .onReceive(NotificationCenter.default.publisher(for: .fsOpenSubscriptionPlans)) { _ in
-            showEditor = false
-            detailNote = nil
+            // iPad: the Account sheet opens over the workspace, so the inline draft stays.
+            // A sheet editor holding a draft stays open too (it shows the Account over itself).
+            if !embedded && !appState.unsavedNoteEditorActive {
+                showEditor = false
+                detailNote = nil
+            }
+            if embedded { detailNote = nil }
         }
         // iPhone/compact keep the sheet; iPad regular width shows the detail inline
         // (see `inlineDetailLayer` in NotesListView+InlineDetail.swift).

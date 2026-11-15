@@ -25,6 +25,11 @@ struct InlineNoteEditorShowingKey: PreferenceKey {
     static func reduce(value: inout Bool, nextValue: () -> Bool) { value = value || nextValue() }
 }
 
+/// Action held behind the Discard confirmation.
+struct PendingDraftAction {
+    let run: () -> Void
+}
+
 private struct DockFramesKey: PreferenceKey {
     static var defaultValue: [WorkspaceDock: CGRect] = [:]
     static func reduce(value: inout [WorkspaceDock: CGRect], nextValue: () -> [WorkspaceDock: CGRect]) {
@@ -119,6 +124,11 @@ struct WorkspaceView: View {
     @AppStorage(WorkspaceLayout.moveHintKey) private var moveHintDismissed = false
     @State private var showAccount = false
     @State private var inlineEditorShowing = false
+    /// Unsaved-note gate (task 20261115-ipad-askai-notegate): true while the inline
+    /// Notes editor holds a modified draft; `pendingDiscard` is the action that
+    /// would drop it, held until the user answers Keep editing / Discard.
+    @State private var noteDraftDirty = false
+    @State private var pendingDiscard: PendingDraftAction?
     @State private var agentId: String?
     @State private var showNewAgent = false
     @State private var newAgentRole = ""
@@ -154,6 +164,7 @@ struct WorkspaceView: View {
             .coordinateSpace(name: workspaceSpace)
             .onPreferenceChange(DockFramesKey.self) { drag.dockFrames = $0 }
             .onPreferenceChange(PillFramesKey.self) { drag.pillFrames = $0 }
+            .onPreferenceChange(NoteDraftDirtyKey.self) { noteDraftDirty = $0 }
             .animation(reduceMotion ? nil : spring, value: state.rightCollapsed)
             .animation(reduceMotion ? nil : spring, value: state.drawerOpen)
             .animation(reduceMotion ? nil : spring, value: drag.isActive)
@@ -170,6 +181,19 @@ struct WorkspaceView: View {
                 state.notice = nil
             }
         }
+        .confirmationDialog("Discard changes?", isPresented: Binding(
+            get: { pendingDiscard != nil },
+            set: { if !$0 { pendingDiscard = nil } }
+        ), titleVisibility: .visible, presenting: pendingDiscard) { pending in
+            Button("Discard", role: .destructive) {
+                noteDraftDirty = false
+                appState.noteDraftStash = nil
+                pending.run()
+            }
+            Button("Keep editing", role: .cancel) {}
+        } message: { _ in
+            Text("Your unsaved note will be lost.")
+        }
         .sheet(isPresented: $showAccount) {
             // The Account sheet sits above the root overlay: host its coach cards here.
             AccountView().environmentObject(appState).onboardingCoach(surfaces: [.accountScreen])
@@ -183,8 +207,12 @@ struct WorkspaceView: View {
             }
         }
         // Existing deep links map onto rail selection.
-        .onChange(of: appState.pendingBibleNav) { _, t in if t != nil { state.select(.bible) } }
-        .onChange(of: appState.pendingChatContact) { _, t in if t != nil { state.select(.messages) } }
+        .onChange(of: appState.pendingBibleNav) { _, t in
+            if t != nil { guardLayout({ $0.activate(.bible) }) { state.select(.bible) } }
+        }
+        .onChange(of: appState.pendingChatContact) { _, t in
+            if t != nil { guardLayout({ $0.activate(.messages) }) { state.select(.messages) } }
+        }
         // friend_request push: open the Account sheet (AccountView consumes the
         // flag and scrolls to the requests). Mirrors ContentView's account-tab
         // routing, including the cold-start case where the flag was set before
@@ -262,7 +290,9 @@ struct WorkspaceView: View {
             Menu {
                 Button(friendRequestCount > 0 ? "Account (\(friendRequestCount > 9 ? "9+" : "\(friendRequestCount)"))" : "Account",
                        systemImage: "person.crop.circle") { showAccount = true }
-                Button("Reset layout", systemImage: "rectangle.3.group") { animate { state.resetLayout() } }
+                Button("Reset layout", systemImage: "rectangle.3.group") {
+                    guardLayout({ $0 = .default }) { animate { state.resetLayout() } }
+                }
             } label: {
                 Text(appState.currentUser?.username.prefix(1).uppercased() ?? "?")
                     .font(.inter(Theme.fontSM, weight: .bold))
@@ -291,7 +321,7 @@ struct WorkspaceView: View {
                 let active = state.activeRail == item
                 let home = state.layout.dock(of: item)
                 Button {
-                    animate { state.select(item) }
+                    guardLayout({ $0.activate(item) }) { animate { state.select(item) } }
                 } label: {
                     Image(systemName: item.systemIcon)
                         .font(.system(size: WorkspaceLayout.railIconSize, weight: .medium))
@@ -387,7 +417,7 @@ struct WorkspaceView: View {
         let hasTabs = !state.layout.tabs(in: .right).isEmpty
         if state.drawerOpen && hasTabs {
             WorkspaceLayout.drawerScrim.ignoresSafeArea()
-                .onTapGesture { animate { state.drawerOpen = false } }
+                .onTapGesture { guardUnmount(notesIn: .right) { animate { state.drawerOpen = false } } }
                 .accessibilityHidden(true)
             HStack {
                 Spacer()
@@ -557,7 +587,7 @@ struct WorkspaceView: View {
                 }
             }
             if showCollapse {
-                Button { animate { state.collapseRight() } } label: {
+                Button { guardUnmount(notesIn: .right) { animate { state.collapseRight() } } } label: {
                     Image(systemName: "chevron.right")
                         .font(.system(size: 14, weight: .semibold)).foregroundColor(Theme.goldLight)
                         .frame(width: 44, height: WorkspaceLayout.tabStripHeight).contentShape(Rectangle())
@@ -572,13 +602,15 @@ struct WorkspaceView: View {
     private func pillActions(_ tab: WorkspaceTab, dock: WorkspaceDock, tabs: [WorkspaceTab], landscape: Bool) -> DockTabActions {
         let idx = tabs.firstIndex(of: tab) ?? 0
         return DockTabActions(
-            select: { animate { state.activateTab(tab) } },
-            close: { animate { _ = state.close(tab) } },
+            select: { guardLayout({ $0.activate(tab) }) { animate { state.activateTab(tab) } } },
+            close: { guardLayout({ _ = $0.close(tab) }) { animate { _ = state.close(tab) } } },
             move: { d in performMove(tab, to: d, index: nil, landscape: landscape) },
             nudge: { delta in
-                animate { if state.nudge(tab, by: delta) { announce("\(tab.label) moved \(delta < 0 ? "earlier" : "later")") } }
+                guardLayout({ _ = $0.nudge(tab, by: delta) }) {
+                    animate { if state.nudge(tab, by: delta) { announce("\(tab.label) moved \(delta < 0 ? "earlier" : "later")") } }
+                }
             },
-            reset: { animate { state.resetLayout() }; announce("Layout reset.") },
+            reset: { guardLayout({ $0 = .default }) { animate { state.resetLayout() }; announce("Layout reset.") } },
             lift: { drag.begin(tab) },
             drag: { p in drag.update(p, layout: state.layout) },
             drop: { p in drag.update(p, layout: state.layout); finishDrag(landscape: landscape) },
@@ -590,9 +622,36 @@ struct WorkspaceView: View {
     }
 
     private func performMove(_ tab: WorkspaceTab, to dock: WorkspaceDock, index: Int?, landscape: Bool) {
-        var moved = false
-        animate { moved = state.move(tab, to: dock, at: index, opensDrawer: !landscape) }
-        if moved { announce("\(tab.label) moved to \(dock.displayName).") }
+        guardLayout({ _ = $0.move(tab, to: dock, at: index) }) {
+            var moved = false
+            animate { moved = state.move(tab, to: dock, at: index, opensDrawer: !landscape) }
+            if moved { announce("\(tab.label) moved to \(dock.displayName).") }
+        }
+    }
+
+    // MARK: Unsaved-note gate
+
+    /// Runs `action` now, or after Discard when it would unmount the dirty Notes
+    /// editor. `change` applies the same layout change to a copy so the pure guard
+    /// can tell whether Notes stays mounted (e.g. selecting an already-active tab).
+    private func guardLayout(_ change: (inout WorkspaceDockLayout) -> Void, _ action: @escaping () -> Void) {
+        let before = state.layout
+        var after = before
+        change(&after)
+        switch NoteDraftGuard.decision(dirty: noteDraftDirty, before: before, after: after) {
+        case .proceed: action()
+        case .confirm: pendingDiscard = PendingDraftAction(run: action)
+        }
+    }
+
+    /// For actions that hide a dock without changing the layout (collapse the Side
+    /// panel, close the portrait drawer): gated only when Notes is active in `dock`.
+    private func guardUnmount(notesIn dock: WorkspaceDock, _ action: @escaping () -> Void) {
+        let affected = state.layout.dock(of: .notes) == dock && state.layout.activeTab(in: dock) == .notes
+        switch NoteDraftGuard.decision(dirty: noteDraftDirty && affected) {
+        case .proceed: action()
+        case .confirm: pendingDiscard = PendingDraftAction(run: action)
+        }
     }
 
     private func finishDrag(landscape: Bool) {
@@ -630,7 +689,9 @@ struct WorkspaceView: View {
 
     @ViewBuilder
     private var agentBody: some View {
-        if let agent = startup.chatVM.agents.first(where: { $0.id == agentId }) {
+        if WorkspaceAskAiState.usesAskAiPanel(askAiEnabled: appState.capabilities.askAiEnabled) {
+            WorkspaceAskAiPanel(vm: startup.chatVM)
+        } else if let agent = startup.chatVM.agents.first(where: { $0.id == agentId }) {
             AgentChatView(agent: agent, onBack: { agentId = nil }, embedded: true).id(agent.id)
         } else {
             AgentPickerList(vm: startup.chatVM, onSelect: { agentId = $0 }, onNew: { showNewAgent = true })

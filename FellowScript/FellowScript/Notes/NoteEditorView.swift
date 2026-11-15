@@ -84,10 +84,21 @@ struct NoteEditorView: View {
     /// iPad workspace: when set, the editor is hosted inline inside the Notes
     /// panel (no sheet). Cancel/close/save-success call this instead of dismiss().
     var onClose:    (() -> Void)? = nil
+    /// Inline draft preservation (NoteDraftStash): content to restore after a re-mount,
+    /// and a report of the live draft (nil when clean).
+    var restoredDraft: NoteDraftContent? = nil
+    var onDraftChange: ((NoteDraftContent?) -> Void)? = nil
 
     @Environment(\.dismiss) private var envDismiss
     private var isInline: Bool { onClose != nil }
     private func dismiss() { if let onClose { onClose() } else { envDismiss() } }
+    /// User-initiated close (X button): prompts first when the draft has unsaved content.
+    private func requestClose() {
+        switch NoteDraftGuard.decision(dirty: isDirty) {
+        case .proceed: dismiss()
+        case .confirm: confirmDiscard = true
+        }
+    }
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @EnvironmentObject var appState: AppState
 
@@ -102,6 +113,9 @@ struct NoteEditorView: View {
     @State private var verseList:  [VerseRef] = []
     @State private var showVersePicker = false
     @State private var showColorPicker = false
+    // Unsaved-draft gate (task 20261115-ipad-askai-notegate): Keep editing / Discard.
+    @State private var confirmDiscard = false
+    @State private var showAccountOverEditor = false
     @State private var isSaving    = false
     @State private var saveErrorMessage: String? = nil
     // Per-note length limit for the caller's plan, read from the server's
@@ -153,10 +167,36 @@ struct NoteEditorView: View {
         .dismissesKeyboardOnScrollAndTap()
         .onboardingCoach(surfaces: [.noteEditor])
         .onAppear { populate(); OnboardingEngine.shared.report(.noteEditorOpened) }
-        .onDisappear { OnboardingEngine.shared.surfaceDismissed(.noteEditor) }
+        .onDisappear {
+            appState.unsavedNoteEditorActive = false
+            OnboardingEngine.shared.surfaceDismissed(.noteEditor)
+        }
         .task { await loadNoteCharLimit() }
         // Free-plan note cap: shared upgrade prompt above the editor; Subscribe closes the editor.
-        .upgradePrompt(onSubscribe: { dismiss() })
+        // Inline (iPad): the Account sheet shows over the workspace, so the draft stays put.
+        // Sheet: closing goes through the same unsaved-draft gate.
+        .upgradePrompt(onSubscribe: { if !isInline && !isDirty { dismiss() } })
+        // Sheet editor with a draft: the Subscribe notification must not drop it. Hosts skip
+        // closing the editor (appState.unsavedNoteEditorActive); the Account opens over it.
+        .onReceive(NotificationCenter.default.publisher(for: .fsOpenSubscriptionPlans)) { _ in
+            if !isInline && isDirty { showAccountOverEditor = true }
+        }
+        .sheet(isPresented: $showAccountOverEditor) {
+            AccountView().environmentObject(appState)
+        }
+        .onChange(of: isDirty) { _, dirty in
+            appState.unsavedNoteEditorActive = dirty
+            reportDraft()
+        }
+        .onChange(of: draftContent) { _, _ in reportDraft() }
+        .interactiveDismissDisabled(isDirty)
+        .preference(key: NoteDraftDirtyKey.self, value: isInline && isDirty)
+        .confirmationDialog("Discard changes?", isPresented: $confirmDiscard, titleVisibility: .visible) {
+            Button("Discard", role: .destructive) { dismiss() }
+            Button("Keep editing", role: .cancel) {}
+        } message: {
+            Text("Your unsaved note will be lost.")
+        }
         .alert("Couldn't Save Note", isPresented: Binding(
             get: { saveErrorMessage != nil },
             set: { if !$0 { saveErrorMessage = nil } }
@@ -364,7 +404,7 @@ struct NoteEditorView: View {
                                         .opacity(rtc.htmlOutput.isEmpty ? 1 : 0)
                                     RichTextEditorView(
                                         controller:  rtc,
-                                        initialHTML: note?.text ?? initialBodyHTML,
+                                        initialHTML: initialEditorHTML,
                                         placeholder: "Start writing…"
                                     )
                                     .frame(maxWidth: .infinity, minHeight: 220)
@@ -470,7 +510,7 @@ struct NoteEditorView: View {
     // ── Header controls (Option C — ghost-chip Cancel, icon-badge Public,
     // top-trailing Done chip in read-only mode; Save FAB defined below) ────────
     private var cancelChip: some View {
-        Button(action: { dismiss() }) {
+        Button(action: { requestClose() }) {
             Image(systemName: "xmark")
                 .font(.system(size: 14, weight: .semibold))
                 .foregroundColor(Theme.textSecondary)
@@ -560,22 +600,69 @@ struct NoteEditorView: View {
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
+    private static func verseRefs(of n: FSNote) -> [VerseRef] {
+        n.verses.compactMap { components -> VerseRef? in
+            guard components.count >= 3 else { return nil }
+            let book = components[0].asString
+            let ch   = components[1].asInt ?? 0
+            let vs   = components[2].asInt ?? 0
+            return VerseRef(book: book, chapter: ch, verse: vs)
+        }
+    }
+
+    // ── Unsaved-draft tracking ────────────────────────────────────────────────
+    // Baseline is derived from the init inputs (never from @State), so it is the
+    // saved note, or for a new note the empty state / untouched verse prefill.
+    private var baselineHTML: String { note?.text ?? initialBodyHTML }
+    /// What the rich-text view is seeded with: the restored draft, else the baseline.
+    private var initialEditorHTML: String { restoredDraft?.bodyHTML ?? baselineHTML }
+    private var baselineSnapshot: NoteDraftSnapshot {
+        let verses: [VerseRef] = note.map { Self.verseRefs(of: $0) } ?? (initialVerse.map { [$0] } ?? [])
+        return NoteDraftGuard.snapshot(title: note?.title ?? "", bodyHTML: baselineHTML,
+                                       verses: verses.map(\.label), isPublic: note?.public ?? false)
+    }
+    private var currentSnapshot: NoteDraftSnapshot {
+        // Tracked HTML is empty until the rich-text view publishes. Non-empty text
+        // view with nothing published yet means untouched initial content.
+        let live = rtc.htmlOutput
+        let html = !live.isEmpty ? live : ((rtc.textView?.text ?? "").isEmpty ? "" : initialEditorHTML)
+        return NoteDraftGuard.snapshot(title: titleVal, bodyHTML: html,
+                                       verses: verseList.map(\.label), isPublic: isPublic)
+    }
+    /// Exactly what the user has typed (raw title/HTML), for NoteDraftStash.
+    private var draftContent: NoteDraftContent {
+        let live = rtc.htmlOutput
+        let html = !live.isEmpty ? live : ((rtc.textView?.text ?? "").isEmpty ? "" : initialEditorHTML)
+        return NoteDraftContent(title: titleVal, bodyHTML: html,
+                                verses: verseList.map { NoteDraftVerse(book: $0.book, chapter: $0.chapter, verse: $0.verse) },
+                                isPublic: isPublic)
+    }
+    private func reportDraft() {
+        guard isInline else { return }
+        onDraftChange?(isDirty ? draftContent : nil)
+    }
+    /// Read-only views and a save in flight never prompt.
+    private var isDirty: Bool {
+        !isReadOnly && !isSaving
+            && NoteDraftGuard.isDirty(baseline: baselineSnapshot, current: currentSnapshot)
+    }
+
     private func populate() {
         if let n = note {
             titleVal  = n.title
             isPublic  = n.public
-            verseList = n.verses.compactMap { components -> VerseRef? in
-                guard components.count >= 3 else { return nil }
-                let book = components[0].asString
-                let ch   = components[1].asInt ?? 0
-                let vs   = components[2].asInt ?? 0
-                return VerseRef(book: book, chapter: ch, verse: vs)
-            }
+            verseList = Self.verseRefs(of: n)
             // Body text is loaded by RichTextEditorView(initialHTML:) in makeUIView —
             // no async dispatch needed.
         } else {
             if let v = initialVerse { verseList = [v] }
             titleFocused = true
+        }
+        // Re-mount after a rotation: put back exactly what the user had typed.
+        if let r = restoredDraft {
+            titleVal  = r.title
+            isPublic  = r.isPublic
+            verseList = r.verses.map { VerseRef(book: $0.book, chapter: $0.chapter, verse: $0.verse) }
         }
     }
 
