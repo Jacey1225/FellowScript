@@ -56,6 +56,21 @@ final class DashboardViewModel: ObservableObject {
     // friend.
     @Published var checkInNudgeState: NudgeUIState = .idle
 
+    // Activity calendar (task 20261114-activity-calendar). Owned here so it dies
+    // with this view model (StartupCoordinator.reset() builds a new one on
+    // sign-out; DiskCache.clear() wipes the on-disk copy). Only the real
+    // NetworkService can serve it; the mock service gets no calendar card.
+    private var calendarStore: ActivityCalendarStore?
+    private var calendarStoreUserId: String?
+    func activityCalendarStore(service: DataServiceProtocol, userId: String?) -> ActivityCalendarStore? {
+        guard let userId, let net = service as? NetworkService else { return nil }
+        if calendarStore == nil || calendarStoreUserId != userId {
+            calendarStore = ActivityCalendarStore(userId: userId, service: net)
+            calendarStoreUserId = userId
+        }
+        return calendarStore
+    }
+
     func load(service: DataServiceProtocol, userId: String) async {
         self.service = service
         isLoading = true
@@ -330,7 +345,29 @@ struct DashboardView: View {
         }
     }
 
+    @State private var showMonth = false
+
+    // Home is wrapped in a NavigationStack (hidden bar) so the month screen can
+    // push with a custom back row; the floating tab bar (owned by ContentView)
+    // stays visible. Hidden via .toolbar(.hidden), not
+    // navigationBarBackButtonHidden, so the edge-swipe back still works.
     var body: some View {
+        NavigationStack {
+            homeContent
+                .toolbar(.hidden, for: .navigationBar)
+                .navigationDestination(isPresented: $showMonth) {
+                    if let store = vm.activityCalendarStore(service: appState.service,
+                                                            userId: appState.currentUser?.user_id) {
+                        ActivityCalendarMonthView(store: store,
+                                                  timeZoneId: appState.currentUser?.timezone)
+                    }
+                }
+        }
+        // Tapping the Home tab while already on Home pops the month screen.
+        .onChange(of: appState.homeReselectTick) { _ in showMonth = false }
+    }
+
+    private var homeContent: some View {
         ZStack(alignment: .top) {
             Theme.bgPage.ignoresSafeArea()
 
@@ -368,20 +405,16 @@ struct DashboardView: View {
                         onOpenPickup: { pickupSheetNote = $0 }
                     )
 
-                    if let checkIn = vm.checkInPick {
-                        // Task 20260906-friend-nudges: this row's send action
-                        // now nudges the friend (fixed push copy, via the
-                        // shared sendCheckInNudge/sendNudge contract) instead
-                        // of opening their chat thread -- chat for this
-                        // friend is still one tap away via the friend
-                        // activity card / contacts list above, so nothing is
-                        // actually lost, and "check in" already meant
-                        // "prompt a quiet friend," which a nudge now does for
-                        // real instead of just opening a blank-feeling chat.
-                        CheckInRow(checkIn: checkIn, nudgeState: vm.checkInNudgeState) {
-                            if let uid = appState.currentUser?.user_id {
-                                Task { await vm.sendCheckInNudge(userId: uid) }
-                            }
+                    // Task 20261114-activity-calendar: the friend check-in row
+                    // (`CheckInRow` driven by `vm.checkInPick`) used to sit here.
+                    // Jacey removed it from Home; its code (CheckInRow,
+                    // NudgeUIState, checkInPick, checkInNudgeState,
+                    // sendCheckInNudge) is kept, just not shown on Home.
+                    if let store = vm.activityCalendarStore(service: appState.service,
+                                                            userId: appState.currentUser?.user_id) {
+                        ActivityCalendarHomeCard(store: store,
+                                                 timeZoneId: appState.currentUser?.timezone) {
+                            showMonth = true
                         }
                     }
 
@@ -408,6 +441,10 @@ struct DashboardView: View {
                 if let uid = appState.currentUser?.user_id {
                     await vm.load(service: appState.service, userId: uid)
                     await groupActivityVM.load(service: appState.service, userId: uid, groups: chatVM.groups)
+                    if let store = vm.activityCalendarStore(service: appState.service, userId: uid) {
+                        let t = ActivityCalendarMath.today(timeZoneId: appState.currentUser?.timezone)
+                        try? await store.refresh(year: t.y, month: t.m)
+                    }
                 }
             }
         }

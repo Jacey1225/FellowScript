@@ -433,6 +433,7 @@ struct VerseNoteDraft: Identifiable {
 struct BibleReaderView: View {
     @EnvironmentObject var appState: AppState
     @StateObject private var vm: BibleViewModel
+    @State private var bibleReadSignal: BibleReadSignal?
 
     // Required (no default): a bare `BibleViewModel()` default expression is
     // evaluated as MainActor-isolated under this project's default actor
@@ -934,6 +935,15 @@ struct BibleReaderView: View {
                 try? await Task.sleep(nanoseconds: 250_000_000)
                 consumePendingBibleNav()
             }
+        }
+        // Task 20261114-activity-calendar: after a short hold on one chapter, tell
+        // the server "read the Bible today" (day only, no chapter sent). The id
+        // restarts the hold on every chapter change; leaving the screen cancels it.
+        .task(id: "\(vm.curBook)-\(vm.curChapter)") {
+            if bibleReadSignal == nil, let net = appState.service as? NetworkService {
+                bibleReadSignal = BibleReadSignal { try await net.recordBibleDay() }
+            }
+            await bibleReadSignal?.chapterHeld()
         }
         // Task 20260914-dictation-tts: stops playback when this screen
         // itself leaves the view hierarchy — fires on every tab switch away

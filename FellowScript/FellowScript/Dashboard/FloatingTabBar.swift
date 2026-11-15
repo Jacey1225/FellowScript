@@ -63,6 +63,9 @@ struct FloatingTabBar: View {
                 let count = badgeCount(for: item.tab)
                 let showBadge = count > 0
                 Button {
+                    // Re-tapping Home while on Home pops any pushed Home screen
+                    // (the activity calendar's month screen).
+                    if item.tab == .home && selection == .home { appState.homeReselectTick += 1 }
                     withMotionAwareAnimation(.spring(response: 0.32, dampingFraction: 0.82), reduceMotion: reduceMotion) {
                         selection = item.tab
                     }
