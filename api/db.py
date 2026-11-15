@@ -103,6 +103,7 @@ DDL_MODULES = (
     "message_mentions",
     "user_bio",
     "chat_announcements",
+    "bible_reading_days",
 )
 
 

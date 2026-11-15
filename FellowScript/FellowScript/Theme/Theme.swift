@@ -55,6 +55,9 @@ enum Theme {
     static let textPrimary    = Color(hex: "#F5EAD0")
     static let textSecondary  = Color(hex: "#F5EAD0").opacity(0.55)
     static let textMuted      = Color(hex: "#F5EAD0").opacity(0.28)
+    // Activity calendar (task 20261114-activity-calendar): 70% parchment, the
+    // lightest value that holds 4.5:1 on the glass Home card and bloom ground.
+    static let textCalendar   = Color(hex: "#F5EAD0").opacity(0.70)
     static let textGold       = Color(hex: "#D4922A")
     static let textGoldMuted  = Color(hex: "#D4922A").opacity(0.55)
 

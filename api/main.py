@@ -17,6 +17,7 @@ from routes.blocks import block_router
 from routes.monitoring import monitoring_router
 from routes.admin_users import admin_users_router
 from routes.activity_monitoring import activity_monitoring_router
+from routes.activity_calendar import activity_calendar_router
 from routes.profile_photo import profile_photo_router
 from routes.profile import profile_router
 from backend.interactions.profile import legacy_user_view
@@ -413,6 +414,7 @@ app.include_router(block_router)
 app.include_router(monitoring_router)
 app.include_router(admin_users_router)
 app.include_router(activity_monitoring_router)
+app.include_router(activity_calendar_router)
 app.include_router(profile_photo_router)
 app.include_router(profile_router)
 app.include_router(group_info_router)
