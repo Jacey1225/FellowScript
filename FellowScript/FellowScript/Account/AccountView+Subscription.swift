@@ -75,7 +75,7 @@ extension AccountView {
                 benefitsDisclosure(memberCount: plan.max_members, isExpanded: $showBenefits)
 
                 if vm.isSubHost && plan.plan_type == "group" {
-                    seatCountEditRow(plan)
+                    seatManagementRow(plan)
 
                     if !vm.subMembers.isEmpty {
                         rowCaption("Members (\(vm.subMembers.count)/\(plan.max_members))")
@@ -109,8 +109,7 @@ extension AccountView {
                 managePlanRow(plan)
             } else {
                 freePlanLimitsList
-                rowCaption("Start with a free 1-month trial — you won't be billed until it ends.")
-                memberCountPickerRow()
+                purchaseSurface
                 if !vm.joinablePlans.isEmpty {
                     Divider().background(Theme.borderGray)
                     rowCaption("Join a Friend's Group Plan")
@@ -247,7 +246,9 @@ extension AccountView {
                     benefitRow("Unlimited notes",
                                 vm.usage.map { "Free plan: \($0.notes.limit) \($0.windowPhrase)" } ?? "Loading limits")
                     benefitRow("Unlimited scheduled devotions",
-                                vm.usage.map { "Free plan includes \($0.agentEvents.limit) in total. Paid plans have as many as you like, such as one for morning and one for bedtime." } ?? "Loading limits")
+                                vm.usage.map { ($0.scheduledDevotionsLocked || $0.agentEvents.limit == 0)
+                                    ? "Not included in the Free plan. Subscribers can schedule as many as they like, such as one for morning and one for bedtime."
+                                    : "Free plan includes \($0.agentEvents.limit) in total. Paid plans have as many as you like, such as one for morning and one for bedtime." } ?? "Loading limits")
                     if let hosting = vm.usage?.sessions {
                         benefitRow("Unlimited hosted sessions",
                                     "Free plan: \(hosting.limit) at a time. Join as many as you like.")
@@ -335,17 +336,30 @@ extension AccountView {
         }
     }
 
-    // Fallback prices (mirrors api/schemas/subscription.py GROUP_PRICE_CENTS) used
-    // only until StoreKit's own localized prices have loaded.
-    static let fallbackPriceCents: [Int: Int] = [
-        1: 499, 2: 810, 3: 1215, 4: 1620, 5: 2025, 6: 2430, 7: 2835, 8: 3240,
-    ]
-    func fallbackPriceLabel(for count: Int) -> String {
-        String(format: "$%.2f", Double(Self.fallbackPriceCents[count] ?? 499) / 100)
+    /// Which purchase UI the free-user card shows (task 20261117-web-only-payments).
+    /// US storefront: the web checkout button. Everything else, including an unknown
+    /// storefront: the StoreKit picker exactly as before. An active Apple plan never
+    /// gets an upsell.
+    @ViewBuilder
+    var purchaseSurface: some View {
+        switch WebCheckoutPolicy.surface(gate: webGate.state, hasActiveApplePlan: false, quoteBlockedByApple: false) {
+        case .resolving:
+            HStack { Spacer(); ProgressView().tint(Theme.gold); Spacer() }
+                .frame(minHeight: 120)
+                .accessibilityLabel("Loading")
+        case .storeKit:
+            rowCaption("Start with a free 1-month trial — you won't be billed until it ends.")
+            memberCountPickerRow()
+        case .web, .appleManaged:
+            // The section itself swaps to the Apple-managed notice when the server
+            // quote says an Apple plan is active.
+            WebCheckoutSection()
+        }
     }
 
     func memberCountPickerRow() -> some View {
-        let price = store.displayPrice(for: selectedMemberCount) ?? fallbackPriceLabel(for: selectedMemberCount)
+        // StoreKit's localized price only; until products load the title carries no price.
+        let priceSuffix = store.displayPrice(for: selectedMemberCount).map { " — \($0)/mo" } ?? ""
         return VStack(alignment: .leading, spacing: Theme.spacingSM) {
             HStack(spacing: Theme.spacingMD) {
                 ZStack {
@@ -353,7 +367,7 @@ extension AccountView {
                     Image(systemName: "person.3.fill").foregroundColor(Theme.gold)
                 }
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Group — \(price)/mo")
+                    Text("Group\(priceSuffix)")
                         .font(.system(size: Theme.fontBody)).foregroundColor(Theme.parchment)
                     Text("Free for 1 month · choose 1-8 members")
                         .font(.system(size: Theme.fontXS)).foregroundColor(Theme.textMuted)
@@ -390,29 +404,25 @@ extension AccountView {
         }
     }
 
+    /// Seat changes are billed where the plan was bought, never in the app
+    /// (task 20261117-web-only-payments). Apple plans: manage in Apple Settings.
+    /// Stripe plans: a web link in the US storefront only; elsewhere nothing.
     @ViewBuilder
-    func seatCountEditRow(_ plan: FSSubscription) -> some View {
-        if let editing = editMemberCount {
-            VStack(alignment: .leading, spacing: Theme.spacingSM) {
-                Text("Members").font(.fsLabel).foregroundColor(Theme.textPrimary)
-                FSNumberStepper(value: Binding(get: { editing }, set: { editMemberCount = $0 }), range: 1...8,
-                                unit: editing == 1 ? "member" : "members")
-                HStack(spacing: Theme.spacingSM) {
-                Button { Task { await vm.updateSeats(memberCount: editing); editMemberCount = nil } } label: {
-                    gradientPill("Save", compact: true)
+    func seatManagementRow(_ plan: FSSubscription) -> some View {
+        if plan.provider == "apple" {
+            Text("To change seats, manage your plan in Apple Settings. Your plan renews through Apple.")
+                .font(.system(size: Theme.fontSM)).foregroundColor(Theme.textMuted)
+                .accessibilityIdentifier("appleManagedNotice")
+        } else if plan.provider == "stripe" && webGate.isEnabled {
+            Link(destination: WebCheckoutPolicy.manageURL) {
+                HStack(spacing: 6) {
+                    Text("Manage plan on the web").font(.system(size: Theme.fontSM, weight: .semibold))
+                    Image(systemName: "arrow.up.right.square").accessibilityHidden(true)
                 }
-                .disabled(vm.subBusy)
-                Button { editMemberCount = nil } label: {
-                    ghostPill("Cancel", compact: true)
-                }
-                }
+                .foregroundColor(Theme.gold)
+                .frame(minHeight: 44)
             }
-        } else {
-            Button {
-                editMemberCount = plan.max_members
-            } label: {
-                ghostPill("Change plan size (\(plan.max_members) member\(plan.max_members == 1 ? "" : "s"))", labelColor: Theme.gold)
-            }
+            .accessibilityIdentifier("webCheckoutManage")
         }
     }
 

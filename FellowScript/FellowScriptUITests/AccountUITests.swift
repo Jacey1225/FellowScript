@@ -661,6 +661,30 @@ final class AccountUITests: XCTestCase {
         XCTAssertTrue(restoreButton.isEnabled, "Restore Purchases must not be disabled while vm.subBusy is false")
     }
 
+    /// Task 20261117-web-only-payments. Under UI-TESTING the storefront is non-US unless
+    /// UI-TESTING-STOREFRONT-<CODE> says otherwise, so the StoreKit tests above keep their
+    /// meaning. US: the web button replaces the StoreKit "Start" row; no website text for
+    /// a non-US storefront.
+    func test_subscriptionSection_usStorefront_showsWebCheckout_notStart() {
+        let app = signInAndReachAccount(extraLaunchArguments: ["UI-TESTING-STOREFRONT-USA"])
+        let web = app.buttons["webCheckoutSubscribe"]
+        scrollUntilExists(web, app: app)
+        XCTAssertTrue(web.exists, "US storefront must show the web checkout button\n\(app.debugDescription)")
+        XCTAssertFalse(app.buttons["Start"].exists, "US storefront must not render the StoreKit Start pill")
+        XCTAssertTrue(app.staticTexts["webCheckoutFootnote"].exists)
+    }
+
+    func test_subscriptionSection_nonUSStorefront_hasNoWebCheckoutOrWebCopy() {
+        let app = signInAndReachAccount(extraLaunchArguments: ["UI-TESTING-STOREFRONT-GBR"])
+        let startButton = app.buttons["Start"]
+        scrollUntilExists(startButton, app: app)
+        XCTAssertTrue(startButton.exists)
+        XCTAssertFalse(app.buttons["webCheckoutSubscribe"].exists)
+        XCTAssertFalse(app.staticTexts["webCheckoutFootnote"].exists)
+        XCTAssertFalse(app.staticTexts.matching(NSPredicate(format: "label CONTAINS[c] %@", "website")).firstMatch.exists,
+                       "non-US storefronts must carry no website wording")
+    }
+
     // MARK: - "What's included" benefits disclosure (task:
     // 20260814-subscription-benefits-detail)
     //
@@ -693,7 +717,7 @@ final class AccountUITests: XCTestCase {
         XCTAssertTrue(notesRow.waitForExistence(timeout: 5), "expected the 'Unlimited notes' benefit row after expanding\n\(app.debugDescription)")
         XCTAssertTrue(app.staticTexts["Free plan: 10 every 7 days"].exists)
         XCTAssertTrue(app.staticTexts["Unlimited scheduled devotions"].exists)
-        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "Free plan includes 1 in total.")).firstMatch.exists,
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "Not included in the Free plan.")).firstMatch.exists,
                        "scheduled-devotions benefit subtitle must explain the free limit vs. paid plans\n\(app.debugDescription)")
 
         // Pre-purchase state: benefit copy must track the live Stepper

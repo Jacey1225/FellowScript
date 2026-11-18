@@ -304,11 +304,11 @@ final class MessageThreadsViewModelTests: XCTestCase {
         try await withServer { server, s, vm, user in
             ThreadsSeam.threadPages["t1"] = FSMessagePage(messages: [self.m("r1")], hasMore: false, cursor: nil)
             await vm.openThread(FSThreadSummary(id: "t1"), service: s, contact: self.group, userId: user)
-            try server.sendFrame(["from_user": "someone", "text": "main while away", "id": "main-x", "timestamp": "2026-10-01T10:05:00Z"])
+            try server.sendFrame(["from_user": "someone", "text": "main while away", "id": "main-x", "group_id": "group-1", "timestamp": "2026-10-01T10:05:00Z"])
             try await Task.sleep(nanoseconds: 600_000_000)
             XCTAssertEqual(vm.messages.map(\.id), ["r1"], "main frame must not leak into the open thread")
             // duplicate delivery is deduped in the stash too
-            try server.sendFrame(["from_user": "someone", "text": "main while away", "id": "main-x", "timestamp": "2026-10-01T10:05:00Z"])
+            try server.sendFrame(["from_user": "someone", "text": "main while away", "id": "main-x", "group_id": "group-1", "timestamp": "2026-10-01T10:05:00Z"])
             try await Task.sleep(nanoseconds: 400_000_000)
             vm.closeThread()
             XCTAssertEqual(vm.messages.map(\.id), ["m1", "m2", "main-x"])

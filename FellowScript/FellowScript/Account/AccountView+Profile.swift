@@ -236,19 +236,23 @@ extension AccountView {
                 sectionLabel("Plan Usage")
                 usageRow("Notes", usage.notes, hint: usage.windowPhrase, forceUnlimited: unlimited)
                 Divider().background(Theme.borderGray)
-                usageRow("Scheduled devotions", usage.agentEvents, hint: nil, forceUnlimited: unlimited)
+                if usage.scheduledDevotionsLocked && !unlimited {
+                    freeLimitRow(FreePlanLimitRow(label: "Scheduled devotions", value: "Subscribers only", caption: nil, locked: true))
+                } else {
+                    usageRow("Scheduled devotions", usage.agentEvents, hint: nil, forceUnlimited: unlimited)
+                }
                 if let hosting = usage.sessions {
                     Divider().background(Theme.borderGray)
                     usageRow("Hosting sessions", hosting, hint: "at a time", forceUnlimited: unlimited)
                 }
                 if !unlimited {
-                    ForEach(usage.freePlanRows.filter { $0.locked }, id: \.label) { row in
+                    ForEach(usage.freePlanRows.filter { $0.locked && $0.label != "Scheduled devotions" }, id: \.label) { row in
                         Divider().background(Theme.borderGray)
                         freeLimitRow(FreePlanLimitRow(label: row.label == "Publish to Explorer" ? "Explorer publishing" : row.label,
                                                       value: row.value, caption: nil, locked: true))
                     }
                     Divider().background(Theme.borderGray)
-                    Text("You're on the Free plan. Subscribe for unlimited notes, scheduled devotions and hosted sessions, plus session summaries and Explorer publishing.")
+                    Text("You're on the Free plan. Subscribe for unlimited notes and hosted sessions, plus scheduled devotions, session summaries and Explorer publishing.")
                         .font(.system(size: Theme.fontSM))
                         .foregroundColor(Theme.textGoldMuted)
                 }

@@ -1,4 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
+import { frameBelongsToContact } from './chatFrameBelongs.js';
 import { message } from 'antd';
 import { API, WS_BASE } from '../config.js';
 import { compareTimestamps, threadFrameToRow } from '../utils.js';
@@ -326,7 +327,7 @@ export function useMessaging({ user }) {
         // it) -- setMessages runs exactly once per incoming message.
         const cc = currentContactRef.current;
         if (cc && (data.from_user !== user.user_id || isOwnAnnouncementFrame(data, user.user_id)) &&
-            (data.group_id || '') === (cc.group_id || '')) {
+            frameBelongsToContact(data, cc)) {
           setMessages(prev => mergeLive(prev, {
             // Message id (new servers); absent on an old server's frame.
             ...(typeof data.id === 'string' && data.id ? { id: data.id, key: data.id } : {}),
@@ -485,14 +486,14 @@ export function useMessaging({ user }) {
             if (!pg) allMsgs.sort(compareTimestamps);
             preview = allMsgs[allMsgs.length - 1].text || '';
           }
-          const entry = { id: gid, name: g.title || gid, type: 'group', toUsers: g.users || [], preview, photoUrl: g.photo_url || null };
+          const entry = { id: gid, name: g.title || gid, type: 'group', group_id: gid, toUsers: g.users || [], preview, photoUrl: g.photo_url || null };
           groupEntryCache.current[gid] = { meta, entry };
           return entry;
         }
       } catch (err) {
         console.error(`Failed to load group ${gid}:`, err);
       }
-      return { id: gid, name: gid.slice(0, 8), type: 'group', toUsers: [], preview: '' };
+      return { id: gid, name: gid.slice(0, 8), type: 'group', group_id: gid, toUsers: [], preview: '' };
     }));
     setGroups(groupMap);
     return { friends: friendList, groups: groupList };

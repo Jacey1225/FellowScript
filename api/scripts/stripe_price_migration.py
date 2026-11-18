@@ -44,7 +44,13 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from schemas.subscription import GROUP_PRICE_CENTS, MIN_MEMBERS, MAX_MEMBERS  # noqa: E402
+# HISTORICAL (2026-10-01 price cut). Do not run: server pricing is now the formula in
+# api/config/seat_pricing.json (web-only payments, 2026-11-18), and this script would
+# move subscribers onto the OLD cut table. The cut table is frozen here for reference.
+MIN_MEMBERS, MAX_MEMBERS = 1, 8
+GROUP_PRICE_CENTS: dict[int, int] = {
+    1: 499, 2: 810, 3: 1215, 4: 1620, 5: 2025, 6: 2430, 7: 2835, 8: 3240,
+}
 
 # Prices in force before the 2026-10-01 cut (the code table, not Apple's).
 OLD_PRICE_CENTS: dict[int, int] = {

@@ -109,17 +109,8 @@ struct UpgradePromptCard: View {
                         .fixedSize(horizontal: false, vertical: true)
                         .accessibilityIdentifier("upgradePromptBody")
 
-                    Button(action: onSubscribe) {
-                        Text("Subscribe")
-                            .font(.inter(Theme.fontBody, weight: .semibold))
-                            .foregroundColor(Theme.ink)
-                            .frame(maxWidth: .infinity, minHeight: 50)
-                            .background(LinearGradient(colors: [Theme.gold, Theme.goldLight],
-                                                       startPoint: .topLeading, endPoint: .bottomTrailing))
-                            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-                    }
-                    .padding(.top, Theme.spacingXS)
-                    .accessibilityIdentifier("upgradePromptSubscribe")
+                    UpgradePromptSubscribeButton(onSubscribe: onSubscribe, onDismiss: onDismiss)
+                        .padding(.top, Theme.spacingXS)
 
                     Button(action: onDismiss) {
                         Text("Not now")
@@ -152,5 +143,50 @@ struct UpgradePromptCard: View {
             .accessibilityAction(.escape, onDismiss)
         }
         .onAppear { titleFocused = true }
+    }
+}
+
+
+/// Primary button of the upgrade prompt. US storefront: "Subscribe on the web" opens
+/// the website checkout for one seat. Everywhere else (and while the storefront or
+/// the quote is still loading) it is the existing "Subscribe" that takes the user to
+/// the Account tab's StoreKit plans. A user with an active Apple plan never sees the
+/// web link (the server quote says blocked).
+struct UpgradePromptSubscribeButton: View {
+    let onSubscribe: () -> Void
+    let onDismiss: () -> Void
+    @EnvironmentObject private var appState: AppState
+    @ObservedObject private var gate = WebCheckoutGate.shared
+    @StateObject private var quote = WebCheckoutQuoteModel()
+
+    private var surface: WebCheckoutPurchaseSurface {
+        WebCheckoutPolicy.surface(gate: gate.state, hasActiveApplePlan: false, quoteBlockedByApple: quote.blockedByApple)
+    }
+    /// US storefront with the quote answered (or failed: the server still refuses a
+    /// blocked checkout), so the blocked state is known before the link shows.
+    private var showWeb: Bool { surface == .web && (quote.phase == .loaded || quote.phase == .failed) }
+
+    var body: some View {
+        Group {
+            if showWeb {
+                WebCheckoutLinkButton(seats: 1, identifier: "upgradePromptSubscribe", onOpen: onDismiss)
+            } else {
+                Button(action: onSubscribe) {
+                    Text("Subscribe")
+                        .font(.inter(Theme.fontBody, weight: .semibold))
+                        .foregroundColor(Theme.ink)
+                        .frame(maxWidth: .infinity, minHeight: 50)
+                        .background(LinearGradient(colors: [Theme.gold, Theme.goldLight],
+                                                   startPoint: .topLeading, endPoint: .bottomTrailing))
+                        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                }
+                .accessibilityIdentifier("upgradePromptSubscribe")
+            }
+        }
+        .task {
+            quote.configure(service: appState.service)
+            await gate.waitUntilResolved()
+            if gate.isEnabled { quote.request(seats: 1, immediate: true) }
+        }
     }
 }

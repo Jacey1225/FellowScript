@@ -55,7 +55,9 @@ _APPLE_ROOT_CA_G3 = x509.load_pem_x509_certificate(_APPLE_ROOT_CA_G3_PEM, defaul
 
 # App Store Connect product id → member_count. Must match the products created
 # in App Store Connect and StoreKitManager on iOS. One fixed-price product per
-# member count (1-8), since StoreKit can't compute an arbitrary price.
+# member count (1-8), since StoreKit can't compute an arbitrary price. Web-only
+# payments (20261117): no new Apple purchases are sold, but this map stays so existing
+# provider='apple' subscribers keep syncing/renewing until expiry or cancel.
 APPLE_PRODUCTS: dict[str, int] = {
     "com.fellowscript.access.one":   1,
     "com.fellowscript.access.two":   2,

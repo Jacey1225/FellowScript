@@ -7,6 +7,8 @@ import {
 import { API } from '../config.js';
 import InviteLinkSection from './InviteLinkSection.jsx';
 import FriendInviteCode from './FriendInviteCode.jsx';
+import { isDesktopApp } from '../lib/desktopScope.js';
+import { SEAT_PRICING, seatPriceCents, seatsFromHash } from '../lib/seatPricing.js';
 import { validatePromoCode, readPendingCode, clearPendingCode, normalizeCode } from '../lib/promoCode.js';
 
 // Radius/fill kept in sync with Account.jsx's own CARD_STYLE (design-notes.md
@@ -27,10 +29,13 @@ const LABEL = {
 };
 const MUTED = { fontFamily: 'inherit', fontSize: '0.8rem', color: 'rgba(244,228,193,0.35)' };
 
-// Server-authoritative price table (mirrors api/schemas/subscription.py GROUP_PRICE_CENTS).
-const GROUP_PRICE_CENTS = { 1: 499, 2: 810, 3: 1215, 4: 1620, 5: 2025, 6: 2430, 7: 2835, 8: 3240 };
-const MIN_MEMBERS = 1;
-const MAX_MEMBERS = 8;
+const MIN_MEMBERS = SEAT_PRICING.minMembers;
+const MAX_MEMBERS = SEAT_PRICING.maxMembers;
+const seatPrice = seatPriceCents;
+
+// Server errors arrive as a string or {code, message}.
+const errText = (d, fallback) => (typeof d?.detail === 'string' ? d.detail
+  : typeof d?.detail?.message === 'string' ? d.detail.message : fallback);
 
 const statusColor = (s) => ({
   active: 'gold', trialing: 'blue', past_due: 'orange', canceled: 'red', inactive: 'default',
@@ -75,7 +80,13 @@ export function FreePlanLimits({ usage }) {
       <span style={{ ...LABEL, marginBottom: '0.4rem' }} className="fs-eyebrow">Free plan includes</span>
       <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
         {notesText && <Row label="Notes" value={notesText} />}
-        {r.agent_events && <Row label="Scheduled devotions" value={`${r.agent_events.limit} in total`} />}
+        {(paid.scheduled_devotions || r.agent_events) && (
+          paid.scheduled_devotions
+            ? <Row label="Scheduled devotions" value={paidText(paid.scheduled_devotions)} locked={!paid.scheduled_devotions.free_allowed} />
+            : r.agent_events.limit === 0
+              ? <Row label="Scheduled devotions" value="Subscribers only" locked />
+              : <Row label="Scheduled devotions" value={`${r.agent_events.limit} in total`} />
+        )}
         {r.sessions && <Row label="Hosting sessions" value={`${r.sessions.limit} at a time`} caption="Join as many as you like" />}
         {paid.session_summaries && <Row label="Session summaries" value={paidText(paid.session_summaries)} locked={!paid.session_summaries.free_allowed} />}
         {paid.explorer_publish && <Row label="Publish to Explorer" value={paidText(paid.explorer_publish)} caption="Browsing and joining stay free" locked={!paid.explorer_publish.free_allowed} />}
@@ -97,8 +108,9 @@ export default function SubscriptionCard({ userId, onPlanChange, usage = null })
   const [joinable, setJoinable] = useState([]);     // friends' group plans with room
   const [busy,     setBusy]     = useState('');     // key of the in-flight action
   const [msg,      setMsg]      = useState(null);
-  const [selectedCount, setSelectedCount] = useState(1);  // signup member-count picker
+  const [selectedCount, setSelectedCount] = useState(() => seatsFromHash(window.location.hash) ?? 1);  // signup member-count picker (prefilled by an iOS checkout link)
   const [editCount, setEditCount] = useState(null);        // host's in-progress seat-count edit
+  const [awaitingBrowser, setAwaitingBrowser] = useState(false); // desktop: checkout opened in the system browser
 
   // Promo codes (task 20260930-creator-friend-codes). `promoEnabled` is learned
   // from the server (validate answers 404 while the feature flag is off), so
@@ -110,6 +122,25 @@ export default function SubscriptionCard({ userId, onPlanChange, usage = null })
   const promoProbed = useRef(false);
 
   const isHost = plan && plan.user_id === userId;
+
+  // Existing subscribers: the server prices a seat change (legacy plans keep
+  // their old schedule), so the editor shows the server's quote, never the
+  // new-subscriber formula. Blank while loading or if the quote fails.
+  const [quote, setQuote] = useState({ count: null, cents: null });
+  useEffect(() => {
+    if (editCount === null || !plan?.id || !Number.isInteger(editCount)
+        || editCount < MIN_MEMBERS || editCount > MAX_MEMBERS) return undefined;
+    let stale = false;
+    (async () => {
+      try {
+        const r = await fetch(`${API}/subscriptions/quote?seats=${editCount}`);
+        const d = r.ok ? await r.json() : null;
+        if (!stale) setQuote({ count: editCount, cents: d && !d.blocked && Number.isInteger(d.total_cents) ? d.total_cents : null });
+      } catch { if (!stale) setQuote({ count: editCount, cents: null }); }
+    })();
+    return () => { stale = true; };
+  }, [editCount, plan?.id]);
+  const editPriceLabel = quote.count === editCount && quote.cents != null ? `${money(quote.cents)}/mo` : '';
 
   // One probe per mount: empty-code validate tells us whether the feature is on.
   // A code carried in from a shared ?code= link is prefilled and checked once.
@@ -205,6 +236,23 @@ export default function SubscriptionCard({ userId, onPlanChange, usage = null })
     }
   }, [userId, load]);
 
+  // Desktop: checkout happens in the system browser, so when the user returns to
+  // the app, re-read the plan from the server (the webhook creates it).
+  useEffect(() => {
+    if (!awaitingBrowser) return undefined;
+    const onFocus = async () => {
+      try {
+        const r = await fetch(`${API}/subscriptions/user/${userId}`);
+        if (r.ok) {
+          setAwaitingBrowser(false);
+          await load(); onPlanChange?.(); clearPendingCode(); flash('success', 'Subscription active.');
+        }
+      } catch {}
+    };
+    window.addEventListener('focus', onFocus);
+    return () => window.removeEventListener('focus', onFocus);
+  }, [awaitingBrowser, userId, load]);
+
   // ── Actions ─────────────────────────────────────────────────────────────────
 
   // Start a plan via Stripe Checkout: the backend creates a hosted session and
@@ -221,13 +269,23 @@ export default function SubscriptionCard({ userId, onPlanChange, usage = null })
         }),
       });
       const data = await res.json().catch(() => ({}));
-      if (res.ok && data.url) { window.location.href = data.url; return; }
+      if (res.ok && data.url) {
+        if (isDesktopApp()) {
+          // The desktop shell hands https window.open() calls to the system
+          // browser (lib.rs on_new_window); never navigate the app webview.
+          window.open(data.url, '_blank', 'noopener,noreferrer');
+          setAwaitingBrowser(true);
+          flash('info', 'Finish checkout in your browser, then come back here.');
+          return;
+        }
+        window.location.href = data.url; return;
+      }
       if (data.detail && data.detail.code === 'invalid_promo_code') {
         setPromo(null); clearPendingCode();
         setPromoError("That code can't be used. No discount was applied and you were not charged.");
         return;
       }
-      flash('error', typeof data.detail === 'string' ? data.detail : 'Could not start checkout.');
+      flash('error', errText(data, 'Could not start checkout.'));
     } catch { flash('error', 'Could not reach the server.'); }
     finally { setBusy(''); }
   };
@@ -241,7 +299,7 @@ export default function SubscriptionCard({ userId, onPlanChange, usage = null })
         body: JSON.stringify({ member_count: memberCount }),
       });
       if (res.ok) { setEditCount(null); await load(); flash('success', 'Plan updated.'); }
-      else { const d = await res.json().catch(() => ({})); flash('error', d.detail || 'Could not update plan.'); }
+      else { const d = await res.json().catch(() => ({})); flash('error', errText(d, 'Could not update plan.')); }
     } catch { flash('error', 'Could not reach the server.'); }
     finally { setBusy(''); }
   };
@@ -387,8 +445,8 @@ export default function SubscriptionCard({ userId, onPlanChange, usage = null })
           )}
           {isFree && <FreePlanLimits usage={usage} />}
           <p style={{ ...MUTED, marginBottom: '1rem', lineHeight: 1.65 }}>
-            Subscribe to unlock <span style={{ color: 'var(--gold)' }}>unlimited notes, scheduled devotions, hosted sessions,</span> session summaries and Explorer publishing. Paid plans let you schedule as many devotions as you like, such as one for morning and one for bedtime.
-            Choose how many people join your plan — up to 8.
+            Subscribe to unlock <span style={{ color: 'var(--gold)' }}>unlimited notes, scheduled devotions, hosted sessions,</span> session summaries and Explorer publishing. Subscribers can schedule as many devotions as they like, such as one for morning and one for bedtime.
+            Choose how many people join your plan.
           </p>
           <div style={{ border: '1px solid rgba(200,134,26,0.2)', borderRadius: 12, padding: '1.1rem', maxWidth: 320 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6, color: 'var(--gold)' }}>
@@ -396,18 +454,22 @@ export default function SubscriptionCard({ userId, onPlanChange, usage = null })
               <span style={{ fontFamily: 'inherit', fontSize: '1.05rem', color: 'var(--parchment)' }}>Group</span>
             </div>
             <div style={{ fontFamily: 'inherit', fontSize: '1.7rem', color: 'var(--gold)', lineHeight: 1 }}>
-              {money(GROUP_PRICE_CENTS[selectedCount])}<span style={{ fontSize: '0.8rem', color: 'rgba(244,228,193,0.4)' }}>/mo</span>
+              {seatPrice(selectedCount) == null
+                ? <span style={{ fontSize: '0.95rem' }}>Choose 1 to {MAX_MEMBERS} members</span>
+                : <>{money(seatPrice(selectedCount))}<span style={{ fontSize: '0.8rem', color: 'rgba(244,228,193,0.4)' }}>/mo</span></>}
             </div>
             <div style={{ ...MUTED, margin: '0.5rem 0 0.3rem' }}>Members</div>
             <InputNumber
-              min={MIN_MEMBERS} max={MAX_MEMBERS} value={selectedCount}
+              min={MIN_MEMBERS} max={MAX_MEMBERS} precision={0} value={selectedCount}
               onChange={(v) => setSelectedCount(v || 1)}
               style={{ width: '100%', marginBottom: '0.6rem' }}
             />
             <div style={{ fontFamily: 'inherit', fontSize: '0.72rem', color: 'rgba(200,134,26,0.7)', marginBottom: '0.9rem' }}>
               {promo && selectedCount === 1
-                ? `First month ${money(Math.round(GROUP_PRICE_CENTS[1] * (100 - promo.percentOff) / 100))} (${promo.percentOff}% off), then ${money(GROUP_PRICE_CENTS[1])}/mo`
-                : `${money(GROUP_PRICE_CENTS[selectedCount])}/mo, billed today`}
+                ? `First month ${money(Math.round(seatPrice(1) * (100 - promo.percentOff) / 100))} (${promo.percentOff}% off), then ${money(seatPrice(1))}/mo`
+                : seatPrice(selectedCount) == null
+                  ? `Choose between ${MIN_MEMBERS} and ${MAX_MEMBERS} members`
+                  : `${money(seatPrice(selectedCount))}/mo, billed today`}
             </div>
             {promoEnabled && (
               selectedCount === 1 ? (
@@ -437,8 +499,13 @@ export default function SubscriptionCard({ userId, onPlanChange, usage = null })
             <Button type="primary" block loading={busy === 'start'}
               onClick={() => startCheckout(selectedCount)}
               style={{ borderRadius: 8, fontFamily: 'inherit' }}>
-              Subscribe
+              {isDesktopApp() ? 'Subscribe on the website' : 'Subscribe'}
             </Button>
+            {isDesktopApp() && (
+              <div style={{ ...MUTED, fontSize: '0.72rem', marginTop: '0.5rem' }}>
+                Opens secure checkout in your browser.
+              </div>
+            )}
           </div>
         </>
       ) : (
@@ -462,7 +529,7 @@ export default function SubscriptionCard({ userId, onPlanChange, usage = null })
               </div>
               <span style={MUTED}>
                 {money(plan.price_cents)}/mo · {isHost ? 'You are the host' : 'Member'}
-                {plan.plan_type === 'group' && ` · up to ${plan.max_members} members`}
+                {plan.plan_type === 'group' && ` · ${plan.max_members} member${plan.max_members === 1 ? '' : 's'}`}
               </span>
             </div>
           </div>
@@ -486,7 +553,12 @@ export default function SubscriptionCard({ userId, onPlanChange, usage = null })
           )}
 
           {/* Seat-count editor (host view) */}
-          {isHost && plan.plan_type === 'group' && (
+          {isHost && plan.plan_type === 'group' && plan.provider === 'apple' && (
+            <div style={{ ...MUTED, marginTop: '1rem' }}>
+              This plan is billed through Apple. Manage or cancel it in Apple Settings; to add seats, start a plan on the website once it ends.
+            </div>
+          )}
+          {isHost && plan.plan_type === 'group' && plan.provider !== 'apple' && (
             <div style={{ marginTop: '1rem', display: 'flex', alignItems: 'center', gap: 8 }}>
               <span style={LABEL}>Plan size</span>
               {editCount === null ? (
@@ -496,9 +568,9 @@ export default function SubscriptionCard({ userId, onPlanChange, usage = null })
                 </Button>
               ) : (
                 <>
-                  <InputNumber min={MIN_MEMBERS} max={MAX_MEMBERS} value={editCount}
+                  <InputNumber min={MIN_MEMBERS} max={MAX_MEMBERS} precision={0} value={editCount}
                     onChange={(v) => setEditCount(v || 1)} size="small" style={{ width: 70 }} />
-                  <span style={MUTED}>{money(GROUP_PRICE_CENTS[editCount])}/mo</span>
+                  <span style={MUTED}>{editPriceLabel}</span>
                   <Button size="small" type="primary" loading={busy === 'seats'}
                     onClick={() => updateSeats(editCount)} style={{ borderRadius: 6 }}>Save</Button>
                   <Button size="small" type="text" onClick={() => setEditCount(null)}

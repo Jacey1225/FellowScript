@@ -47,6 +47,8 @@ describe('upgradeBody copy', () => {
   test('interpolates limits and never hardcodes them', () => {
     expect(upgradeBody({ resource: 'notes', limit: 7 })).toContain('7 notes per week');
     expect(upgradeBody({ resource: 'agent_events', limit: 1 })).toContain('1 scheduled devotion.');
+    expect(upgradeBody({ resource: 'agent_events', limit: 0 })).toBe('Scheduled devotions are for subscribers.');
+    expect(upgradeBody({ resource: 'agent_events', limit: 0 })).not.toMatch(/\d/);
     expect(upgradeBody({ resource: 'sessions', limit: 1 })).toContain('1 session at a time');
     expect(upgradeBody({ resource: 'session_summaries' })).toMatch(/subscribers/);
     expect(upgradeBody({ resource: 'explorer_publish' })).toMatch(/Browsing and joining stay free/);

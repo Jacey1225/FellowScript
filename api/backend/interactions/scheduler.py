@@ -516,6 +516,16 @@ async def _fire_due_heartbeats() -> None:
                 if scheduled > local:
                     continue  # today's local slot hasn't arrived yet
 
+                # Paid-only gate: scheduled devotions do not fire for free or
+                # lapsed users. Rows are kept (never deleted) so upgrading
+                # restores them. check_limit raises on a plan-lookup error,
+                # caught by this candidate's handler below -> skipped (fail closed).
+                dev_gate = await loop.run_in_executor(
+                    None, functools.partial(check_limit, user_id, "agent_events")
+                )
+                if not dev_gate["allowed"]:
+                    continue
+
                 # Same weekly notes-cap gate commit_heartbeat applies before
                 # calling commit_hb_response -- firing server-side must not let
                 # a free user at their cap mint unlimited notes just because no

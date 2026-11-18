@@ -17,6 +17,13 @@ extension AccountView {
                 .font(.system(size: Theme.fontSM))
                 .foregroundColor(Theme.textMuted)
 
+            if devotionsLocked {
+                Text("Scheduled devotions are for subscribers. Any you already set up are paused and kept, and they resume if you subscribe. You can still delete them.")
+                    .font(.system(size: Theme.fontSM))
+                    .foregroundColor(Theme.textGoldMuted)
+                    .accessibilityIdentifier("scheduledDevotionsLockedNote")
+            }
+
             // Manual "execute now" confirmation (task
             // 20260901-heartbeat-manual-trigger-button) — mirrors
             // editProfileSection's editMsg banner pattern. Free-tier-cap and
@@ -109,6 +116,12 @@ extension AccountView {
 
             Divider().background(Theme.borderGray)
             Button(action: {
+                // Free plan: scheduled devotions are subscribers-only. Show the
+                // shared upgrade prompt (server still enforces).
+                if devotionsLocked {
+                    UpgradePromptCenter.shared.present(for: AppError.limitReached(resource: "agent_events", used: 0, limit: 0))
+                    return
+                }
                 guard newEventEnabled else { return }
                 // Explicit user action (scheduling a devotion): lifts any
                 // first-run "Maybe later" deferral (task 20261008-post-tour-prompts).
@@ -120,15 +133,19 @@ extension AccountView {
                 }
                 activeSheet = .newEvent
             }) {
-                ghostLabelPill(icon: "plus", "New scheduled devotion", color: newEventEnabled ? Theme.gold : Theme.textMuted)
+                ghostLabelPill(icon: devotionsLocked ? "lock.fill" : "plus", "New scheduled devotion",
+                               color: (newEventEnabled || devotionsLocked) ? Theme.gold : Theme.textMuted)
             }
-            .disabled(!newEventEnabled)
+            .disabled(!newEventEnabled && !devotionsLocked)
             .onboardingAnchor(.newDevotionButton)
             .accessibilityLabel("Create new scheduled devotion")
         }
         .padding(.horizontal, 18).padding(.vertical, 16)
         .glassCard(cornerRadius: 20)
     }
+
+    /// Free plan with no scheduled devotions. Cosmetic; the server enforces it.
+    var devotionsLocked: Bool { !vm.hasUnlimitedPlan && (vm.usage?.scheduledDevotionsLocked ?? false) }
 
     /// Ask AI is built in, so "New scheduled devotion" never waits on an agent.
     var newEventEnabled: Bool { appState.capabilities.askAiEnabled || !vm.agents.isEmpty }

@@ -35,6 +35,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from db import DBManager
+from _paid_user import grant_paid
 from _plan_common import grant_paid  # noqa: E402
 from backend.auth.sessions import SessionManager
 from backend.interactions.agent import AgentManager
@@ -86,6 +87,7 @@ def make_test_user(prefix="hbpub") -> str:
 
 
 def make_agent(user_id: str) -> str:
+    grant_paid(user_id)  # scheduled devotions are paid-only
     agent_id = str(uuid.uuid4())
     db = DBManager()
     try:

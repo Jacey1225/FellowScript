@@ -236,9 +236,16 @@ def main():
             r = client.get(f"/subscriptions/user/{uid_a}", headers=cookie_header(token_b))
             check("subscription: B reads A's plan via path -> 403", r.status_code == 403, str(r.status_code))
 
+            # Web-only payments (20261117): POST /subscriptions/ is retired (410). A plan now only
+            # exists via Stripe checkout, so the host's plan is created the way the webhook does.
             r = client.post("/subscriptions/", json={"user_id": uid_a, "member_count": 2}, headers=cookie_header(token_a))
-            check("subscription: A creates a group plan (becomes host) -> 201", r.status_code == 201, str(r.status_code))
-            sub_id = r.json()["id"]
+            check("subscription: direct plan creation is retired -> 410", r.status_code == 410, str(r.status_code))
+            from backend.subscription.subscriptions import SubscriptionsManager  # noqa: E402
+            sub_id = SubscriptionsManager().upsert_from_stripe(
+                user_id=uid_a, member_count=2, customer_id="cus_auth_t", stripe_sub_id=f"sub_auth_{uuid.uuid4().hex[:8]}",
+                status="active", trial_end=None, current_period_end=None,
+                card={"brand": "visa", "last4": "4242", "exp_month": "01", "exp_year": "2030"})
+            check("subscription: A's group plan exists (host)", bool(sub_id), str(sub_id))
 
             r = client.put(f"/subscriptions/{sub_id}", json={"status": "active"}, headers=cookie_header(token_b))
             check("subscription: non-host B updates A's plan -> 403", r.status_code == 403, str(r.status_code))
@@ -262,7 +269,14 @@ def main():
 
             r = client.delete(f"/subscriptions/{sub_id}", headers=cookie_header(token_b))
             check("subscription: non-host B deletes A's plan -> 403", r.status_code == 403, str(r.status_code))
-            r = client.delete(f"/subscriptions/{sub_id}", headers=cookie_header(token_a))
+            # The plan carries a (fake) Stripe id, so deletion first asks Stripe to cancel it; stub that call.
+            from backend.subscription import stripe_service as _ss  # noqa: E402
+            _orig_cancel = _ss.cancel_subscription
+            _ss.cancel_subscription = lambda *_a, **_k: True
+            try:
+                r = client.delete(f"/subscriptions/{sub_id}", headers=cookie_header(token_a))
+            finally:
+                _ss.cancel_subscription = _orig_cancel
             check("subscription: host A deletes own plan -> 204", r.status_code == 204, str(r.status_code))
 
             # ── Filtering (baseline auth only) ───────────────────────────────

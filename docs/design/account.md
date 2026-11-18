@@ -35,12 +35,12 @@ uses native push/pop navigation.
 | Free plan | "Free Plan" header, active badge, usage limits, upgrade prompt |
 | Paid (group) | Plan name, billing period, card brand + last 4, cancel option |
 
-There is only one paid tier — **Group** (1-8 members), priced by member count. There is no
+There is only one paid tier — **Group** (any number of members), priced by member count. There is no
 separate "individual" plan; a 1-member group plan covers that case.
 
 Upgrade prompt: "Upgrade to unlock unlimited notes, scheduled devotions, and notifications. Free includes 1 scheduled devotion; paid plans let you have as many as you like, such as one for morning and one for bedtime."
 
-Clicking **Upgrade** on web opens a Stripe Checkout session (`POST /subscriptions/stripe/checkout`). On iOS, tapping the plan tile triggers StoreKit 2 (`StoreKitManager`).
+Clicking **Upgrade** on web opens a Stripe Checkout session (`POST /subscriptions/stripe/checkout`). On iOS and iPad the purchase surface depends on the App Store storefront (`WebCheckoutGate`, StoreKit `Storefront.current`, fail closed): in the **US storefront only** the card shows a seat stepper (1 to the server's `max_seats`), the server price from `GET /subscriptions/quote` and a "Subscribe on the web" button that opens `fellowscript.com` in the system browser (the same button appears in the upgrade prompt and the post-tour subscribe prompt). Every other storefront, and an unknown or slow lookup, keeps the StoreKit 2 flow (`StoreKitManager`) with no link and no website wording. A user with an active Apple plan sees "manage in Apple Settings" only; seats are never edited in-app.
 
 **"What's included" disclosure (iOS)** — both the active-subscriber row and the pre-purchase
 member-count picker include a tappable "What's included" row (`chevron.down`/`chevron.up`)

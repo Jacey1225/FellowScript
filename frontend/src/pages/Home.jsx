@@ -6,6 +6,7 @@ import Seo from '../components/Seo.jsx';
 import ProblemCarousel from '../components/ProblemCarousel.jsx';
 import { useExploreEnabled } from '../hooks/useExploreEnabled.js';
 import { SITE_URL } from '../config.js';
+import { seatPriceCents } from '../lib/seatPricing.js';
 import AdamHands, { ADAM_MOBILE_QUERY } from '../components/AdamHands.jsx';
 import LiquidField from '../components/LiquidField.jsx';
 import { KINETIC_SPAN_VH, smoothStep } from '../lib/adamHands/driver.js';
@@ -315,15 +316,15 @@ const plans = [
     name: 'Free',
     price: '$0',
     sub: 'No card needed',
-    perks: ['Beautiful Bible reader', '5 notes per week', '1 scheduled devotion', '3 scheduled notifications', 'Verse highlights & bookmarks'],
+    perks: ['Beautiful Bible reader', '5 notes per week', '3 scheduled notifications', 'Verse highlights & bookmarks'],
     cta: 'Start reading',
     href: '/signin',
     primary: false,
   },
   {
     name: 'Group',
-    price: 'From $4.99',
-    sub: 'Pick 1 to 8 members · Billed monthly',
+    price: `From $${(seatPriceCents(1) / 100).toFixed(2)}`,
+    sub: 'Pick any number of members · Billed monthly',
     perks: ['Unlimited notes', 'Unlimited scheduled devotions', 'Unlimited notifications', 'Shared reading space & group chat', 'Live study sessions', 'Priority support'],
     cta: 'Subscribe',
     href: '/signin',

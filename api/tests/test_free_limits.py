@@ -114,8 +114,8 @@ def main():
         check("summarize 403 resource is session_summaries (paid-only gate first)",
               summ.json()["detail"].get("resource"), "session_summaries")
 
-        # ── Agent events (heartbeats): 1 allowed, 2nd blocked ────────────────
-        print("\nAGENT EVENTS (limit 1):")
+        # ── Agent events (scheduled devotions): paid-only, 0 allowed ─────────
+        print("\nAGENT EVENTS (paid-only, limit 0):")
         # Insert the agent directly (the create route writes name/enabled columns
         # this legacy local DB lacks); we only need a valid FK target here.
         agent_id = str(uuid.uuid4())
@@ -125,32 +125,42 @@ def main():
         finally:
             _db.close()
         hb_body = {"timestamps": [None] * 31, "prompt": "p"}
-        ev_codes = [client.post(f"/agent/{uid}/{agent_id}/heartbeat", json=hb_body).status_code
+        ev_resps = [client.post(f"/agent/{uid}/{agent_id}/heartbeat", json=hb_body)
                     for _ in range(3)]
-        check("1st event accepted", ev_codes[0], 201)
-        check("2nd event blocked (403)", ev_codes[1], 403)
-        check("3rd event blocked (403)", ev_codes[2], 403)
-
-        # ── commit_heartbeat must also honour the notes cap ──────────────────
-        # Regression coverage for 20260825-heartbeat-notes-limit-bypass: a
-        # fired heartbeat persists its output as a note, so a user already at
-        # the notes cap (exhausted above) must be denied here too, instead of
-        # silently getting another note saved through this side door.
-        print("\nCOMMIT_HEARTBEAT (notes cap already exhausted above):")
+        check("every create blocked for a free user (403)",
+              [r.status_code for r in ev_resps], [403] * 3)
+        check("403 detail resource is agent_events",
+              ev_resps[0].json()["detail"].get("resource"), "agent_events")
+        check("403 detail limit is 0", ev_resps[0].json()["detail"].get("limit"), 0)
         _db = DBManager()
         try:
             hb_rows = _db.lookup("agent_heartbeats", {"agent_id": agent_id, "user_id": uid})
         finally:
             _db.close()
-        hb_id = next(iter(hb_rows))
+        check("no heartbeat row was written by the denied creates", len(hb_rows or {}), 0)
+
+        # ── commit_heartbeat is gated for free users too ─────────────────────
+        # (A row can only exist from before the feature became paid-only; the
+        # manual/forced fire must not run it. Gate order: agent_events, then notes.
+        # The notes-cap-bypass regression 20260825-heartbeat-notes-limit-bypass is
+        # covered for subscribed-then-lapsed rows in test_commit_heartbeat_notes_cap.)
+        print("\nCOMMIT_HEARTBEAT (free user, legacy row):")
+        hb_id = str(uuid.uuid4())
+        _db = DBManager()
+        try:
+            _db.cur.execute(
+                "INSERT INTO agent_heartbeats (_id, agent_id, user_id, timestamps, prompt) "
+                "VALUES (%s, %s, %s, %s::jsonb, %s)", (hb_id, agent_id, uid, "[]", "p"))
+            _db.conn.commit()
+        finally:
+            _db.close()
         notes_before = client.get(f"/subscriptions/user/{uid}/usage").json()["resources"]["notes"]["used"]
         hb_commit = client.post(
             f"/agent/{uid}/{agent_id}/{hb_id}/commit_heartbeat",
             json={"prompt": "Write a reflection."},
         )
-        check("commit_heartbeat blocked when notes cap reached (403)", hb_commit.status_code, 403)
-        hb_detail = hb_commit.json()["detail"]
-        check("commit_heartbeat 403 detail resource", hb_detail.get("resource"), "notes")
+        check("commit_heartbeat blocked for a free user (403)", hb_commit.status_code, 403)
+        check("commit_heartbeat 403 detail resource", hb_commit.json()["detail"].get("resource"), "agent_events")
         notes_after = client.get(f"/subscriptions/user/{uid}/usage").json()["resources"]["notes"]["used"]
         check("no new note created by the denied heartbeat commit", notes_after, notes_before)
 
@@ -159,7 +169,7 @@ def main():
         final = client.get(f"/subscriptions/user/{uid}/usage").json()["resources"]
         print("  ", final)
         check("notes used == 5", final["notes"]["used"], 5)
-        check("events used == 1", final["agent_events"]["used"], 1)
+        check("events limit == 0 (legacy row counted, none added)", (final["agent_events"]["used"], final["agent_events"]["limit"]), (1, 0))
         check("notes remaining == 0", final["notes"]["remaining"], 0)
 
         # ── Subscribed user bypasses all caps ────────────────────────────────

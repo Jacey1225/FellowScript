@@ -41,9 +41,9 @@ Mock group conversation showing the collaborative note/chat experience — sampl
 | Plan | Price | Limits |
 |---|---|---|
 | Free | $0 | 5 notes/week, 1 scheduled devotion, 3 scheduled notifications |
-| Group | From $4.99/mo | Pick 1 to 8 members ($4.99 for 1 member up to $32.40 for 8); unlimited notes, scheduled devotions and notifications, shared reading space and group chat |
+| Group | From $5.00/mo | Pick any number of members ($5.00 for 1 member; 10% off the total from 2 members, e.g. $9.00 for 2, $45.00 for 10); unlimited notes, scheduled devotions and notifications, shared reading space and group chat |
 
-The Group card is the highlighted (primary) plan. Prices mirror `GROUP_PRICE_CENTS` in `api/schemas/subscription.py` (cut 2026-10-01).
+The Group card is the highlighted (primary) plan. Prices mirror the formula in `api/config/seat_pricing.json` via `price_for` in `api/schemas/subscription.py` (web-only payments, 2026-11-18).
 
 ### 7. On Your Desktop
 Two-card section between Pricing and the closing Quote CTA, offering the Tauri-based desktop app (a dedicated window onto the same live, cookie-authenticated reader — not an offline/bundled build).

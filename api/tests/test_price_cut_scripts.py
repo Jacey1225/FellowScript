@@ -22,7 +22,11 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(
 
 import apple_price_and_promos as ap  # noqa: E402
 import stripe_price_migration as sm  # noqa: E402
-from schemas.subscription import GROUP_PRICE_CENTS  # noqa: E402
+from schemas.subscription import price_for  # noqa: E402
+
+# The 2026-10-01 cut table is frozen in the (historical) migration script; the live
+# server price is the seat_pricing.json formula (price_for), not this table.
+GROUP_PRICE_CENTS = sm.GROUP_PRICE_CENTS
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 NEW = {1: 499, 2: 810, 3: 1215, 4: 1620, 5: 2025, 6: 2430, 7: 2835, 8: 3240}
@@ -62,7 +66,8 @@ class FakeStripe:
 
 
 def test_tables_pinned():
-    assert GROUP_PRICE_CENTS == NEW
+    assert GROUP_PRICE_CENTS == NEW  # frozen historical copy, not the live price
+    assert price_for(1) == 500 and price_for(8) == 3600  # live server prices differ from the frozen table
     assert sm.OLD_PRICE_CENTS == {1: 1000, 2: 1799, 3: 2699, 4: 3599, 5: 4499, 6: 5399, 7: 6299, 8: 7199}
 
 
@@ -423,20 +428,23 @@ def _parse_js_table(text):
     return {int(k): int(v) for k, v in re.findall(r"(\d+)\s*:\s*(\d+)", m.group(1))}
 
 
-def test_web_mirror_matches_server_table():
+def test_web_mirror_matches_server_price():
     with open(os.path.join(ROOT, "frontend/src/components/SubscriptionCard.jsx")) as f:
-        assert _parse_js_table(f.read()) == GROUP_PRICE_CENTS
-
-
-def test_ios_mirror_matches_server_table():
-    with open(os.path.join(ROOT, "FellowScript/FellowScript/Account/AccountView+Subscription.swift")) as f:
         text = f.read()
-    m = re.search(r"fallbackPriceCents[^=]*=\s*\[(.*?)\]", text, re.S)
-    table = {int(k): int(v) for k, v in re.findall(r"(\d+)\s*:\s*(\d+)", m.group(1))}
-    assert table == GROUP_PRICE_CENTS
+    if re.search(r"GROUP_PRICE_CENTS\s*=\s*\{", text):  # table mirror: must equal the live formula
+        assert _parse_js_table(text) == {n: price_for(n) for n in range(1, 9)}
 
 
-def test_storekit_display_prices_match_server_table():
+def test_ios_has_no_hardcoded_price_table():
+    # Web-only payments: iOS US prices come from GET /subscriptions/quote and other
+    # storefronts from StoreKit, so no Swift file may mirror a price table.
+    for rel in ("Account/AccountView+Subscription.swift", "Onboarding/PostTourPromptViews.swift"):
+        with open(os.path.join(ROOT, "FellowScript/FellowScript", rel)) as f:
+            text = f.read()
+        assert "fallbackPriceCents" not in text and "fallbackPrice" not in text, rel
+
+
+def test_storekit_display_prices_match_legacy_apple_table():
     with open(os.path.join(ROOT, "FellowScript/FellowScript/FellowScript.storekit")) as f:
         sk = json.load(f)
     words = ["one", "two", "three", "four", "five", "six", "seven", "eight"]

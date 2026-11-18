@@ -104,21 +104,50 @@ final class PlanBlockTests: XCTestCase {
         {"subscribed": false, "plan_type": "free", "window_days": 7,
          "resources": {
            "notes": {"unlimited": false, "used": 2, "limit": 5, "remaining": 3},
-           "agent_events": {"unlimited": false, "used": 0, "limit": 1, "remaining": 1},
+           "agent_events": {"unlimited": false, "used": 0, "limit": 0, "remaining": 0},
            "sessions": {"unlimited": false, "used": 0, "limit": 1, "remaining": 1}},
          "paid_only": {"session_summaries": {"allowed": false, "free_allowed": false},
-                       "explorer_publish": {"allowed": false, "free_allowed": false}}}
+                       "explorer_publish": {"allowed": false, "free_allowed": false},
+                       "scheduled_devotions": {"allowed": false, "free_allowed": false}}}
         """)
         let rows = u.freePlanRows
         XCTAssertEqual(rows.map(\.label), ["Notes", "Scheduled devotions", "Hosting sessions",
                                            "Session summaries", "Publish to Explorer"])
         XCTAssertEqual(rows[0].value, "5 per week")
-        XCTAssertEqual(rows[1].value, "1 in total")
+        XCTAssertEqual(rows[1].value, "Subscribers only"); XCTAssertTrue(rows[1].locked)
         XCTAssertEqual(rows[2].value, "1 at a time")
         XCTAssertEqual(rows[2].caption, "Join as many as you like")
         XCTAssertEqual(rows[3].value, "Subscribers only"); XCTAssertTrue(rows[3].locked)
         XCTAssertEqual(rows[4].value, "Subscribers only"); XCTAssertTrue(rows[4].locked)
         XCTAssertEqual(rows[4].caption, "Browsing and joining stay free")
+    }
+
+    func test_freePlanRows_scheduledDevotionsLockedWhenServerSaysPaidOnly() throws {
+        let u = try usage("""
+        {"subscribed": false, "plan_type": "free", "window_days": 7,
+         "resources": {"agent_events": {"unlimited": false, "used": 0, "limit": 0, "remaining": 0}},
+         "paid_only": {"scheduled_devotions": {"allowed": false, "free_allowed": false}}}
+        """)
+        XCTAssertTrue(u.scheduledDevotionsLocked)
+        let row = u.freePlanRows.first { $0.label == "Scheduled devotions" }
+        XCTAssertEqual(row?.value, "Subscribers only")
+        XCTAssertEqual(row?.locked, true)
+    }
+
+    func test_scheduledDevotionsLocked_olderServerFallbackAndPaidUnaffected() throws {
+        let old = try usage("""
+        {"subscribed": false, "plan_type": "free", "window_days": 7,
+         "resources": {"agent_events": {"unlimited": false, "used": 0, "limit": 0, "remaining": 0}}}
+        """)
+        XCTAssertTrue(old.scheduledDevotionsLocked)
+        let paid = try usage("""
+        {"subscribed": true, "plan_type": "group", "window_days": 7,
+         "resources": {"agent_events": {"unlimited": true, "used": 0, "limit": 0}},
+         "paid_only": {"scheduled_devotions": {"allowed": true, "free_allowed": false}}}
+        """)
+        XCTAssertFalse(paid.scheduledDevotionsLocked)
+        let none = try usage(#"{"subscribed": false, "plan_type": "free", "window_days": 7, "resources": {}}"#)
+        XCTAssertFalse(none.scheduledDevotionsLocked)
     }
 
     func test_freePlanRows_followServerChanges() throws {

@@ -116,7 +116,8 @@ os.environ.setdefault("AWS_SECRET_ACCESS_KEY", "dummy")
 os.environ.setdefault("AWS_DEFAULT_REGION", "us-east-1")
 
 from fastapi.testclient import TestClient  # noqa: E402
-from db import DBManager  # noqa: E402
+from db import DBManager
+from _paid_user import grant_paid, devotion_gate_open  # noqa: E402
 import main as main_module  # noqa: E402
 from backend.interactions.agent import AgentManager  # noqa: E402
 import backend.interactions.scheduler as scheduler_module  # noqa: E402
@@ -163,7 +164,9 @@ def make_user_with_timezone(prefix: str, tzname: str) -> str:
     return uid
 
 
-def make_agent(user_id: str, name: str = "") -> str:
+def make_agent(user_id: str, name: str = "", paid: bool = True) -> str:
+    if paid:
+        grant_paid(user_id)  # scheduled devotions are paid-only
     agent_id = str(uuid.uuid4())
     db = DBManager()
     try:
@@ -434,7 +437,7 @@ def test_notes_cap_blocks_server_side_firing():
     print("\n=== 4. A free user already at their notes cap is not fired for by the server job ===")
     now = datetime(2026, 3, 15, 14, 30, tzinfo=tzmod.utc)
     uid = make_user("hbcap")
-    agent_id = make_agent(uid, name="Cap Agent")
+    agent_id = make_agent(uid, name="Cap Agent", paid=False)  # free: notes cap applies
     hb_id = make_heartbeat(agent_id, uid, due_timestamps_for(now, "14:00"))
     insert_notes(uid, 10)  # exactly at the free-plan cap
     # `note_count_for_heartbeat` joins on this heartbeat's owning user_id --
@@ -447,7 +450,8 @@ def test_notes_cap_blocks_server_side_firing():
     push_module.send_push = push
     freeze_scheduler_time(now)
     try:
-        asyncio.run(run_job())
+        with devotion_gate_open():  # only the notes cap may stop this fire
+            asyncio.run(run_job())
         check("last_fired stays NULL -- the cap gate runs before the claim",
               get_last_fired(hb_id) is None, str(get_last_fired(hb_id)))
         check("no note was created for an at-cap user",

@@ -148,6 +148,9 @@ struct PostTourPromptScaffold<Extra: View>: View {
     let message: String
     let primaryTitle: String
     var primaryFallbackTitle: String? = nil
+    /// Web-checkout variant: the title wraps (no one-line limit) and carries an
+    /// external-link glyph.
+    var primaryWraps: Bool = false
     let primaryBusy: Bool
     let secondaryTitle: String
     let secondaryStyle: PostTourSecondaryStyle
@@ -238,6 +241,15 @@ struct PostTourPromptScaffold<Extra: View>: View {
                     Group {
                         if primaryBusy {
                             ProgressView().tint(Theme.ink)
+                        } else if primaryWraps {
+                            HStack(spacing: 8) {
+                                Text(primaryTitle)
+                                    .minimumScaleFactor(0.8)
+                                    .multilineTextAlignment(.center)
+                                    .fixedSize(horizontal: false, vertical: true)
+                                Image(systemName: "arrow.up.right.square").accessibilityHidden(true)
+                            }
+                            .padding(.vertical, 8)
                         } else if let fallback = primaryFallbackTitle {
                             ViewThatFits(in: .horizontal) {
                                 Text(primaryTitle).lineLimit(1)
@@ -330,16 +342,36 @@ struct SubscribePromptView: View {
     @EnvironmentObject var appState: AppState
     @ObservedObject var coordinator: PostTourPromptsCoordinator
     @ObservedObject private var store = StoreKitManager.shared
+    @ObservedObject private var gate = WebCheckoutGate.shared
+    @StateObject private var quote = WebCheckoutQuoteModel()
+    @Environment(\.openURL) private var openURL
     @State private var message: String?
     @State private var restoring = false
 
     /// Tier 1 (one member) is the "from" price; the Account tab's group-size
     /// picker remains the path to larger groups.
     private static let startingMemberCount = 1
-    private static let fallbackPrice = "$4.99"
 
-    private var price: String {
-        store.displayPrice(for: Self.startingMemberCount) ?? Self.fallbackPrice
+    private var surface: WebCheckoutPurchaseSurface {
+        WebCheckoutPolicy.surface(gate: gate.state, hasActiveApplePlan: false, quoteBlockedByApple: quote.blockedByApple)
+    }
+    private var isWeb: Bool { surface == .web }
+
+    /// "$5.00" from the server quote (US) or StoreKit's localized price (everywhere
+    /// else). nil until known: no hardcoded price is ever shown.
+    private var price: String? {
+        if isWeb { return quote.totalCents.map { WebCheckoutFormat.price(cents: $0) } }
+        return store.displayPrice(for: Self.startingMemberCount)
+    }
+
+    private var messageText: String {
+        let base = "Go unlimited: endless notes, a devotion written for you every day, and your whole study group"
+        return price.map { "\(base), from \($0) a month." } ?? base + "."
+    }
+
+    private var primaryTitle: String {
+        if isWeb { return "Subscribe on the web" }
+        return price.map { "Subscribe for \($0) a month" } ?? "Subscribe"
     }
 
     var body: some View {
@@ -349,23 +381,44 @@ struct SubscribePromptView: View {
             headlineLead: "Go ",
             headlineKey: "unlimited",
             headlineTail: ".",
-            message: "Go unlimited: endless notes, a devotion written for you every day, and your whole study group, from \(price) a month.",
-            primaryTitle: "Subscribe for \(price) a month",
-            primaryFallbackTitle: "Subscribe",
-            primaryBusy: store.purchasing,
+            message: messageText,
+            primaryTitle: primaryTitle,
+            primaryFallbackTitle: isWeb ? nil : "Subscribe",
+            primaryWraps: isWeb,
+            // The button stays inert until the storefront is known so a US user
+            // never sees the StoreKit sheet and a non-US user never sees the link.
+            primaryBusy: store.purchasing || surface == .resolving,
             secondaryTitle: "Continue with the free plan",
             secondaryStyle: .ghostPill,
-            primaryIdentifier: "postTour.subscribe.purchase",
+            primaryIdentifier: isWeb ? "webCheckoutSubscribe" : "postTour.subscribe.purchase",
             secondaryIdentifier: "postTour.subscribe.free",
-            onPrimary: { Task { await purchase() } },
+            onPrimary: {
+                if isWeb {
+                    // Stay on the prompt: the user returns from the browser and picks
+                    // "Continue with the free plan" or is already subscribed.
+                    openURL(WebCheckoutPolicy.checkoutURL(seats: Self.startingMemberCount))
+                } else {
+                    Task { await purchase() }
+                }
+            },
             onSecondary: { coordinator.finish(.subscribe) },
             extra: { details }
         )
         .task { if !store.loaded { await store.loadProducts() } }
+        .task {
+            quote.configure(service: appState.service)
+            await gate.waitUntilResolved()
+            if gate.isEnabled { quote.request(seats: Self.startingMemberCount, immediate: true) }
+        }
+        // An Apple plan is already active on the server: the upsell is pointless.
+        .onChange(of: quote.blockedByApple) { _, blocked in
+            if blocked { coordinator.finish(.subscribe) }
+        }
     }
 
-    // App Store 3.1.2: price, period and auto-renew terms next to the CTA,
-    // plus Restore Purchases and Privacy/Terms links.
+    // StoreKit variant (App Store 3.1.2): price, period and auto-renew terms next to
+    // the CTA, plus Restore Purchases and Privacy/Terms links. The web variant
+    // replaces the Apple terms line with the one-line payment footnote.
     private var details: some View {
         VStack(spacing: 0) {
             if let message {
@@ -377,13 +430,24 @@ struct SubscribePromptView: View {
                     .padding(.top, 12)
                     .accessibilityIdentifier("postTour.subscribe.message")
             }
-            // Non-breaking spaces keep the last line from holding one word.
-            Text("\(price) per month for 1 member; larger groups cost more. Renews monthly until you cancel in Settings\u{00A0}> Apple\u{00A0}ID\u{00A0}>\u{00A0}Subscriptions.")
-                .font(Font.system(size: Theme.fontXS))
-                .foregroundColor(Theme.textSecondary)
-                .multilineTextAlignment(.center)
-                .fixedSize(horizontal: false, vertical: true)
-                .padding(.top, 12)
+            if isWeb {
+                WebCheckoutFootnote().padding(.top, 12)
+            } else if let price {
+                // Non-breaking spaces keep the last line from holding one word.
+                Text("\(price) per month for 1 member; larger groups cost more. Renews monthly until you cancel in Settings\u{00A0}> Apple\u{00A0}ID\u{00A0}>\u{00A0}Subscriptions.")
+                    .font(Font.system(size: Theme.fontXS))
+                    .foregroundColor(Theme.textSecondary)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.top, 12)
+            } else {
+                Text("Renews monthly until you cancel in Settings\u{00A0}> Apple\u{00A0}ID\u{00A0}>\u{00A0}Subscriptions.")
+                    .font(Font.system(size: Theme.fontXS))
+                    .foregroundColor(Theme.textSecondary)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.top, 12)
+            }
             HStack(spacing: Theme.spacingSM) {
                 Button(restoring ? "Restoring..." : "Restore Purchases") {
                     Task { await restore() }

@@ -6,6 +6,7 @@ from schemas.subscription import (
     SubscriptionCreate,
     SubscriptionUpdate,
     price_for,
+    seat_change_price,
     TRIAL_MONTHS,
     EXPIRY_GRACE_DAYS,
     ADMIN_COMP_PROVIDER,
@@ -101,7 +102,7 @@ class SubscriptionsManager(DBManager):
     def create_subscription(self, sub: SubscriptionCreate) -> str:
         """Start a new plan on a free trial and enroll the host as first member.
 
-        Price is derived server-side from the requested ``member_count`` (1-8).
+        Price is derived server-side from the requested ``member_count`` (any whole number up to the seat_pricing.json abuse guard).
         The subscription starts in ``trialing`` status; ``trial_end`` and the
         first ``current_period_end`` (next billing date) are computed by the DB
         as now() + TRIAL_MONTHS, so the billing schedule is anchored to the
@@ -537,7 +538,10 @@ class SubscriptionsManager(DBManager):
         if "member_count" in values:
             member_count = values.pop("member_count")
             values["max_members"] = member_count
-            values["price_cents"] = price_for(member_count)
+            # Existing (legacy-priced) plans stay on the legacy schedule.
+            row = self.lookup("subscriptions", {"_id": subscription_id})
+            cur = list(row.values())[0]
+            values["price_cents"] = seat_change_price(cur.get("max_members"), cur.get("price_cents"), member_count)
         if values:
             # The lookup above already confirmed the plan exists, so a
             # False return is a real write failure -- raising rather than

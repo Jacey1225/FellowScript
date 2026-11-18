@@ -102,6 +102,16 @@ extension NetworkService {
                                         jsonObject: ["member_count": memberCount])
     }
 
+    /// GET /subscriptions/quote?seats=N. Throws on any failure or undecodable body
+    /// (422 out of range, auth, transport): no price is ever invented client-side.
+    func fetchSeatQuote(seats: Int) async throws -> FSSeatQuote {
+        let data = try await get("/subscriptions/quote?seats=\(seats)")
+        guard let quote = try? JSONDecoder().decode(FSSeatQuote.self, from: data) else {
+            throw AppError.networkError("Price unavailable.")
+        }
+        return quote
+    }
+
     func fetchSubMembers(subscriptionId: String) async throws -> [FSSubMember] {
         let data = try await get("/subscriptions/\(encodeURIComponent(subscriptionId))/members")
         return decode([FSSubMember].self, from: data) ?? []

@@ -1,7 +1,7 @@
 """Free-plan entitlement gates (task 20261002-free-plan-limits-ui, testing step 2).
 
 Properties proved (each would catch a regression of the behaviour it names):
-  1. Config: api/config/free_limits.json drives FREE_LIMITS (notes 5, agent_events 1,
+  1. Config: api/config/free_limits.json drives FREE_LIMITS (notes 5, agent_events 0 = scheduled devotions paid-only,
      announcements 1, sessions 1) and PAID_ONLY_RESOURCES; the loader refuses a
      missing key, a non-positive count, an unknown key and a non-boolean paid-only flag.
   2. Sessions (POST /devotions/): a free user with 1 active session created is blocked
@@ -107,11 +107,12 @@ def usage(cli, uid, hdr):
 def test_config():
     print("CONFIG")
     check("FREE_LIMITS notes == 5", sub_schema.FREE_LIMITS["notes"] == 5, sub_schema.FREE_LIMITS)
-    check("FREE_LIMITS agent_events == 1 (devotion limit unchanged)", sub_schema.FREE_LIMITS["agent_events"] == 1)
+    check("FREE_LIMITS agent_events == 0 (scheduled devotions paid-only)", sub_schema.FREE_LIMITS["agent_events"] == 0)
     check("FREE_LIMITS announcements == 1", sub_schema.FREE_LIMITS["announcements"] == 1)
     check("FREE_LIMITS sessions == 1", sub_schema.FREE_LIMITS["sessions"] == 1)
-    check("PAID_ONLY_RESOURCES both blocked for free",
-          sub_schema.PAID_ONLY_RESOURCES == {"session_summaries": True, "explorer_publish": True},
+    check("PAID_ONLY_RESOURCES all three blocked for free",
+          sub_schema.PAID_ONLY_RESOURCES == {"session_summaries": True, "explorer_publish": True,
+                                             "scheduled_devotions": True},
           sub_schema.PAID_ONLY_RESOURCES)
     check("notes window 7 days", sub_schema.NOTES_WINDOW_DAYS == 7)
 
@@ -461,14 +462,14 @@ def test_usage(cli):
     check("subscribed false", u["subscribed"] is False)
     res = u["resources"]
     check("notes limit 5", res["notes"]["limit"] == 5, res["notes"])
-    check("agent_events limit 1", res["agent_events"]["limit"] == 1)
+    check("agent_events limit 0", res["agent_events"]["limit"] == 0)
     check("announcements limit 1", res["announcements"]["limit"] == 1)
     check("sessions present with limit 1", res["sessions"]["limit"] == 1, res.get("sessions"))
     check("window_days 7 and announcements_window_days 7",
           (u["window_days"], u["announcements_window_days"]) == (7, 7), u)
     po = u["paid_only"]
-    check("paid_only lists both features", set(po) == {"session_summaries", "explorer_publish"}, po)
-    check("free: allowed false, free_allowed false for both",
+    check("paid_only lists all three features", set(po) == {"session_summaries", "explorer_publish", "scheduled_devotions"}, po)
+    check("free: allowed false, free_allowed false for all three",
           all(v == {"allowed": False, "free_allowed": False} for v in po.values()), po)
 
     paid = make_user("fpg")

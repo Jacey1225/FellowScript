@@ -668,6 +668,14 @@ final class ChatThreadViewModel: ObservableObject {
         }
         guard let msgText = json["text"] as? String else { return }
         let fromUser = (json["from_user"] as? String) ?? ""
+        // Conversation-membership guard (task 20261117-hub-messages-moved-to-dm):
+        // an inbound frame renders only in the conversation it belongs to.
+        // Fails closed; the row still reaches its real conversation via history
+        // on open and via push.
+        if let contact = currentContact, !ChatFrameRouting.belongs(json, to: contact) {
+            print("[ChatThreadViewModel] dropping frame for another conversation from_user=\(fromUser)")
+            return
+        }
         // Self-echo guard (task 20260902-group-chat-message-duplication): a
         // group send is fanned out to every member in `to_users`, including the
         // sender. The backend no longer re-delivers to the sender, but this
@@ -4025,5 +4033,20 @@ private struct ChatToastRow: View {
             try? await Task.sleep(nanoseconds: UInt64(toast.seconds * 1_000_000_000))
             onDismiss()
         }
+    }
+}
+
+
+/// Pure routing decision for inbound chat frames (task 20261117-hub-messages-moved-to-dm).
+/// Group view accepts only frames carrying its own group_id; DM view accepts
+/// only frames with no group_id whose from_user is that friend. Everything else
+/// is dropped from the open view.
+enum ChatFrameRouting {
+    static func belongs(_ json: [String: Any], to contact: FSContact) -> Bool {
+        let gid = ((json["group_id"] as? String) ?? "").lowercased()
+        if contact.type == .group { return gid == contact.id.lowercased() }
+        guard gid.isEmpty else { return false }
+        let from = (json["from_user"] as? String) ?? ""
+        return !from.isEmpty && from.lowercased() == contact.id.lowercased()
     }
 }

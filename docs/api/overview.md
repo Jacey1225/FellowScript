@@ -261,7 +261,7 @@ Per-kind upload limits (server-enforced via the presigned POST policy's `content
 | Method | Route | Description |
 |---|---|---|
 | GET | `/subscriptions/user/{user_id}` | Get current subscription + usage summary |
-| POST | `/subscriptions/checkout` | Create a Stripe Checkout session (web). Body: `{user_id, member_count, promo_code?}` (1-8) — price is looked up server-side by count. With `PROMO_CODES_ENABLED` on, an optional `promo_code` is re-validated server-side and applies the first-month coupon; any invalid code returns a uniform `400 {code: "invalid_promo_code"}` and creates no session. Ignored while the flag is off |
+| POST | `/subscriptions/checkout` | Create a Stripe Checkout session (web). Body: `{user_id, member_count, promo_code?}` (any whole number >= 1, up to the `seat_pricing.json` abuse guard, default 100; out of range is `400`) — price is computed server-side by count (`price_for`). `409 {code: "apple_subscription_active"}` if the plan is billed by Apple, `409 {code: "plan_already_active"}` if a Stripe plan is already active. With `PROMO_CODES_ENABLED` on, an optional `promo_code` is re-validated server-side and applies the first-month coupon; any invalid code returns a uniform `400 {code: "invalid_promo_code"}` and creates no session. Ignored while the flag is off |
 | POST | `/subscriptions/stripe/webhook` | Stripe webhook handler |
 | POST | `/subscriptions/apple/sync` | Record/refresh a plan from a StoreKit 2 signed transaction (iOS). One of 8 fixed-price products maps to a member count server-side |
 | POST | `/subscriptions/apple/notifications` | Apple App Store Server Notification handler |

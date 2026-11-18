@@ -41,7 +41,8 @@ os.environ.setdefault("AWS_SECRET_ACCESS_KEY", "dummy")
 os.environ.setdefault("AWS_DEFAULT_REGION", "us-east-1")
 
 from fastapi.testclient import TestClient  # noqa: E402
-from db import DBManager  # noqa: E402
+from db import DBManager
+from _paid_user import grant_paid  # noqa: E402
 from backend.interactions.agent import AgentManager  # noqa: E402
 import main as main_module  # noqa: E402
 
@@ -72,6 +73,7 @@ def signup(client, username):
 
 
 def make_agent(user_id: str) -> str:
+    grant_paid(user_id)  # scheduled devotions are paid-only
     agent_id = str(uuid.uuid4())
     db = DBManager()
     try:

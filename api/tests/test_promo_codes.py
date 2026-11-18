@@ -494,7 +494,7 @@ def test_checkout(client, admin, stubs):
     check("no trial alongside promo", "trial_period_days" not in kw["subscription_data"])
     check("price remains server-authoritative (unit_amount unchanged)",
           kw["line_items"][0]["price_data"]["unit_amount"] == stripe_service.price_for(1)
-          == 499)
+          == 500)
 
     r, kw = checkout(buyer, btok, member_count=1)
     check("no code -> 200, no discounts", r.status_code == 200 and "discounts" not in kw, str(kw))

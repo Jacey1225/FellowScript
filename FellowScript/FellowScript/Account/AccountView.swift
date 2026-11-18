@@ -42,11 +42,11 @@ struct AccountView: View {
     @State var showInviteField = false
     @State var codeCopied = false
     @ObservedObject var store = StoreKitManager.shared
+    // US-storefront web checkout gate (task 20261117-web-only-payments). Non-US/unknown = StoreKit UI.
+    @ObservedObject var webGate = WebCheckoutGate.shared
 
-    // Subscription: member-count picker for a new plan (1-8)
+    // Subscription: member-count picker for a new plan (StoreKit tiers 1-8; non-US storefronts)
     @State var selectedMemberCount = 1
-    // Subscription: host's in-progress seat-count edit on an active plan
-    @State var editMemberCount: Int? = nil
     // Subscription: "What's included" benefits disclosure — shared by the
     // active-subscriber and pre-purchase states, which are mutually exclusive
     // branches of the same section, so one toggle is safe. Pure UI display

@@ -253,8 +253,8 @@ def test_config():
         v2 = {f"com.fellowscript.access.{n}": ("invite_reward_50_v2" if i == 0 else f"invite_reward_50_v2_{i + 1}")
               for i, n in enumerate(_PRODUCTS)}
         check("versioned v2 offer codes validate", attempt(APPLE_PROMO_OFFERS=json.dumps(v2)) is None)
-        check("price table is the post-cut table",
-              [stripe_service.price_for(n) for n in range(1, 9)] == [499, 810, 1215, 1620, 2025, 2430, 2835, 3240])
+        check("price table is the seat formula (500/seat, 10% off from 2)",
+              [stripe_service.price_for(n) for n in range(1, 9)] == [500, 900, 1350, 1800, 2250, 2700, 3150, 3600])
         # enabled: key loaded
         check("enabled + valid key validates", attempt(OWNER_REWARDS_ENABLED="true") is None)
         check("enabled loads private key", ow.rewards_config().private_key is not None)

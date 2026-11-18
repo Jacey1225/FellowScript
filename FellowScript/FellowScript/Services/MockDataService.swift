@@ -370,6 +370,8 @@ protocol DataServiceProtocol {
     func acceptSubRequest(subscriptionId: String, fromUserId: String) async throws
     func declineSubRequest(subscriptionId: String, fromUserId: String) async throws
     func syncAppleSubscription(userId: String, jws: String) async throws -> FSSubscription?
+    /// Server price quote for the US web checkout (task 20261117-web-only-payments).
+    func fetchSeatQuote(seats: Int) async throws -> FSSeatQuote
     // Owner rewards (task 20261001-promo-owner-rewards). Default implementations
     // (extension below) report "unavailable"; NetworkService supplies the real ones.
     func fetchRewardSummary(userId: String) async throws -> FSRewardSummary?
@@ -401,6 +403,14 @@ extension DataServiceProtocol {
 // conformers (MockDataService, test doubles) keep compiling. They throw
 // rather than return invented values (throw-not-fabricate); only
 // NetworkService talks to the real endpoints.
+// Task 20261117-web-only-payments: default so existing conformers keep compiling;
+// throws rather than inventing a price (callers show "See price on the website").
+extension DataServiceProtocol {
+    func fetchSeatQuote(seats: Int) async throws -> FSSeatQuote {
+        throw AppError.networkError("Price unavailable.")
+    }
+}
+
 extension DataServiceProtocol {
     private var groupInfoUnsupported: AppError { AppError.networkError("Group info isn't available right now.") }
     func fetchGroupInfo(userId: String, groupId: String) async throws -> FSGroupInfo { throw groupInfoUnsupported }
@@ -1094,7 +1104,7 @@ final class MockDataService: DataServiceProtocol {
         subscribed: true, plan_type: "group", window_days: 7,
         resources: [
             "notes":        FSUsageResource(unlimited: true, used: 0, limit: 5, remaining: nil),
-            "agent_events": FSUsageResource(unlimited: true, used: 0, limit: 1,  remaining: nil),
+            "agent_events": FSUsageResource(unlimited: true, used: 0, limit: 0,  remaining: nil),
         ]
     )
     func fetchUsage(userId: String) async throws -> FSUsage? {
@@ -1151,6 +1161,10 @@ enum AppError: LocalizedError {
             if resource == "agent_events" {
                 // User-facing term is "scheduled devotions"; the wire name
                 // "agent_events" is a public identifier and stays as-is.
+                if limit == 0 {
+                    return "Scheduled devotions are for subscribers. "
+                         + "Upgrade to a Group plan for as many as you like, such as one for morning and one for bedtime."
+                }
                 return "Your free plan includes \(limit) scheduled devotion\(limit == 1 ? "" : "s"). "
                      + "Upgrade to a Group plan for as many as you like, such as one for morning and one for bedtime."
             }

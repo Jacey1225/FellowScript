@@ -1,0 +1,17 @@
+{
+  "seat_pricing": {
+    "min_members": 1,
+    "max_members": 100,
+    "base_per_seat_cents": 500,
+    "group_discount_percent": 10,
+    "discount_start_seats": 2
+  },
+  "legacy_seat_pricing": {
+    "_note": "FROZEN. Schedule in force before 2026-11-18. Used ONLY to reprice subscriptions that already existed (stored price_cents != the new formula for their seat count) when their host changes seats. Never used for new checkouts. Do not edit.",
+    "max_members": 100,
+    "tier_table_cents": {
+      "1": 499, "2": 810, "3": 1215, "4": 1620, "5": 2025, "6": 2430, "7": 2835, "8": 3240
+    },
+    "extra_seat_cents": 405
+  }
+}

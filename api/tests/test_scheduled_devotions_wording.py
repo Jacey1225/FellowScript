@@ -24,7 +24,9 @@ def check(name, cond):
 
 # Public identifier + limit semantics unchanged (older app builds rely on them).
 check("FREE_LIMITS keeps 'agent_events' key", "agent_events" in FREE_LIMITS)
-check("free plan allows exactly 1 scheduled devotion", FREE_LIMITS.get("agent_events") == 1)
+check("free plan allows 0 scheduled devotions (paid-only)", FREE_LIMITS.get("agent_events") == 0)
+from schemas.subscription import PAID_ONLY_RESOURCES  # noqa: E402
+check("scheduled_devotions flagged paid-only", PAID_ONLY_RESOURCES.get("scheduled_devotions") is True)
 
 # Push notification titles/bodies must not expose the old feature terms.
 forbidden = re.compile(r"agent event|heartbeat|automation", re.I)

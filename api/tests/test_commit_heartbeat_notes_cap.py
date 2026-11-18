@@ -37,6 +37,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from db import DBManager
+from _paid_user import devotion_gate_open
 from backend.auth.sessions import SessionManager
 from backend.interactions.agent import AgentManager
 from routes.agent import agent_router
@@ -171,6 +172,11 @@ def cleanup(user_id: str):
 
 
 def main():
+    with devotion_gate_open():
+        _main()
+
+
+def _main():
     original_call_api = AgentManager._call_api
     AgentManager._call_api = _stub_call_api
 

@@ -2,7 +2,7 @@
 
 Thin wrapper around the Stripe SDK: creates hosted Checkout Sessions for the
 subscription flow (optional trial per TRIAL_MONTHS), verifies incoming webhooks, and cancels
-subscriptions. All plan pricing is derived from GROUP_PRICE_CENTS (inline
+subscriptions. All plan pricing is derived from price_for / seat_pricing.json (inline
 price_data) so no pre-created Stripe Products/Prices are required.
 
 Secrets come from the environment (same pattern as DB_PASSWORD / APNs):
@@ -15,7 +15,7 @@ Secrets come from the environment (same pattern as DB_PASSWORD / APNs):
 import os
 import logging
 import stripe
-from schemas.subscription import price_for, MIN_MEMBERS, MAX_MEMBERS
+from schemas.subscription import price_for, MIN_MEMBERS, MAX_MEMBERS  # noqa: F401 (re-exported)
 
 logger = logging.getLogger(__name__)
 
@@ -180,7 +180,7 @@ def create_checkout_session(user_id: str, email: str, member_count: int,
                             promo: dict | None = None) -> str:
     """Create a subscription Checkout Session; return its URL.
 
-    Uses inline ``price_data`` derived from GROUP_PRICE_CENTS, so pricing is
+    Uses inline ``price_data`` computed by schemas.subscription.price_for (api/config/seat_pricing.json), so pricing is
     server-authoritative and no dashboard Products/Prices are needed. A free
     trial is applied only when the TRIAL_MONTHS config is > 0 (production: 0,
     so the buyer is charged immediately); ``trial_period_days`` is omitted
@@ -192,12 +192,10 @@ def create_checkout_session(user_id: str, email: str, member_count: int,
     for group plans and when a trial is configured (no stacking).
 
     Raises:
-        ValueError: if ``member_count`` is outside 1-8, or a promo is combined
+        ValueError: if ``member_count`` is not a whole number in [MIN_MEMBERS, MAX_MEMBERS], or a promo is combined
             with a group plan or a trial.
     """
-    if not (MIN_MEMBERS <= member_count <= MAX_MEMBERS):
-        raise ValueError(f"member_count must be between {MIN_MEMBERS} and {MAX_MEMBERS}")
-    price_cents = price_for(member_count)
+    price_cents = price_for(member_count)  # raises ValueError out of range (fail closed)
     months = trial_months()
     metadata = {"user_id": user_id, "member_count": str(member_count)}
     extra = {}
@@ -230,6 +228,51 @@ def create_checkout_session(user_id: str, email: str, member_count: int,
         **extra,
     )
     return session.url
+
+
+def update_subscription_seats(stripe_sub_id: str, member_count: int,
+                              price_cents: int | None = None,
+                              expected_current_cents: int | None = None) -> None:
+    """Re-price a live Stripe subscription to ``member_count`` seats.
+
+    The price is computed server-side (``price_for``) and applied to the
+    existing item with prorations, so billing always matches the stored seat
+    count. Raises ValueError for an invalid count or a subscription shape we
+    did not create (not exactly one item); Stripe errors propagate so the
+    caller can refuse to change its own record.
+    """
+    # Callers re-pricing an EXISTING plan pass ``price_cents`` from
+    # schemas.subscription.seat_change_price (legacy plans keep the legacy
+    # schedule). Default is the current formula for new plans.
+    if price_cents is None:
+        price_cents = price_for(member_count)
+    else:
+        price_for(member_count)  # still validates the count (fail closed)
+    sub = _plain(stripe.Subscription.retrieve(stripe_sub_id))
+    items = (sub.get("items") or {}).get("data") or []
+    if len(items) != 1:
+        raise ValueError("unexpected subscription shape")
+    item = items[0]
+    product = (item.get("price") or {}).get("product")
+    if not product:
+        raise ValueError("unexpected subscription shape")
+    live = (item.get("price") or {}).get("unit_amount")
+    if expected_current_cents is not None and live is not None and live != expected_current_cents:
+        raise ValueError("stored price does not match Stripe; refusing to reprice")
+    stripe.Subscription.modify(
+        stripe_sub_id,
+        items=[{
+            "id": item["id"],
+            "price_data": {
+                "currency": "usd",
+                "product": product if isinstance(product, str) else product.get("id"),
+                "unit_amount": price_cents,
+                "recurring": {"interval": "month"},
+            },
+        }],
+        metadata={**(sub.get("metadata") or {}), "member_count": str(member_count)},
+        proration_behavior="create_prorations",
+    )
 
 
 def create_donation_session(amount_cents: int, email: str = "") -> str:

@@ -20,6 +20,7 @@ from fastapi.testclient import TestClient  # noqa: E402
 
 from db import DBManager  # noqa: E402
 from backend.subscription import stripe_service  # noqa: E402
+from schemas.subscription import price_for  # noqa: E402
 from backend.subscription.stripe_service import TrialConfigError  # noqa: E402
 from routes.subscription import subscription_router  # noqa: E402
 
@@ -132,7 +133,7 @@ def test_checkout_params():
     check("TRIAL_MONTHS=0: mode subscription, price_data unchanged",
           kw["mode"] == "subscription"
           and kw["line_items"][0]["price_data"]["unit_amount"] == stripe_service.price_for(1)
-          and kw["line_items"][0]["price_data"]["unit_amount"] == 499,
+          and kw["line_items"][0]["price_data"]["unit_amount"] == price_for(1),
           str(kw["line_items"]))
     # The schema constant (TRIAL_MONTHS=1) must no longer drive checkout.
     check("schema TRIAL_MONTHS constant does not leak into checkout", "trial_period_days" not in sd)
@@ -146,11 +147,13 @@ def test_checkout_params():
 
     set_env("0")
     stripe_service.validate_trial_config()
-    try:
-        stripe_service.create_checkout_session("u1", "u@example.com", 9)
-        check("member_count out of range still ValueError", False, "no raise")
-    except ValueError:
-        check("member_count out of range still ValueError", True)
+    from schemas.subscription import MAX_MEMBERS
+    for bad in (0, MAX_MEMBERS + 1):
+        try:
+            stripe_service.create_checkout_session("u1", "u@example.com", bad)
+            check(f"member_count={bad} out of range still ValueError", False, "no raise")
+        except ValueError:
+            check(f"member_count={bad} out of range still ValueError", True)
 
     set_env("0")
     stripe_service._trial_months = None

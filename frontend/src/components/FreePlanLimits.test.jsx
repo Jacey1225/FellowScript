@@ -9,13 +9,14 @@ const USAGE = {
   subscribed: false, window_days: 7,
   resources: {
     notes: { unlimited: false, used: 2, limit: 5, remaining: 3 },
-    agent_events: { unlimited: false, used: 0, limit: 1, remaining: 1 },
+    agent_events: { unlimited: false, used: 0, limit: 0, remaining: 0 },
     sessions: { unlimited: false, used: 0, limit: 1, remaining: 1 },
     agent_notifications: { unlimited: false, used: 0, limit: 3, remaining: 3 },
   },
   paid_only: {
     session_summaries: { allowed: false, free_allowed: false },
     explorer_publish: { allowed: false, free_allowed: false },
+    scheduled_devotions: { allowed: false, free_allowed: false },
   },
 };
 
@@ -24,10 +25,10 @@ describe('FreePlanLimits', () => {
     render(<FreePlanLimits usage={USAGE} />);
     const list = screen.getByTestId('free-plan-limits');
     expect(within(list).getByText('5 per week')).toBeInTheDocument();
-    expect(within(list).getByText('1 in total')).toBeInTheDocument();
+    expect(within(list).queryByText('0 in total')).toBeNull();
     expect(within(list).getByText('1 at a time')).toBeInTheDocument();
     expect(within(list).getByText('Join as many as you like')).toBeInTheDocument();
-    expect(within(list).getAllByText('Subscribers only')).toHaveLength(2);
+    expect(within(list).getAllByText('Subscribers only')).toHaveLength(3);
     expect(within(list).getByText('Browsing and joining stay free')).toBeInTheDocument();
   });
 

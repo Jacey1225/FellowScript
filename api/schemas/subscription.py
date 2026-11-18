@@ -4,27 +4,127 @@ import uuid
 from pathlib import Path
 from datetime import datetime
 
-# Server-authoritative price table for the single "group" plan tier. The host
-# picks how many people (1-8) the plan covers; price is looked up by that
-# count here — never trusted from the client.
-#
-# Price cut 2026-10-01 (task 20261001-subscription-price-cut). Rule:
-#   1 member  = 499 (pinned: 50% of the old 999/1000 tier).
-#   2-8       = old tier price x 0.45 (50% off, then a further 10% off), rounded
-#               half-up to the nearest 5 cents.
-# Old table (kept only in api/scripts/stripe_price_migration.py as OLD_PRICE_CENTS):
-#   1000, 1799, 2699, 3599, 4499, 5399, 6299, 7199.
-# Mirrored (not fetched) by frontend/src/components/SubscriptionCard.jsx and the
-# iOS fallback in Account/AccountView+Subscription.swift; a drift test compares them.
-GROUP_PRICE_CENTS: dict[int, int] = {
-    1: 499, 2: 810, 3: 1215, 4: 1620, 5: 2025, 6: 2430, 7: 2835, 8: 3240,
-}
-MIN_MEMBERS = 1
-MAX_MEMBERS = 8
+# Server-authoritative seat pricing for the single "group" plan tier. The host
+# picks how many people the plan covers (any count >= 1); price is computed
+# here from api/config/seat_pricing.json -- never trusted from the client and
+# never hardcoded in code (Configuration Philosophy). Web-only payments (task
+# 20261117-web-only-payments) removed the old 8-member cap and the old tier
+# table (1=499 ... 8=3240; historical copy lives only in
+# api/scripts/stripe_price_migration.py). Formula, decided by Jacey 2026-11-18:
+#   n <  discount_start_seats : n * base_per_seat_cents
+#   n >= discount_start_seats : round_half_up(n * base * (100 - discount) / 100)
+# Defaults: base 500, discount 10%, start 2 => 1 seat $5.00, 2 seats $9.00,
+# 10 seats $45.00. ``max_members`` (default 100) is only an abuse guard: counts
+# outside [min_members, max_members] raise ValueError (fail closed, no fallback
+# price). Mirrored (not fetched) by the web and iOS fallbacks; drift tests
+# compare them to price_for.
+_SEAT_PRICING_PATH = Path(__file__).resolve().parents[1] / "config" / "seat_pricing.json"
+_SEAT_PRICING_KEYS = {"min_members", "max_members", "base_per_seat_cents",
+                      "group_discount_percent", "discount_start_seats"}
+
+
+def _load_seat_pricing() -> dict:
+    try:
+        raw = json.loads(_SEAT_PRICING_PATH.read_text())["seat_pricing"]
+        if set(raw) != _SEAT_PRICING_KEYS:
+            raise ValueError("unexpected keys")
+        if any(isinstance(v, bool) or not isinstance(v, int) for v in raw.values()):
+            raise ValueError("all values must be integers")
+        if raw["min_members"] < 1 or raw["max_members"] < raw["min_members"]:
+            raise ValueError("invalid member bounds")
+        if raw["base_per_seat_cents"] < 1:
+            raise ValueError("base_per_seat_cents must be positive")
+        if not (0 <= raw["group_discount_percent"] < 100):
+            raise ValueError("group_discount_percent must be in [0, 100)")
+        if raw["discount_start_seats"] < 1:
+            raise ValueError("discount_start_seats must be >= 1")
+    except (OSError, ValueError, KeyError, TypeError, AttributeError) as e:
+        raise RuntimeError(f"seat_pricing.json missing or invalid: {e}") from None
+    return raw
+
+
+def _load_legacy_seat_pricing() -> dict:
+    try:
+        raw = json.loads(_SEAT_PRICING_PATH.read_text())["legacy_seat_pricing"]
+        raw = {k: v for k, v in raw.items() if k != "_note"}
+        if set(raw) != {"max_members", "tier_table_cents", "extra_seat_cents"}:
+            raise ValueError("unexpected keys")
+        table = {int(k): v for k, v in raw["tier_table_cents"].items()}
+        hi, extra = raw["max_members"], raw["extra_seat_cents"]
+        if any(isinstance(v, bool) or not isinstance(v, int) for v in (*table.values(), hi, extra)):
+            raise ValueError("all values must be integers")
+        if sorted(table) != list(range(1, len(table) + 1)) or hi < len(table) or extra < 1 \
+                or any(v < 1 for v in table.values()):
+            raise ValueError("invalid legacy table")
+    except (OSError, ValueError, KeyError, TypeError, AttributeError) as e:
+        raise RuntimeError(f"seat_pricing.json legacy block missing or invalid: {e}") from None
+    return {"max_members": hi, "table": table, "extra": extra}
+
+
+SEAT_PRICING = _load_seat_pricing()
+LEGACY_SEAT_PRICING = _load_legacy_seat_pricing()
+MIN_MEMBERS = SEAT_PRICING["min_members"]
+MAX_MEMBERS = SEAT_PRICING["max_members"]
 
 
 def price_for(member_count: int) -> int:
-    return GROUP_PRICE_CENTS.get(member_count, GROUP_PRICE_CENTS[MIN_MEMBERS])
+    """Monthly price in cents for ``member_count`` seats.
+
+    Raises:
+        ValueError: not an int (bool rejected) or outside [MIN_MEMBERS, MAX_MEMBERS].
+    """
+    if isinstance(member_count, bool) or not isinstance(member_count, int) \
+            or not (MIN_MEMBERS <= member_count <= MAX_MEMBERS):
+        raise ValueError(f"member_count must be a whole number between {MIN_MEMBERS} and {MAX_MEMBERS}")
+    cfg = SEAT_PRICING
+    gross = member_count * cfg["base_per_seat_cents"]
+    if member_count < cfg["discount_start_seats"]:
+        return gross
+    return (gross * (100 - cfg["group_discount_percent"]) + 50) // 100
+
+
+def legacy_price_for(member_count: int) -> int:
+    """FROZEN pre-2026-11-18 schedule (tier table for 1-8, then +extra per seat).
+
+    Only for repricing subscriptions that already existed; new checkouts always
+    use ``price_for``. Raises ValueError outside [1, legacy max_members].
+    """
+    cfg = LEGACY_SEAT_PRICING
+    if isinstance(member_count, bool) or not isinstance(member_count, int) \
+            or not (1 <= member_count <= cfg["max_members"]):
+        raise ValueError(f"member_count must be a whole number between 1 and {cfg['max_members']}")
+    table = cfg["table"]
+    top = max(table)
+    if member_count <= top:
+        return table[member_count]
+    return table[top] + (member_count - top) * cfg["extra"]
+
+
+def is_legacy_plan(max_members, price_cents) -> bool:
+    """True if a stored plan row is on the legacy schedule.
+
+    Marker (no data migration needed): every row written by the new code stores
+    ``price_for(max_members)`` in ``price_cents``. A paid row whose stored price
+    does NOT equal the new formula for its stored seat count predates the new
+    pricing, so it is legacy. The two schedules never coincide for any count in
+    1-100 (asserted in tests), so the check is unambiguous.
+    """
+    try:
+        return int(price_cents) != price_for(int(max_members))
+    except (TypeError, ValueError):
+        return True  # unreadable/out-of-range stored data: never move to the new formula
+
+
+def seat_change_price(max_members, price_cents, new_count: int) -> int:
+    """Monthly price in cents after a seat change on an existing plan.
+
+    Legacy plans stay on the legacy schedule; new-schedule plans use ``price_for``.
+    Raises ValueError for an invalid ``new_count`` (fail closed).
+    """
+    if is_legacy_plan(max_members, price_cents):
+        return legacy_price_for(new_count)
+    return price_for(new_count)
+
 
 # Trial length for plans created through the internal create_subscription path
 # (SubscriptionsManager.create_subscription). NOT the web checkout trial: Stripe
@@ -92,6 +192,12 @@ def _load_free_limits_config() -> dict:
     if set(counts) != {"notes", "agent_events", "announcements"}:
         raise RuntimeError("free_limits.json: counts keys must be notes, agent_events, announcements")
     for k, v in counts.items():
+        if k == "agent_events":
+            # 0 = scheduled devotions are paid-only (task
+            # 20261117-scheduled-devotions-paid-only). Never negative.
+            if isinstance(v, bool) or not isinstance(v, int) or v < 0:
+                raise RuntimeError("free_limits.json: counts.agent_events must be a non-negative integer")
+            continue
         _pos_int(v, f"counts.{k}")
     if set(raw["sessions"]) != {"max_active"}:
         raise RuntimeError("free_limits.json: sessions keys must be exactly max_active")
@@ -112,6 +218,10 @@ FREE_LIMITS: dict[str, int] = {
 }
 # Resources with no free allowance. True = blocked for free users (fail closed).
 PAID_ONLY_RESOURCES: dict[str, bool] = dict(_FREE_CFG["paid_only"])
+# Scheduled devotions (agent_events) are paid-only when the free allowance is 0.
+# Derived from the one config value so it cannot drift; surfaced in the usage
+# payload's "paid_only" map so clients show a locked state, not "0 of 0".
+PAID_ONLY_RESOURCES["scheduled_devotions"] = FREE_LIMITS["agent_events"] == 0
 NOTES_WINDOW_DAYS = _FREE_CFG["notes_window_days"]
 ANNOUNCEMENTS_WINDOW_DAYS = _FREE_CFG["announcements_window_days"]
 
@@ -149,7 +259,7 @@ class Subscription(BaseModel):
     card_exp_year: str = Field(default="", description="display only, e.g. '2027'")
     status: str = Field(default="inactive", description="trialing | active | past_due | canceled | inactive")
     price_cents: int = Field(default=1000, description="derived from member_count")
-    max_members: int = Field(default=1, description="the host-selected member_count (1-8)")
+    max_members: int = Field(default=1, description="the host-selected member_count (seat count)")
     trial_end: str = Field(default="", description="when the free trial ends / first billing date")
     current_period_end: str = Field(default="", description="next billing date")
     created_at: str = Field(default_factory=lambda: str(datetime.now()))

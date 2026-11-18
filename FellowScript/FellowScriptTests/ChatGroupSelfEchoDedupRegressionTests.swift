@@ -227,3 +227,27 @@ final class ChatGroupSelfEchoDedupRegressionTests: XCTestCase {
         await vm.disconnect()
     }
 }
+
+
+/// Task 20261117-hub-messages-moved-to-dm: a frame renders only in its own conversation.
+final class ChatFrameRoutingTests: XCTestCase {
+    private let hub = FSContact(id: "group-1", name: "Hub", type: .group, toUsers: ["me", "friend-a"])
+    private let dmA = FSContact(id: "friend-a", name: "A", type: .friend, toUsers: ["friend-a"])
+
+    func testDMFrameRejectedWhileGroupOpen() {
+        XCTAssertFalse(ChatFrameRouting.belongs(["from_user": "friend-a", "group_id": ""], to: hub))
+        XCTAssertFalse(ChatFrameRouting.belongs(["from_user": "friend-a"], to: hub))
+    }
+    func testOtherGroupFrameRejected() {
+        XCTAssertFalse(ChatFrameRouting.belongs(["from_user": "friend-a", "group_id": "group-2"], to: hub))
+        XCTAssertFalse(ChatFrameRouting.belongs(["from_user": "friend-a", "group_id": "group-1"], to: dmA))
+    }
+    func testDMFromOtherFriendRejectedWhileDMOpen() {
+        XCTAssertFalse(ChatFrameRouting.belongs(["from_user": "friend-b", "group_id": ""], to: dmA))
+        XCTAssertFalse(ChatFrameRouting.belongs(["text": "x"], to: dmA))
+    }
+    func testMatchingFramesAccepted() {
+        XCTAssertTrue(ChatFrameRouting.belongs(["from_user": "friend-a", "group_id": ""], to: dmA))
+        XCTAssertTrue(ChatFrameRouting.belongs(["from_user": "friend-a", "group_id": "GROUP-1"], to: hub))
+    }
+}

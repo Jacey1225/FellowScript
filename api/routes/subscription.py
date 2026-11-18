@@ -8,7 +8,8 @@ from backend.subscription.limits import LimitsManager
 from backend.subscription import stripe_service
 from backend.subscription import apple_service
 from backend.auth.dependencies import get_current_user, require_match, require_admin
-from schemas.subscription import SubscriptionCreate, SubscriptionUpdate
+from schemas.subscription import (
+    SubscriptionCreate, SubscriptionUpdate, seat_change_price, is_legacy_plan, price_for, SEAT_PRICING)
 from backend.interactions.invites import audit as invite_audit
 from backend.rate_limiting import get_client_ip, limiter
 from backend.subscription.promo import PromoManager, promo_config, promo_enabled
@@ -79,26 +80,61 @@ def _ms(epoch_ms):
 
 @subscription_router.post("/", status_code=201)
 async def create_subscription(sub: SubscriptionCreate, current_user: str = Depends(get_current_user)) -> dict:
-    """Start a new subscription plan; the host becomes its first member.
+    """Disabled: plans are created only by a paid Stripe checkout (webhook) or an
+    Apple sync. With the 8-seat cap removed, an unpaid self-serve create path
+    would hand out arbitrarily large plans for free, so it fails closed.
 
-    Args:
-        sub: Plan payload. ``member_count`` (1-8) determines the price and
-            member cap server-side.
-
-    Returns:
-        dict: ``{"id": str}`` of the created plan.
+    Raises:
+        HTTPException 403: always (wrong caller) or 410 for the caller's own request.
     """
     if sub.user_id != current_user:
         raise HTTPException(status_code=403, detail="Forbidden")
-    db = SubscriptionsManager()
-    try:
-        return {"id": db.create_subscription(sub)}
-    finally:
-        db.close()
+    raise HTTPException(status_code=410, detail="Plans are started from the website checkout.")
 
 
 # ── Stripe billing (web) ────────────────────────────────────────────────────────
 # These literal routes are declared before the "/{subscription_id}" wildcard.
+
+@subscription_router.get("/quote")
+async def seat_quote(seats: int, current_user: str = Depends(get_current_user)) -> dict:
+    """Read-only price quote (advisory; checkout and seat changes re-price server-side).
+
+    Shape: ``{seats, unit_cents, discount_percent, discount_start_seats, total_cents,
+    currency, min_seats, max_seats, legacy, blocked, blocked_reason}``.
+    - New/free/member callers: total = ``price_for(seats)`` (the formula).
+    - A host with an existing Stripe plan on the legacy schedule: total from
+      ``seat_change_price`` (what the PUT would charge); ``legacy`` is true and
+      unit/discount describe the formula, not the legacy total.
+    - A caller with an active Apple-billed plan: ``blocked`` true,
+      ``blocked_reason`` "apple_subscription_active", ``total_cents`` null.
+    Out-of-range or non-integer seats: 422 (fail closed).
+    """
+    cfg = SEAT_PRICING
+    if not (cfg["min_members"] <= seats <= cfg["max_members"]):
+        raise HTTPException(status_code=422, detail=f"seats must be between {cfg['min_members']} and {cfg['max_members']}")
+    body = {"seats": seats, "unit_cents": cfg["base_per_seat_cents"],
+            "discount_percent": cfg["group_discount_percent"],
+            "discount_start_seats": cfg["discount_start_seats"], "total_cents": None,
+            "currency": "usd", "min_seats": cfg["min_members"], "max_seats": cfg["max_members"],
+            "legacy": False, "blocked": False, "blocked_reason": None}
+    db = SubscriptionsManager()
+    try:
+        plan = db.get_user_subscription(current_user)
+    finally:
+        db.close()
+    try:
+        if plan and plan.get("provider") == "apple":
+            body["blocked"], body["blocked_reason"] = True, "apple_subscription_active"
+        elif plan and plan.get("user_id") == current_user and plan.get("provider") == "stripe" \
+                and is_legacy_plan(plan.get("max_members"), plan.get("price_cents")):
+            body["legacy"] = True
+            body["total_cents"] = seat_change_price(plan.get("max_members"), plan.get("price_cents"), seats)
+        else:
+            body["total_cents"] = price_for(seats)
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    return body
+
 
 @subscription_router.post("/checkout")
 @limiter.limit(_promo_rate, exempt_when=_promo_limit_exempt)
@@ -121,8 +157,22 @@ async def create_checkout(request: Request, req: CheckoutRequest, current_user: 
     db = SubscriptionsManager()
     try:
         email = db.get_user_email(req.user_id)
+        # Double-billing guard: a user whose plan is billed by Apple must not
+        # also start a Stripe plan (upsert_from_stripe would repoint the row
+        # while Apple kept charging). They manage that plan in Apple Settings;
+        # once it ends they can check out here. Fail closed if unreadable.
+        existing = db.get_user_subscription(req.user_id)
     finally:
         db.close()
+    if existing and existing.get("provider") == "apple":
+        raise HTTPException(status_code=409, detail={
+            "code": "apple_subscription_active",
+            "message": "Your membership is billed through Apple. Manage or cancel it in Apple "
+                       "Settings, then you can start a plan on the website."})
+    if existing and existing.get("provider") == "stripe" and existing.get("status") in ("active", "trialing", "past_due"):
+        raise HTTPException(status_code=409, detail={
+            "code": "plan_already_active",
+            "message": "You already have a plan. Change its seats from your account page."})
     promo = None
     if promo_enabled() and req.promo_code and req.promo_code.strip():
         pm = PromoManager()
@@ -550,7 +600,26 @@ async def update_subscription(subscription_id: str, upd: SubscriptionUpdate, cur
     """
     db = SubscriptionsManager()
     try:
-        _require_host(db, subscription_id, current_user)
+        plan = _require_host(db, subscription_id, current_user)
+        if upd.member_count is not None and upd.member_count != plan.get("max_members"):
+            # Seat count and price must follow billing, never a bare client write.
+            try:
+                new_price = seat_change_price(plan.get("max_members"), plan.get("price_cents"), upd.member_count)  # legacy plans keep the legacy schedule; validates, fail closed
+            except ValueError as e:
+                raise HTTPException(status_code=400, detail=str(e))
+            if plan.get("provider") != "stripe" or plan.get("status") not in ("active", "trialing"):
+                raise HTTPException(status_code=409, detail="Seats on this plan can't be changed here.")
+            stripe_sub = db.get_stripe_sub_id(subscription_id)
+            if not stripe_sub or not stripe_service.is_configured():
+                raise HTTPException(status_code=409, detail="Seats on this plan can't be changed here.")
+            try:
+                stripe_service.update_subscription_seats(
+                    stripe_sub, upd.member_count, new_price, plan.get("price_cents"))
+            except ValueError as e:
+                raise HTTPException(status_code=400, detail=str(e))
+            except Exception as e:
+                logger.error("Stripe seat update error: %s", e)
+                raise HTTPException(status_code=502, detail="Could not update seats.")
         if not db.update_subscription(subscription_id, upd):
             raise HTTPException(status_code=404, detail="Subscription not found")
         return {"ok": True}

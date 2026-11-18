@@ -130,6 +130,9 @@ def main():
                 db.conn.commit()
             finally:
                 db.close()
+            # Scheduled devotions are paid-only; the victim must be a member to own one.
+            from _paid_user import grant_paid
+            grant_paid(uid_v)
 
             r = client.get(f"/agent/{uid_x}/{agent_id}/messages", headers=cookie_header(token_x))
             check("attacker: get_messages on victim's agent -> empty, not 200-with-data",
@@ -157,7 +160,7 @@ def main():
             check("victim's agent still exists after attacker's delete attempt",
                   agent_id in r.json(), str(r.json()))
 
-            # Heartbeat: victim adds one (free-tier agent_events cap is 1/user).
+            # Heartbeat: victim adds one (scheduled devotions are paid-only; victim is granted a membership above).
             r = client.post(f"/agent/{uid_v}/{agent_id}/heartbeat",
                              json={"prompt": "victim's private heartbeat prompt", "timestamps": [None] * 31},
                              headers=cookie_header(token_v))
@@ -189,8 +192,12 @@ def main():
 
                 r = client.post(f"/agent/{uid_x}/{agent_id}/{hb_id}/commit_heartbeat",
                                  json={"prompt": "trigger"}, headers=cookie_header(token_x))
-                check("attacker: commit_heartbeat on victim's heartbeat -> {'error': ...}, not a real fire",
-                      r.status_code == 200 and "error" in r.json(), str(r.status_code) + " " + str(r.json()))
+                # The attacker is a free user, so the paid-only gate now refuses before the
+                # ownership lookup (403); either way it must never be a real fire.
+                body = r.json()
+                check("attacker: commit_heartbeat on victim's heartbeat -> refused (403 paid-only) or {'error': ...}, not a real fire",
+                      (r.status_code == 403 and body.get("detail", {}).get("resource") == "agent_events")
+                      or (r.status_code == 200 and "error" in body), str(r.status_code) + " " + str(body))
 
                 r = client.delete(f"/agent/{uid_x}/{agent_id}/heartbeat/{hb_id}", headers=cookie_header(token_x))
                 check("attacker: delete_heartbeat on victim's heartbeat -> 204 (scoped no-op)",

@@ -260,6 +260,12 @@ async def get_heartbeats(user_id: str, agent_id: str, _: str = Depends(require_m
 
 @agent_router.put("/{user_id}/{heartbeat_id}/update_heartbeats")
 async def update_heartbeat(user_id: str, heartbeat_id: str, body: dict, _: str = Depends(require_match("user_id"))) -> dict:
+    # Paid-only: a free user may not edit/enable a scheduled devotion either
+    # (existing rows stay stored but locked; delete remains allowed). Fails
+    # closed: a plan-lookup error propagates and nothing is written.
+    gate = check_limit(user_id, "agent_events")
+    if not gate["allowed"]:
+        raise HTTPException(status_code=403, detail=gate)
     group_id = body.get("group_id") or None
     if group_id:
         _require_group_membership(user_id, group_id)
@@ -321,6 +327,11 @@ async def commit_heartbeat(user_id: str, agent_id: str, heartbeat_id: str, body:
         _canonical_for(user_id, agent_id)
         agent_id = _heartbeat_agent_id(user_id, heartbeat_id)
     loop = asyncio.get_running_loop()
+    # Paid-only: a manual/forced fire of a scheduled devotion is blocked for
+    # free users too (data preserved; upgrading restores it).
+    dev_gate = await loop.run_in_executor(None, functools.partial(check_limit, user_id, "agent_events"))
+    if not dev_gate["allowed"]:
+        raise HTTPException(status_code=403, detail=dev_gate)
     gate = await loop.run_in_executor(None, functools.partial(check_limit, user_id, "notes"))
     if not gate["allowed"]:
         raise HTTPException(status_code=403, detail=gate)

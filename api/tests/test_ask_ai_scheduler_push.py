@@ -19,6 +19,7 @@ Run (scratch DB only):  cd api && ../.venv/bin/python tests/test_ask_ai_schedule
 import _thr_common as T  # noqa: E402  (also fixes sys.path)
 from _thr_common import check, sql, make_user, set_flag  # noqa: E402
 import _fake_timeline  # noqa: E402,F401  (stubs timeline + note-template LLM calls)
+from _paid_user import grant_paid  # noqa: E402
 
 import asyncio  # noqa: E402
 import json  # noqa: E402
@@ -57,6 +58,7 @@ def stub_call_api(self, role, messages):
 
 
 def make_agent(uid, name):
+    grant_paid(uid)  # scheduled devotions are paid-only; the job skips free users
     aid = str(uuid.uuid4())
     sql("INSERT INTO agents (_id, user_id, role, name, enabled) VALUES (%s,%s,'',%s,TRUE)", (aid, uid, name))
     return aid

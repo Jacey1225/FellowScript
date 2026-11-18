@@ -48,9 +48,10 @@ enum PlanBlock {
             return info.limit > 0 ? "Free plan includes \(plural(info.limit, "note")) per week."
                                   : "The Free plan has a weekly note limit."
         case "agent_events":
+            // The Free plan has no scheduled devotions (limit 0): subscribers only.
             return info.limit > 0
                 ? "The Free plan includes \(plural(info.limit, "scheduled devotion")). Subscribe for as many as you like."
-                : "The Free plan has a scheduled devotion limit. Subscribe for as many as you like."
+                : "Scheduled devotions are for subscribers."
         case "sessions":
             return info.limit > 0
                 ? "Free plan members can host \(plural(info.limit, "session")) at a time. Finish your current one, or subscribe to host more."
@@ -86,6 +87,17 @@ struct FSPaidOnlyFlag: Codable, Equatable {
 extension FSUsage {
     var sessions: FSUsageResource? { resources["sessions"] }
 
+    /// True when the Free plan has no scheduled devotions at all. Reads the
+    /// server's paid_only.scheduled_devotions flag; an older server that only
+    /// reports resources.agent_events with limit 0 counts too. Cosmetic: the
+    /// server enforces it. Subscribed users are never locked.
+    var scheduledDevotionsLocked: Bool {
+        if subscribed { return false }
+        if let flag = paid_only?["scheduled_devotions"] { return !flag.free_allowed && !flag.allowed }
+        if let r = resources["agent_events"] { return !r.unlimited && r.limit == 0 }
+        return false
+    }
+
     /// "per week" for the 7-day window, otherwise "every N days".
     var windowPhrase: String { window_days == 7 ? "per week" : "every \(window_days) days" }
 
@@ -94,7 +106,11 @@ extension FSUsage {
     var freePlanRows: [FreePlanLimitRow] {
         var rows: [FreePlanLimitRow] = []
         if let n = resources["notes"] { rows.append(.init(label: "Notes", value: "\(n.limit) \(windowPhrase)")) }
-        if let e = resources["agent_events"] { rows.append(.init(label: "Scheduled devotions", value: "\(e.limit) in total")) }
+        if scheduledDevotionsLocked {
+            rows.append(.init(label: "Scheduled devotions", value: "Subscribers only", locked: true))
+        } else if let e = resources["agent_events"] {
+            rows.append(.init(label: "Scheduled devotions", value: "\(e.limit) in total"))
+        }
         if let s = sessions {
             rows.append(.init(label: "Hosting sessions", value: "\(s.limit) at a time", caption: "Join as many as you like"))
         }

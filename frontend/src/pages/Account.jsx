@@ -29,7 +29,7 @@ import { useAuth } from '../context/AuthContext.jsx';
 import { isDesktopApp } from '../lib/desktopScope.js';
 import { API } from '../config.js';
 import { useDeclineFriendRequest } from '../hooks/useDeclineFriendRequest.js';
-import { handleBlockedResponse } from '../lib/upgradePrompt.js';
+import { handleBlockedResponse, showUpgradePrompt } from '../lib/upgradePrompt.js';
 import { useCapabilities } from '../hooks/useCapabilities.js';
 
 dayjs.extend(utc);
@@ -136,6 +136,17 @@ function PaidOnlyRow({ label, info }) {
 }
 
 // "per week" for the 7-day window, otherwise "every N days".
+// Scheduled devotions are Subscribers-only on the Free plan. The server sends
+// paid_only.scheduled_devotions; limit 0 on the legacy resource is the fallback.
+// Cosmetic only: the server enforces the rule on every create/edit/fire path.
+const scheduledDevotionsLocked = (usage) => {
+  if (!usage || usage.subscribed) return false;
+  const flag = usage.paid_only?.scheduled_devotions;
+  if (flag) return flag.free_allowed === false && flag.allowed === false;
+  const r = usage.resources?.agent_events;
+  return !!r && !r.unlimited && r.limit === 0;
+};
+
 const windowHint = (days) => (!days || days === 7 ? 'per week' : `every ${days} days`);
 
 // Converts local "HH:mm" from a dayjs object → UTC "HH:mm" string
@@ -220,6 +231,7 @@ export default function Account() {
   // agent list/create/rename/delete/toggle and no agent picker for devotions.
   const caps  = useCapabilities();
   const askAi = !!caps?.isEnabled?.('ask_ai_default_agent');
+  const devotionsLocked = scheduledDevotionsLocked(usage);
 
   // Agents (legacy, flag off)
   const [agents,        setAgents]        = useState([]);
@@ -1081,7 +1093,9 @@ export default function Account() {
               Plan Usage
             </Text>
             <UsageMeter label="Notes" hint={windowHint(usage.window_days)} data={usage.resources?.notes} />
-            <UsageMeter label="Scheduled devotions" data={usage.resources?.agent_events} />
+            {scheduledDevotionsLocked(usage)
+              ? <PaidOnlyRow label="Scheduled devotions" info={{ allowed: false, free_allowed: false }} />
+              : <UsageMeter label="Scheduled devotions" data={usage.resources?.agent_events} />}
             {usage.resources?.sessions && <UsageMeter label="Hosting sessions" hint="at a time" data={usage.resources.sessions} />}
             <UsageMeter label="Notifications" data={usage.resources?.agent_notifications} />
             <PaidOnlyRow label="Session summaries" info={usage.paid_only?.session_summaries} />
@@ -1091,7 +1105,7 @@ export default function Account() {
                 type="info"
                 showIcon
                 style={{ marginTop: '0.5rem', borderRadius: 8, background: 'rgba(200,134,26,0.08)', border: '1px solid rgba(200,134,26,0.25)' }}
-                message="You're on the Free plan. Subscribe for unlimited notes, scheduled devotions and hosted sessions, plus session summaries and Explorer publishing."
+                message="You're on the Free plan. Subscribe for unlimited notes and hosted sessions, plus scheduled devotions, session summaries and Explorer publishing."
               />
             )}
           </Card>
@@ -1331,12 +1345,17 @@ export default function Account() {
               Scheduled devotions
             </Text>
             <Button size="small" type="text" icon={<PlusOutlined />}
-              onClick={openEventModal}
-              disabled={!askAi && agents.length === 0}
+              onClick={devotionsLocked ? () => showUpgradePrompt({ resource: 'agent_events', paidOnly: true, used: null, limit: 0 }) : openEventModal}
+              disabled={!devotionsLocked && !askAi && agents.length === 0}
               style={{ color: 'rgba(200,134,26,0.6)', fontSize: '0.7rem' }}>
-              New scheduled devotion
+              {devotionsLocked && <LockOutlined aria-hidden="true" style={{ marginRight: 5 }} />}New scheduled devotion
             </Button>
           </div>
+          {devotionsLocked && (
+            <Text style={{ fontFamily: "inherit", fontSize: '0.78rem', color: 'rgba(244,228,193,0.7)', display: 'block', marginBottom: '0.8rem', lineHeight: 1.65 }}>
+              Scheduled devotions are for subscribers. Any you already set up are paused and kept, and they resume if you subscribe. You can still delete them.
+            </Text>
+          )}
           <Text style={{ fontFamily: "inherit", fontSize: '0.74rem', color: 'rgba(244,228,193,0.35)', display: 'block', marginBottom: '1rem', lineHeight: 1.65 }}>
             Pick a time and a prompt. Every day at that time your AI study partner writes a devotion for you and saves it as a note, even when the app is closed. Try a morning devotion, an evening prayer prompt, a weekly recap, or a reading-plan check-in.
           </Text>

@@ -2,6 +2,8 @@
 
 Task `20261001-subscription-price-cut`. Gates changed code, docs and scripts only. Nothing here has been run against live Apple, Stripe or production. An operator runs the steps below by hand, dry-run first.
 
+> **Superseded in part (2026-11-17, web-only payments):** new Apple purchases are no longer sold, so the Apple price-change and promo-offer steps below are deferred. Recommended: cancel `promos --apply --delete-old` and leave the v2 and old promo offers and the `OWNER_REWARDS_ENABLED` / `PROMO_CODES_ENABLED` flags as they are until Jacey decides. Server seat pricing for NEW subscriptions is now a formula in `api/config/seat_pricing.json` (500 per seat, 10% off from 2 seats; see backend.md), so the Stripe table below is historical and `stripe_price_migration.py` must not be run.
+
 ## Tables
 
 Server (Stripe, `GROUP_PRICE_CENTS` in `api/schemas/subscription.py`). Rule: tier 1 pinned at 499. Tiers 2-8 are the old price x 0.45, rounded half-up to 5 cents.

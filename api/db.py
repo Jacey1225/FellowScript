@@ -712,7 +712,7 @@ def create_tables(cur):
         "card_exp_year TEXT DEFAULT '',"
         "status TEXT NOT NULL DEFAULT 'inactive',"
         "price_cents INTEGER NOT NULL DEFAULT 1000,"          # derived from member_count (max_members)
-        "max_members INTEGER NOT NULL DEFAULT 1,"             # host-selected member_count, 1-8
+        "max_members INTEGER NOT NULL DEFAULT 1,"             # host-selected member_count (seat count, no 8 cap)
         # trial_end = first billing date (created_at + trial); current_period_end
         # is the rolling next-billing date, monitored by the scheduler.
         "trial_end TIMESTAMPTZ,"

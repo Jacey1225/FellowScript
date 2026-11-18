@@ -190,7 +190,7 @@ final class ChatRepliesViewModelTests: XCTestCase {
 
     func test_liveFrame_withReplyKeys_carriesQuote() async throws {
         try await withServer(msgs: [orig()]) { server, vm, _ in
-            try server.sendFrame(["id": "m2", "text": "re", "from_user": "bob", "timestamp": "2026-10-10T10:01:00Z",
+            try server.sendFrame(["id": "m2", "text": "re", "from_user": "bob", "group_id": "group-1", "timestamp": "2026-10-10T10:01:00Z",
                                   "reply_to_id": "m1", "reply_to_text": "original", "reply_to_author": "alice", "reply_to_author_id": "u1"])
             await self.eventually("reply bubble") { vm.messages.first(where: { $0.id == "m2" })?.reply?.id == "m1" }
             XCTAssertEqual(vm.messages.first(where: { $0.id == "m2" })?.reply?.text, "original")
@@ -199,7 +199,7 @@ final class ChatRepliesViewModelTests: XCTestCase {
 
     func test_liveFrame_replyToDeleted_hasNoTextOrAuthor() async throws {
         try await withServer(msgs: []) { server, vm, _ in
-            try server.sendFrame(["id": "m2", "text": "re", "from_user": "bob", "timestamp": "2026-10-10T10:01:00Z",
+            try server.sendFrame(["id": "m2", "text": "re", "from_user": "bob", "group_id": "group-1", "timestamp": "2026-10-10T10:01:00Z",
                                   "reply_to_id": "gone", "reply_to_deleted": true])
             await self.eventually("bubble") { vm.messages.contains { $0.id == "m2" } }
             let r = vm.messages.first(where: { $0.id == "m2" })?.reply
@@ -209,7 +209,7 @@ final class ChatRepliesViewModelTests: XCTestCase {
 
     func test_liveFrame_withoutReplyKeys_hasNilReply_backCompat() async throws {
         try await withServer(msgs: []) { server, vm, _ in
-            try server.sendFrame(["id": "m2", "text": "plain", "from_user": "bob", "timestamp": "2026-10-10T10:01:00Z"])
+            try server.sendFrame(["id": "m2", "text": "plain", "from_user": "bob", "group_id": "group-1", "timestamp": "2026-10-10T10:01:00Z"])
             await self.eventually("bubble") { vm.messages.contains { $0.id == "m2" } }
             XCTAssertNil(vm.messages.first(where: { $0.id == "m2" })?.reply)
         }

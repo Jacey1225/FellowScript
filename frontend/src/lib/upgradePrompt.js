@@ -42,6 +42,8 @@ export function upgradeBody(info) {
     case 'notes':
       return limit != null ? `Free plan includes ${plural(limit, 'note')} per week.` : 'The Free plan has a weekly note limit.';
     case 'agent_events':
+      // Free plan has no scheduled devotions at all (limit 0): subscribers only.
+      if (limit === 0 || info?.paidOnly) return 'Scheduled devotions are for subscribers.';
       return limit != null
         ? `The Free plan includes ${plural(limit, 'scheduled devotion')}. Subscribe for as many as you like.`
         : 'The Free plan has a scheduled devotion limit. Subscribe for as many as you like.';
