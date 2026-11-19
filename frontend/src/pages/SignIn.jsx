@@ -7,6 +7,7 @@ import { API } from '../config.js';
 import Seo from '../components/Seo.jsx';
 import { useWarmCanvas } from '../hooks/useWarmCanvas.js';
 import { postAuthPath } from '../lib/pendingInvite.js';
+import { getPendingPurchase } from '../lib/pendingPurchase.js';
 import { hasMfaRequiredFlag, clearMfaRequiredFlag, MFA_SETUP_PATH, MFA_NOTICE_TEXT } from '../lib/adminMfa.js';
 
 const GOOGLE_CLIENT_ID = '667477247503-plvi16hhr4gpigqudkpsc3epsu6edbgq.apps.googleusercontent.com';
@@ -242,6 +243,10 @@ export default function SignIn() {
       >
         <Segmented label="Account" value={activeTab} onChange={setActiveTab}
           options={[{ value: 'signin', label: 'Sign In' }, { value: 'signup', label: 'Create Account' }]} />
+
+        {getPendingPurchase() && (
+          <div className="ff-info" role="status">Signing in to continue your membership.</div>
+        )}
 
         {isSignin ? (
           <form onSubmit={handleSignin} noValidate className="ff-formstack">

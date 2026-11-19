@@ -27,6 +27,7 @@ import DonationButton from '../components/DonationButton.jsx';
 import Seo from '../components/Seo.jsx';
 import { useAuth } from '../context/AuthContext.jsx';
 import { isDesktopApp } from '../lib/desktopScope.js';
+import { webSafeReaderPath } from '../lib/pendingPurchase.js';
 import { API } from '../config.js';
 import { useDeclineFriendRequest } from '../hooks/useDeclineFriendRequest.js';
 import { handleBlockedResponse, showUpgradePrompt } from '../lib/upgradePrompt.js';
@@ -808,7 +809,7 @@ export default function Account() {
   const handleBack = () => {
     const canGoBack = typeof window !== 'undefined' && (window.history.state?.idx ?? 0) > 0;
     if (canGoBack) navigate(-1);
-    else navigate('/reader');
+    else navigate(webSafeReaderPath());
   };
 
   if (!user) return null;

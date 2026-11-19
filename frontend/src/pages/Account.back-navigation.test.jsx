@@ -50,6 +50,7 @@ function renderAccount({ initialEntries, initialIndex }) {
       <Routes>
         <Route path="/prior-page" element={<div data-testid="prior-page" />} />
         <Route path="/reader" element={<div data-testid="reader-page" />} />
+        <Route path="/" element={<div data-testid="home-page" />} />
         <Route path="/account" element={<Account />} />
       </Routes>
     </MemoryRouter>
@@ -74,7 +75,7 @@ describe('Account — page-level back control', () => {
     expect(backBtn).toBeTruthy();
   });
 
-  test('falls back to /reader when there is no prior in-app page (e.g. a fresh window load)', async () => {
+  test('falls back to Home (web; /reader only in the desktop shell) when there is no prior in-app page (e.g. a fresh window load)', async () => {
     // jsdom's real window.history has no idx state here -- mirrors /account
     // being the first route this window ever loaded (fresh desktop window,
     // direct link, bookmark).
@@ -84,7 +85,7 @@ describe('Account — page-level back control', () => {
     const backBtn = await screen.findByRole('button', { name: 'Back' });
     fireEvent.click(backBtn);
 
-    expect(await screen.findByTestId('reader-page')).toBeTruthy();
+    expect(await screen.findByTestId('home-page')).toBeTruthy();
   });
 
   test('returns to the actual prior in-app page rather than the fallback when one exists', async () => {

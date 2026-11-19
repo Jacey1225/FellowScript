@@ -6,6 +6,8 @@
 // once: callers clear it on success, on any terminal 4xx, on Cancel, and on
 // sign-out. Newest link replaces any older pending one.
 import { isWellFormedInviteToken } from './invitesApi.js';
+import { getPendingPurchase, membershipPath } from './pendingPurchase.js';
+import { isDesktopApp } from './desktopScope.js';
 
 const KEY = 'fs_pending_invite';
 export const PENDING_INVITE_TTL_MS = 24 * 60 * 60 * 1000;
@@ -67,7 +69,10 @@ export function clearPendingExplore() {
 
 // Where to land right after a successful sign-in / sign-up: back on the
 // pending invite's screen when there is one, then a pending Explore page
-// (consumed here), otherwise the reader.
+// (consumed here), then a pending membership purchase (left in place until
+// the membership page consumes it), otherwise the reader. The reader is
+// desktop-only: in a web browser /reader redirects to the app-download page,
+// so a web user lands on their account instead (task 20261118).
 export function postAuthPath() {
   const token = getPendingInvite();
   if (token) return `/join/${token}`;
@@ -76,7 +81,9 @@ export function postAuthPath() {
     clearPendingExplore();
     return explore;
   }
-  return '/reader';
+  const purchase = getPendingPurchase();
+  if (purchase) return membershipPath(purchase.seats);
+  return isDesktopApp() ? '/reader' : '/account';
 }
 
 // Group to open in the reader right after a join (desktop). One-shot.

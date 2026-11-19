@@ -57,12 +57,12 @@ describe('pending invite', () => {
     expect(getPendingInvite()).toBeNull();
   });
 
-  test('postAuthPath resumes the join route, else the reader', () => {
-    expect(postAuthPath()).toBe('/reader');
+  test('postAuthPath resumes the join route, else the account page (web)', () => {
+    expect(postAuthPath()).toBe('/account');
     setPendingInvite(T1);
     expect(postAuthPath()).toBe(`/join/${T1}`);
     clearPendingInvite();
-    expect(postAuthPath()).toBe('/reader');
+    expect(postAuthPath()).toBe('/account');
   });
 
   test('group-to-open is one-shot', () => {

@@ -5,6 +5,8 @@ import Home from './pages/Home.jsx';
 import Reader from './pages/Reader.jsx';
 import Account from './pages/Account.jsx';
 import Profile from './pages/Profile.jsx';
+import Membership from './pages/Membership.jsx';
+import AccountSubscribeAlias from './components/AccountSubscribeAlias.jsx';
 import NotificationSettings from './pages/NotificationSettings.jsx';
 import SignIn from './pages/SignIn.jsx';
 import ForgotPassword from './pages/ForgotPassword.jsx';
@@ -137,7 +139,12 @@ export default function App() {
               (desktopScope.js) — a web-marketing-site concern, not something
               the Tauri shell should ever navigate into (design-notes.md §6). */}
           <Route path="/download"  element={<Download />} />
-          <Route path="/account"   element={<Account />} />
+          {/* Task 20261118-public-membership-page: public purchase page (signed
+              out and phones included). Deliberately no ReaderWebRedirect /
+              MobileBlockGate, and not on DESKTOP_ALLOWED_ROUTES. The legacy
+              #/account?subscribe=1&seats=N link aliases to it. */}
+          <Route path="/membership" element={<Membership />} />
+          <Route path="/account"   element={<AccountSubscribeAlias><Account /></AccountSubscribeAlias>} />
           {/* Task 20261030-user-profiles: allowed on desktop via DESKTOP_ALLOWED_ROUTE_PATTERNS. */}
           <Route path="/profile/:userId" element={<Profile />} />
           {/* Task 20261012-notification-settings: push-type toggles sub-page. */}

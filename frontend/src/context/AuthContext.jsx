@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useCallback } from 'react';
 import { API } from '../config.js';
 import { resetSessionEnded } from '../lib/sessionEnd.js';
 import { clearProfileCache } from '../lib/profileCache.js';
+import { clearPendingPurchase } from '../lib/pendingPurchase.js';
 import { clearPendingInvite, clearPendingExplore } from '../lib/pendingInvite.js';
 
 const AuthContext = createContext(null);
@@ -38,6 +39,7 @@ export function AuthProvider({ children }) {
     clearPendingExplore();
     resetSessionEnded();
     clearProfileCache();
+    clearPendingPurchase();
     setUser(null);
   }, []);
 

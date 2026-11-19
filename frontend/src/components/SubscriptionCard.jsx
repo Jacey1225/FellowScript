@@ -99,7 +99,7 @@ export function FreePlanLimits({ usage }) {
 // `onPlanChange` is invoked whenever the acting user's own plan changes (start,
 // cancel, or leave) so the parent can refresh dependent UI — notably the free-tier
 // usage/limits panel, which flips between capped and unlimited with the plan.
-export default function SubscriptionCard({ userId, onPlanChange, usage = null }) {
+export default function SubscriptionCard({ userId, onPlanChange, usage = null, initialSeats }) {
   const [loading,  setLoading]  = useState(true);
   const [plan,     setPlan]     = useState(null);   // the plan the user is on (host or member)
   const [members,  setMembers]  = useState([]);     // group members (host view)
@@ -108,7 +108,7 @@ export default function SubscriptionCard({ userId, onPlanChange, usage = null })
   const [joinable, setJoinable] = useState([]);     // friends' group plans with room
   const [busy,     setBusy]     = useState('');     // key of the in-flight action
   const [msg,      setMsg]      = useState(null);
-  const [selectedCount, setSelectedCount] = useState(() => seatsFromHash(window.location.hash) ?? 1);  // signup member-count picker (prefilled by an iOS checkout link)
+  const [selectedCount, setSelectedCount] = useState(() => initialSeats ?? seatsFromHash(window.location.hash) ?? 1);  // signup member-count picker (prefilled by an iOS checkout link)
   const [editCount, setEditCount] = useState(null);        // host's in-progress seat-count edit
   const [awaitingBrowser, setAwaitingBrowser] = useState(false); // desktop: checkout opened in the system browser
 
