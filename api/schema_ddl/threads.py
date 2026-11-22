@@ -59,11 +59,54 @@ CREATE TABLE IF NOT EXISTS thread_followers (
 )
 """
 
+# Per-user read marker: the highest thread_messages.seq the user has seen in a
+# thread. Separate from thread_followers (which holds only the creator and root
+# author) so any current member can have a marker. Rows die with the thread or
+# the user. No row means nothing read yet.
+_THREAD_READS = """
+CREATE TABLE IF NOT EXISTS thread_reads (
+    thread_id UUID NOT NULL REFERENCES threads(_id) ON DELETE CASCADE,
+    user_id UUID NOT NULL REFERENCES users(_id) ON DELETE CASCADE,
+    last_read_seq BIGINT NOT NULL DEFAULT 0,
+    PRIMARY KEY (thread_id, user_id)
+)
+"""
+
+# Reactions on thread messages (the main-chat table references ``messages``).
+# One row per (message, user, emoji); rows survive a soft delete (readers
+# filter ``thread_messages.deleted_at``) and cascade with the message or user.
+_THREAD_MESSAGE_REACTIONS = """
+CREATE TABLE IF NOT EXISTS thread_message_reactions (
+    message_id UUID NOT NULL REFERENCES thread_messages(_id) ON DELETE CASCADE,
+    user_id UUID NOT NULL REFERENCES users(_id) ON DELETE CASCADE,
+    emoji TEXT NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (message_id, user_id, emoji)
+)
+"""
+
+# Pins scoped to ONE thread (a thread pin never shows in the group's pin list).
+# A pin is shared by every member of the thread. No cap.
+_THREAD_MESSAGE_PINS = """
+CREATE TABLE IF NOT EXISTS thread_message_pins (
+    message_id UUID PRIMARY KEY REFERENCES thread_messages(_id) ON DELETE CASCADE,
+    thread_id UUID NOT NULL REFERENCES threads(_id) ON DELETE CASCADE,
+    pinned_by UUID NOT NULL REFERENCES users(_id) ON DELETE CASCADE,
+    pinned_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+)
+"""
+
 
 def apply(cur) -> None:
     cur.execute(_THREADS)
     cur.execute(_THREAD_MESSAGES)
     cur.execute(_THREAD_FOLLOWERS)
+    cur.execute(_THREAD_READS)
+    cur.execute(_THREAD_MESSAGE_REACTIONS)
+    cur.execute(_THREAD_MESSAGE_PINS)
+    # Reply target: no foreign key and no copy of the original (derived at read
+    # time, like ``messages.reply_to_id``); same-thread is enforced at send.
+    cur.execute("ALTER TABLE thread_messages ADD COLUMN IF NOT EXISTS reply_to_id UUID")
     cur.execute(
         "CREATE UNIQUE INDEX IF NOT EXISTS uq_threads_root_message "
         "ON threads (root_message_id) WHERE root_message_id IS NOT NULL"
@@ -84,4 +127,25 @@ def apply(cur) -> None:
     cur.execute(
         "CREATE INDEX IF NOT EXISTS idx_thread_followers_user "
         "ON thread_followers (user_id)"
+    )
+    cur.execute(
+        "CREATE INDEX IF NOT EXISTS idx_thread_reads_user "
+        "ON thread_reads (user_id)"
+    )
+    # Unread counts scan a thread's messages by seq.
+    cur.execute(
+        "CREATE INDEX IF NOT EXISTS idx_thread_messages_seq "
+        "ON thread_messages (thread_id, seq)"
+    )
+    cur.execute(
+        "CREATE INDEX IF NOT EXISTS idx_thread_message_reactions_user "
+        "ON thread_message_reactions (user_id)"
+    )
+    cur.execute(
+        "CREATE INDEX IF NOT EXISTS idx_thread_message_pins_thread "
+        "ON thread_message_pins (thread_id, pinned_at DESC)"
+    )
+    cur.execute(
+        "CREATE INDEX IF NOT EXISTS idx_thread_message_pins_pinned_by "
+        "ON thread_message_pins (pinned_by)"
     )

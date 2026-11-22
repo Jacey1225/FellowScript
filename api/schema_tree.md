@@ -122,6 +122,9 @@ thread_messages         # module "threads": _id PK, thread_id FK threads CASCADE
                         #   seq (default nextval('messages_seq')), deleted_at, deleted_by FK users SET NULL; INDEX (thread_id, created_at DESC, seq DESC, _id DESC),
                         #   partial INDEX on deleted_by
 thread_followers        # module "threads": PK (thread_id FK threads CASCADE, user_id FK users CASCADE); INDEX (user_id)
+thread_reads            # module "threads": PK (thread_id FK threads CASCADE, user_id FK users CASCADE), last_read_seq; INDEX (user_id)
+thread_message_reactions # module "threads": PK (message_id FK thread_messages CASCADE, user_id FK users CASCADE, emoji); INDEX (user_id)
+thread_message_pins     # module "threads": PK message_id FK thread_messages CASCADE; thread_id FK threads CASCADE, pinned_by FK users CASCADE; INDEX (thread_id, pinned_at DESC), (pinned_by)
 # <!-- /THR -->
 # <!-- JRQ (20261001-explorer-join-requests) -->
 group_join_requests     # module "join_requests": id UUID PK DEFAULT gen_random_uuid(), group_id FK groups ON DELETE CASCADE, user_id FK users ON DELETE CASCADE,

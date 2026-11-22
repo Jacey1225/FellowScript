@@ -452,9 +452,15 @@ def test_no_delete_contract():
     methods = {m for r in routes for m in (r.methods or ())}
     check("threads routes expose only GET/POST/PUT/DELETE", methods <= {"GET", "POST", "PUT", "DELETE", "HEAD", "OPTIONS"}, methods)
     del_routes = [r for r in routes if "DELETE" in (r.methods or ())]
-    check("exactly one DELETE route, on the thread resource itself (no thread-message delete, no restore path)",
-          len(del_routes) == 1 and del_routes[0].path == "/groups/{user_id}/{group_id}/threads/{thread_id}"
-          and not any(re.search(r"restore", r.path) for r in routes), [(r.path, r.methods) for r in del_routes])
+    allowed_del = {
+        "/groups/{user_id}/{group_id}/threads/{thread_id}",
+        # remove-my-reaction / unpin (idempotent undo of the caller's own action, NOT a message delete)
+        "/groups/{user_id}/{group_id}/threads/{thread_id}/messages/{message_id}/reactions",
+        "/groups/{user_id}/{group_id}/threads/{thread_id}/messages/{message_id}/pin",
+    }
+    check("DELETE routes: the thread itself plus reaction-remove and unpin only (no thread-message delete, no restore path)",
+          {r.path for r in del_routes} == allowed_del and not any(re.search(r"restore", r.path) for r in routes),
+          [(r.path, r.methods) for r in del_routes])
     from routes import messages_delete as md_routes
     check("message_delete twin routes only address /messages/{id}, not thread messages",
           all("thread" not in r.path for r in md_routes.messages_delete_router.routes), [r.path for r in md_routes.messages_delete_router.routes])
@@ -485,7 +491,7 @@ def test_rate_limit_fixed_scopes(client):
     src = open(os.path.join(API_DIR, "routes", "threads.py")).read()
     for scope in ("thread_create", "thread_rename", "thread_delete", "threads_list", "thread_messages_page"):
         check(f"fixed scope {scope!r} declared", f'scope="{scope}"' in src)
-    check("every limit uses shared_limit (never a path-bucketed @limiter.limit)", "@limiter.limit" not in src and src.count("shared_limit(") == 5)
+    check("every limit uses shared_limit (never a path-bucketed @limiter.limit)", "@limiter.limit" not in src and src.count("shared_limit(") == 11)
 
 
 def test_logging(client):

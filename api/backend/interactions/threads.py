@@ -33,6 +33,7 @@ from backend.interactions.html_text import clean_shared_note_meta
 from backend.interactions.message_mentions import attach_mentions
 from backend.interactions.message_sender_id import sender_id_entry
 from backend.interactions.send_guard import is_current_member
+from backend.interactions.thread_message_actions import attach_thread_actions
 from backend.interactions.threads_config import get_threads_config
 
 logger = logging.getLogger(__name__)
@@ -132,6 +133,27 @@ def _list_item(summary: dict) -> dict:
     return {k: summary[k] for k in (
         "id", "title", "root_preview", "root_deleted", "reply_count", "last_activity_at", "created_by",
     )}
+
+
+def unread_counts(cur, user_id: str, thread_ids: list[str], authors: list[str]) -> dict[str, int]:
+    """Unread thread messages per thread for ``user_id``: seq above the user's
+    ``thread_reads`` marker (0 when none), live, authored by someone else, and by
+    a visible author (``authors`` is ``groups.author_set``: current members minus
+    both-direction blocks, so blocked senders never count). Own messages never
+    count. One query for the whole page. Read-only."""
+    if not thread_ids:
+        return {}
+    cur.execute(
+        "SELECT tm.thread_id::text, COUNT(*) FROM thread_messages tm "
+        "LEFT JOIN thread_reads tr ON tr.thread_id = tm.thread_id AND tr.user_id = %s::uuid "
+        "WHERE tm.thread_id = ANY(%s::uuid[]) AND tm.deleted_at IS NULL "
+        "AND tm.from_user IS NOT NULL AND tm.from_user <> %s::uuid "
+        "AND tm.from_user = ANY(%s::uuid[]) "
+        "AND tm.seq > COALESCE(tr.last_read_seq, 0) "
+        "GROUP BY tm.thread_id",
+        (user_id, thread_ids, user_id, authors),
+    )
+    return {r[0]: int(r[1]) for r in cur.fetchall()}
 
 
 class ThreadsManager(DBManager):
@@ -284,8 +306,15 @@ class ThreadsManager(DBManager):
         if has_more and rows:
             last = rows[-1]
             next_cursor = paging.encode_cursor(last[7], None, last[0])
+        items = [_list_item(_summary_row(r)) for r in rows]
+        try:
+            unread = unread_counts(self.cur, self.user_id, [i["id"] for i in items], authors)
+        finally:
+            self.conn.rollback()
+        for item in items:
+            item["unread_count"] = unread.get(item["id"], 0)
         return {
-            "threads": [_list_item(_summary_row(r)) for r in rows],
+            "threads": items,
             "has_more": has_more,
             "next_cursor": next_cursor,
         }
@@ -356,7 +385,40 @@ class ThreadsManager(DBManager):
                 "attachment_url": generate_download_url(key) if key else None,
             })
         attach_mentions(self, messages, self.user_id, table="thread_messages")
+        attach_thread_actions(self, tid, messages, self.user_id, authors)
         return {"messages": messages, "has_more": has_more, "next_cursor": next_cursor}
+
+    # ---- mark read -----------------------------------------------------
+
+    def mark_read(self, group_id: str, thread_id: str) -> "dict | None":
+        """Advance the caller's read marker to the thread's newest message seq
+        (never backwards). ``None`` for a non-member or a thread of another
+        group. Returns ``{"thread_id", "unread_count": 0}``."""
+        gid, tid = canon(group_id), canon(thread_id)
+        if not (gid and tid and self.user_id):
+            return None
+        try:
+            if not is_current_member(self.cur, gid, self.user_id):
+                self._fail()
+                return None
+            self.cur.execute(
+                "SELECT 1 FROM threads WHERE _id = %s::uuid AND group_id = %s::uuid", (tid, gid)
+            )
+            if self.cur.fetchone() is None:
+                self._fail()
+                return None
+            self.cur.execute(
+                "INSERT INTO thread_reads (thread_id, user_id, last_read_seq) "
+                "SELECT %s::uuid, %s::uuid, COALESCE(MAX(seq), 0) FROM thread_messages WHERE thread_id = %s::uuid "
+                "ON CONFLICT (thread_id, user_id) DO UPDATE "
+                "SET last_read_seq = GREATEST(thread_reads.last_read_seq, EXCLUDED.last_read_seq)",
+                (tid, self.user_id, tid),
+            )
+            self.conn.commit()
+        except Exception:
+            self.conn.rollback()
+            raise
+        return {"thread_id": tid, "unread_count": 0}
 
     # ---- rename --------------------------------------------------------
 

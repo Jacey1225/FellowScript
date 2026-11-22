@@ -16,6 +16,9 @@ from backend.interactions.message_reactions import attach_reactions
 from backend.interactions.message_mentions import attach_mentions
 from backend.interactions.message_replies import attach_replies
 from backend.interactions.bible_text import parse_highlight_key, verse_text
+from backend.interactions.activity import NOTE_CREATED, NOTE_EDITED, NOTE_REPLIED
+
+NOTE_ACTIVITY_TYPES = (NOTE_CREATED, NOTE_EDITED, NOTE_REPLIED)
 
 logger = logging.getLogger(__name__)
 
@@ -511,7 +514,11 @@ class FriendsManager(DBManager):
             dict: ``{"friends_active": [{"friend_id", "username",
                 "profile_photo_url": str | None, "last_active_at",
                 "activity_type": str | None, "note_preview": {"note_id",
-                "title", "text", "timestamp"} | None, "highlight_preview":
+                "title", "text", "timestamp"} | None, "note_is_private": bool
+                (true when the friend's latest activity is a note the viewer cannot
+                open: ``note_preview`` is then None and no note id or text is
+                exposed; the client shows "wrote a private note" and opens the DM),
+                "highlight_preview":
                 {"book", "chapter", "verse", "color", "verse_text": str |
                 None, "timestamp"} | None}, ...], "check_in_candidates":
                 [{"friend_id", "username", "profile_photo_url": str | None,
@@ -532,7 +539,7 @@ class FriendsManager(DBManager):
         self.cur.execute(
             "SELECT uf.friend_id, u.username, u.profile_photo_key, ua.last_activity_at, ua.last_activity_type, "
             "n._id, n.title, n.text, n.timestamp, "
-            "h.key, h.color, h.timestamp "
+            "h.key, h.color, h.timestamp, pn.timestamp "
             "FROM user_friends uf "
             "JOIN users u ON u._id = uf.friend_id "
             "LEFT JOIN user_activity ua ON ua.user_id = uf.friend_id "
@@ -551,6 +558,13 @@ class FriendsManager(DBManager):
             "  WHERE user_id = uf.friend_id "
             "  ORDER BY timestamp DESC LIMIT 1"
             ") h ON TRUE "
+            # The friend's newest note of ANY visibility (timestamp only, never an id or text):
+            # lets the card tell "their latest note is private to the viewer" from "shared".
+            "LEFT JOIN LATERAL ("
+            "  SELECT timestamp FROM notes "
+            "  WHERE user_id = uf.friend_id AND is_reply = FALSE "
+            "  ORDER BY timestamp DESC LIMIT 1"
+            ") pn ON TRUE "
             "WHERE uf.user_id = %s "
             "AND NOT EXISTS ("
             "  SELECT 1 FROM blocked_users b "
@@ -565,7 +579,7 @@ class FriendsManager(DBManager):
         for r in self.cur.fetchall():
             (friend_id, username, profile_photo_key, last_active_at, last_activity_type,
              note_id, note_title, note_text, note_ts,
-             h_key, h_color, h_ts) = r
+             h_key, h_color, h_ts, newest_note_ts) = r
             highlight_preview = None
             if h_key:
                 parsed = parse_highlight_key(h_key)
@@ -579,13 +593,27 @@ class FriendsManager(DBManager):
                         "verse_text": verse_text(book, chapter, verse),
                         "timestamp": str(h_ts) if h_ts else None,
                     }
+            note_preview = self._note_preview(note_id, note_title, note_text, note_ts)
+            # A note activity whose note the viewer cannot open is "private": there is no visible
+            # note to show, or the friend's newest note is newer than the newest shared one (a
+            # personal note, or a note in a group the viewer is not in). Then NOTHING of any
+            # note is exposed (no preview, no id), so ids cannot be probed and an older shared
+            # note is not mislabelled as the latest activity.
+            note_is_private = (
+                last_activity_type in NOTE_ACTIVITY_TYPES
+                and (note_preview is None or (newest_note_ts is not None and note_ts is not None
+                                              and newest_note_ts > note_ts))
+            )
+            if note_is_private:
+                note_preview = None
             friends_active.append({
                 "friend_id": str(friend_id),
                 "username": username,
                 "profile_photo_url": generate_download_url(profile_photo_key),
                 "last_active_at": str(last_active_at) if last_active_at else None,
                 "activity_type": last_activity_type,
-                "note_preview": self._note_preview(note_id, note_title, note_text, note_ts),
+                "note_preview": note_preview,
+                "note_is_private": note_is_private,
                 "highlight_preview": highlight_preview,
             })
 

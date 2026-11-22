@@ -3,6 +3,12 @@
   POST /groups/{user_id}/{group_id}/threads                          start (or open) the thread on a message
   GET  /groups/{user_id}/{group_id}/threads                          list, keyset on (last_activity_at, id)
   GET  /groups/{user_id}/{group_id}/threads/{thread_id}/messages     one page of a thread's messages
+  POST /groups/{user_id}/{group_id}/threads/{thread_id}/read         mark the thread read for the caller
+  POST   /groups/{u}/{g}/threads/{t}/messages/{message_id}/reactions     add a reaction, body {"emoji"}
+  DELETE /groups/{u}/{g}/threads/{t}/messages/{message_id}/reactions?emoji=...
+  POST   /groups/{u}/{g}/threads/{t}/messages/{message_id}/pin           pin inside the thread
+  DELETE /groups/{u}/{g}/threads/{t}/messages/{message_id}/pin          unpin
+  GET    /groups/{u}/{g}/threads/{t}/pins                                 the thread's pins, newest first
   PUT  /groups/{user_id}/{group_id}/threads/{thread_id}              rename (creator only)
   DELETE /groups/{user_id}/{group_id}/threads/{thread_id}            hard delete (creator or group owner)
 
@@ -22,8 +28,8 @@ import logging
 import re
 
 import anyio.from_thread
-from fastapi import APIRouter, Depends, HTTPException, Request, Response
-from pydantic import BaseModel
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
+from pydantic import BaseModel, Field
 
 from backend.auth.dependencies import require_match
 from backend.auth.terms import require_current_terms
@@ -32,6 +38,11 @@ from backend.interactions.chat_config import get_pagination_config
 from backend.interactions.threads import (
     InvalidTitleError, LIST_MAX_PAGE_SIZE, LIST_PAGE_SIZE, ThreadLimitError, ThreadsManager, audit,
     thread_deleted_frame,
+)
+from backend.interactions import thread_message_actions as tma
+from backend.interactions.message_pins import FLAG as PINS_FLAG, list_rate as pins_list_rate, pin_rate
+from backend.interactions.message_reactions import (
+    FLAG as REACTIONS_FLAG, MAX_EMOJI_LENGTH, is_allowed_emoji, reaction_rate,
 )
 from backend.interactions.threads_config import get_threads_config
 from backend.moderation.content_filter import ContentRejected, check_clean, rejection_message
@@ -52,6 +63,10 @@ class CreateThreadRequest(BaseModel):
 
 class RenameThreadRequest(BaseModel):
     title: str
+
+
+class ThreadReactionRequest(BaseModel):
+    emoji: str = Field(min_length=1, max_length=MAX_EMOJI_LENGTH)
 
 
 def _create_rate() -> str:
@@ -153,7 +168,9 @@ def list_threads(
     """The group's threads, most recently active first.
 
     Returns ``{"threads": [{id, title, root_preview, root_deleted, reply_count,
-    last_activity_at, created_by}], "page": {...}}``; ``next_cursor_seq`` is
+    last_activity_at, created_by, unread_count}], "page": {...}}``; ``unread_count``
+    is the caller's per-thread unread total (others' live messages past the
+    caller's read marker; own and blocked senders never count); ``next_cursor_seq`` is
     always null and clients omit ``cursor_seq``.
     """
     if not flags.is_enabled("threads", user_id):
@@ -194,6 +211,26 @@ def read_thread_messages(
     if page is None:
         raise _not_found()
     return paging.envelope("messages", page["messages"], page_limit, page["has_more"], page["next_cursor"])
+
+
+@threads_router.post("/{user_id}/{group_id}/threads/{thread_id}/read")
+@limiter.shared_limit(_read_rate, scope="thread_mark_read", key_func=_user_key)
+def mark_thread_read(
+    request: Request, user_id: str, group_id: str, thread_id: str,
+    _: str = Depends(require_match("user_id")),
+) -> dict:
+    """Mark the thread read for the caller: ``{"thread_id", "unread_count": 0}``.
+    Non-members and unknown or other-group threads get the uniform 404."""
+    if not flags.is_enabled("threads", user_id):
+        raise _not_found()
+    db = ThreadsManager(user_id)
+    try:
+        result = db.mark_read(group_id, thread_id)
+    finally:
+        db.close()
+    if result is None:
+        raise _not_found()
+    return result
 
 
 @threads_router.put("/{user_id}/{group_id}/threads/{thread_id}")
@@ -245,3 +282,146 @@ def delete_thread(
     except Exception as e:  # noqa: BLE001 - the delete already committed
         logger.warning("Thread-deleted fan-out failed: %s", type(e).__name__)
     return Response(status_code=204)
+
+
+# ---- thread message reactions and pins (see backend/interactions/thread_message_actions.py) ----
+
+def _push_frame(recipients: list[str], frame: dict) -> None:
+    try:
+        anyio.from_thread.run(fan_out, ws_manager, recipients, frame)
+    except Exception as e:  # noqa: BLE001 - the write already committed
+        logger.warning("Thread action frame fan-out failed: %s", type(e).__name__)
+
+
+def _gate(user_id: str, flag: str) -> None:
+    """Both the ``threads`` flag and the feature flag must be on for the caller."""
+    if not flags.is_enabled("threads", user_id) or not flags.is_enabled(flag, user_id):
+        raise _not_found()
+
+
+def _check_emoji(emoji: str) -> None:
+    if not is_allowed_emoji(emoji):
+        raise HTTPException(status_code=422, detail={"code": "invalid_emoji"})
+
+
+def _reaction_done(result: dict, user_id: str) -> dict:
+    reaction = result["reaction"]
+    if result["changed"]:
+        _push_frame(result["recipients"], tma.reaction_frame(
+            result["thread_id"], result["group_id"], result["message_id"],
+            reaction["emoji"], reaction["count"], user_id.lower(),
+        ))
+    return reaction
+
+
+@threads_router.post("/{user_id}/{group_id}/threads/{thread_id}/messages/{message_id}/reactions")
+@limiter.shared_limit(reaction_rate, scope="thread_message_reactions", key_func=_user_key)
+def add_thread_reaction(
+    request: Request, user_id: str, group_id: str, thread_id: str, message_id: str, body: ThreadReactionRequest,
+    _: str = Depends(require_match("user_id")),
+) -> dict:
+    """Idempotently add the caller's reaction. Returns ``{emoji, count, viewer_reacted}``;
+    422 bad emoji, 409 ``message_cap`` / ``user_cap``, uniform 404 otherwise."""
+    _gate(user_id, REACTIONS_FLAG)
+    _check_emoji(body.emoji)
+    db = tma.ThreadMessageActions(user_id)
+    try:
+        if not db.is_member_quiet(group_id):
+            raise _not_found()
+        require_current_terms(db.cur, user_id)
+        db.conn.rollback()
+        result = db.add_reaction(group_id, thread_id, message_id, body.emoji)
+    finally:
+        db.close()
+    if result is None:
+        raise _not_found()
+    if "cap" in result:
+        raise HTTPException(status_code=409, detail={"code": result["cap"]})
+    return _reaction_done(result, user_id)
+
+
+@threads_router.delete("/{user_id}/{group_id}/threads/{thread_id}/messages/{message_id}/reactions")
+@limiter.shared_limit(reaction_rate, scope="thread_message_reactions", key_func=_user_key)
+def remove_thread_reaction(
+    request: Request, user_id: str, group_id: str, thread_id: str, message_id: str,
+    emoji: str = Query(min_length=1, max_length=MAX_EMOJI_LENGTH),
+    _: str = Depends(require_match("user_id")),
+) -> dict:
+    """Idempotently remove the caller's reaction. Returns ``{emoji, count, viewer_reacted}``."""
+    _gate(user_id, REACTIONS_FLAG)
+    _check_emoji(emoji)
+    db = tma.ThreadMessageActions(user_id)
+    try:
+        result = db.remove_reaction(group_id, thread_id, message_id, emoji)
+    finally:
+        db.close()
+    if result is None:
+        raise _not_found()
+    return _reaction_done(result, user_id)
+
+
+@threads_router.post("/{user_id}/{group_id}/threads/{thread_id}/messages/{message_id}/pin")
+@limiter.shared_limit(pin_rate, scope="thread_message_pins", key_func=_user_key)
+def pin_thread_message(
+    request: Request, user_id: str, group_id: str, thread_id: str, message_id: str,
+    _: str = Depends(require_match("user_id")),
+) -> dict:
+    """Idempotently pin inside the thread. Returns ``{message_id, thread_id, pinned: true}``."""
+    _gate(user_id, PINS_FLAG)
+    db = tma.ThreadMessageActions(user_id)
+    try:
+        if not db.is_member_quiet(group_id):
+            raise _not_found()
+        require_current_terms(db.cur, user_id)
+        db.conn.rollback()
+        result = db.pin(group_id, thread_id, message_id)
+    finally:
+        db.close()
+    if result is None:
+        raise _not_found()
+    if result["changed"]:
+        _push_frame(result["recipients"], tma.pin_frame(
+            result["thread_id"], result["group_id"], result["message_id"], True, user_id.lower()))
+    return {"message_id": result["message_id"], "thread_id": result["thread_id"], "pinned": True}
+
+
+@threads_router.delete("/{user_id}/{group_id}/threads/{thread_id}/messages/{message_id}/pin")
+@limiter.shared_limit(pin_rate, scope="thread_message_pins", key_func=_user_key)
+def unpin_thread_message(
+    request: Request, user_id: str, group_id: str, thread_id: str, message_id: str,
+    _: str = Depends(require_match("user_id")),
+) -> dict:
+    """Idempotently unpin. Returns ``{message_id, thread_id, pinned: false}``."""
+    _gate(user_id, PINS_FLAG)
+    db = tma.ThreadMessageActions(user_id)
+    try:
+        result = db.unpin(group_id, thread_id, message_id)
+    finally:
+        db.close()
+    if result is None:
+        raise _not_found()
+    if result["changed"]:
+        _push_frame(result["recipients"], tma.pin_frame(
+            result["thread_id"], result["group_id"], result["message_id"], False, user_id.lower()))
+    return {"message_id": result["message_id"], "thread_id": result["thread_id"], "pinned": False}
+
+
+@threads_router.get("/{user_id}/{group_id}/threads/{thread_id}/pins")
+@limiter.shared_limit(pins_list_rate, scope="thread_pins_list", key_func=_user_key)
+def list_thread_pins(
+    request: Request, user_id: str, group_id: str, thread_id: str,
+    limit: int = Query(50, ge=1, le=1000), offset: int = Query(0, ge=0, le=100000),
+    _: str = Depends(require_match("user_id")),
+) -> dict:
+    """The thread's pinned messages, newest pin first: ``{pins: [{message_id,
+    pinned_by_id, pinned_by, pinned_at, message: {id, thread_id, from_user_id,
+    from_user, text, timestamp, attachment_kind}}], has_more, count}``."""
+    _gate(user_id, PINS_FLAG)
+    db = tma.ThreadMessageActions(user_id)
+    try:
+        result = db.list_pins(group_id, thread_id, limit, offset)
+    finally:
+        db.close()
+    if result is None:
+        raise _not_found()
+    return result

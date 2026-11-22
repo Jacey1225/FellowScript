@@ -541,6 +541,42 @@ def test_cross_user_leakage_non_friend_never_surfaces(client):
         cleanup(uid_a, uid_stranger)
 
 
+def test_note_is_private_flag(client):
+    print("\n=== 11. note_is_private: private note activity exposes no id/body, shared stays openable ===")
+    uid_a, token_a = signup(client, "npf_a")
+    uid_b, token_b = signup(client, "npf_b")
+    gid = None
+    try:
+        make_friends(uid_a, uid_b)
+        secret = "npf-secret-body-4417"
+        create_note(client, token_b, uid_b, "npf-secret-title", secret,
+                    public=False, timestamp="2026-08-20 08:00:00")
+        entry = get_activity(client, uid_a, token_a).json()["friends_active"][0]
+        check("personal note activity: note_is_private true", entry["note_is_private"] is True, entry)
+        check("private note: no preview and no note id", entry["note_preview"] is None, entry)
+        check("private note: title/body appear nowhere in the payload",
+              secret not in str(entry) and "npf-secret-title" not in str(entry), entry)
+
+        gid = create_group(client, token_b, uid_b, [uid_a])
+        note_id = create_note(client, token_b, uid_b, "Shared one", "visible to the group",
+                              public=False, group_id=gid, timestamp="2026-08-21 08:00:00")
+        entry = get_activity(client, uid_a, token_a).json()["friends_active"][0]
+        check("shared group note newest: note_is_private false and note id exposed",
+              entry["note_is_private"] is False and entry["note_preview"]["note_id"] == note_id, entry)
+
+        create_note(client, token_b, uid_b, "Later private", "later secret",
+                    public=False, timestamp="2026-08-22 08:00:00")
+        entry = get_activity(client, uid_a, token_a).json()["friends_active"][0]
+        check("a newer private note after a shared one: private, older shared note NOT shown as the latest",
+              entry["note_is_private"] is True and entry["note_preview"] is None, entry)
+        check("the key is always present (bool) for every entry",
+              all(isinstance(e["note_is_private"], bool) for e in get_activity(client, uid_a, token_a).json()["friends_active"]))
+    finally:
+        if gid:
+            delete_group(gid)
+        cleanup(uid_a, uid_b)
+
+
 def main():
     # Single shared TestClient/app lifespan for every test -- the scheduler
     # is a module-level singleton, so a second independent
@@ -559,6 +595,7 @@ def main():
         test_check_in_selects_longest_since_contact(client)
         test_cross_user_leakage_non_friend_never_surfaces(client)
         test_check_in_pool_bounded_to_pool_size(client)
+        test_note_is_private_flag(client)
 
     print(f"\n{'='*60}")
     if FAILED:

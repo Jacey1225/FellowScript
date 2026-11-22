@@ -47,7 +47,8 @@ from limits import parse as parse_rate
 
 from backend import content_store
 from backend.errors import SaveFailedError
-from backend.interactions import flags, message_mentions, shared_objects
+from backend.interactions import flags, message_mentions, message_replies, shared_objects
+from backend.interactions.thread_message_actions import resolve_thread_reply
 from backend.interactions.thread_shared_objects import resolve_thread_share
 from backend.interactions.attachments import generate_download_url
 from backend.interactions.paging import format_timestamp
@@ -68,8 +69,8 @@ _RATE_SCOPE = "thread-send"
 
 _INSERT_SQL = (
     "WITH ins AS ("
-    " INSERT INTO thread_messages (_id, thread_id, from_user, text, attachment_kind, attachment_key, attachment_meta, mentions) "
-    " VALUES (%s::uuid, %s::uuid, %s::uuid, %s, %s, %s, %s::jsonb, %s::jsonb) RETURNING _id, created_at, seq), "
+    " INSERT INTO thread_messages (_id, thread_id, from_user, text, attachment_kind, attachment_key, attachment_meta, mentions, reply_to_id) "
+    " VALUES (%s::uuid, %s::uuid, %s::uuid, %s, %s, %s, %s::jsonb, %s::jsonb, %s::uuid) RETURNING _id, created_at, seq), "
     "bump AS (UPDATE threads SET last_activity_at = (SELECT created_at FROM ins) WHERE _id = %s::uuid), "
     "fol AS (INSERT INTO thread_followers (thread_id, user_id) VALUES (%s::uuid, %s::uuid) ON CONFLICT DO NOTHING) "
     "SELECT _id::text, created_at, seq FROM ins"
@@ -240,13 +241,29 @@ async def send_thread_message(manager, payload: dict) -> None:
             await _reply(manager, sender, "send_failed", "Couldn't send your message. Please try again.")
             return
 
+    # Reply target (flag ``chat_replies``): must be a live message of THIS thread. Only its id is
+    # stored. Flag off: the key is ignored. Every refusal is one uniform ``reply_invalid`` frame.
+    reply = None
+    reply_to = payload.get("reply_to")
+    if reply_to is not None and flags.is_enabled(message_replies.FLAG, sender):
+        try:
+            reply = resolve_thread_reply(cur, sender_id, thread_id, recipients, reply_to)
+        except message_replies.ReplyInvalid:
+            _deny(sender, thread_id, "reply_invalid")
+            await _reply(manager, sender, "reply_invalid", "That message can't be replied to.")
+            return
+        except Exception as e:  # noqa: BLE001 - fail closed, nothing saved
+            logger.warning("Thread reply resolution failed closed: %s", type(e).__name__)
+            await _reply(manager, sender, "send_failed", "Couldn't send your message. Please try again.")
+            return
+
     new_mid = str(uuid.uuid4())  # chosen here: part of the encryption AAD
     try:
         manager._execute(
             _INSERT_SQL,
             (new_mid, thread_id, sender_id, content_store.seal(new_mid, content_store.F_THREAD_MESSAGE_TEXT, text),
              kind, key, json.dumps(meta), json.dumps(mentions_stored) if mentions_stored else None,
-             thread_id, thread_id, sender_id),
+             reply["reply_to_id"] if reply else None, thread_id, thread_id, sender_id),
         )
         saved = manager.cur.fetchone()
         if saved is None:
@@ -277,6 +294,7 @@ async def send_thread_message(manager, payload: dict) -> None:
                     "type": "ack", "client_ref": client_ref, "id": message_id,
                     "group_id": group_id, "thread_id": thread_id, "timestamp": created_at,
                     **({"mentions": mentions_public} if mentions_public else {}),
+                    **(message_replies.public_fields(reply) if reply else {}),
                 })
             except Exception as e:  # noqa: BLE001
                 logger.warning("Thread ack send to %s failed: %s", sender, type(e).__name__)
@@ -284,6 +302,7 @@ async def send_thread_message(manager, payload: dict) -> None:
     await _deliver(manager, sender_id, sender, group_id, thread_id, recipients, blocked, {
         "message_id": message_id, "created_at": created_at, "seq": seq,
         "text": text, "kind": kind, "key": key, "meta": meta, "mentions": mentions_public,
+        "reply": reply,
     })
 
 
@@ -305,6 +324,7 @@ async def _deliver(manager, sender_id, sender, group_id, thread_id, recipients, 
         "group_id": group_id,
         "id": msg["message_id"],
         "sender": sender_name,
+        "from_user_id": sender_id,
         "body": msg["text"],
         "created_at": msg["created_at"],
         "seq": msg["seq"],
@@ -312,6 +332,18 @@ async def _deliver(manager, sender_id, sender, group_id, thread_id, recipients, 
         "attachment_meta": msg["meta"],
         "attachment_url": generate_download_url(msg["key"]) if msg["key"] else None,
     }
+
+    # Reply keys (flag ``chat_replies`` per recipient): the original's author text is withheld
+    # (``reply_to_deleted``) from anyone in a block relationship with that author; fail closed.
+    reply = msg.get("reply")
+    reply_fields = message_replies.public_fields(reply) if reply else None
+    reply_blocked: set[str] = set()
+    if reply_fields:
+        try:
+            reply_blocked = message_replies.blocked_with(_GuardCursor(manager), reply["reply_to_author_id"])
+        except Exception as e:  # noqa: BLE001
+            logger.warning("Thread reply block lookup failed: %s", type(e).__name__)
+            reply_blocked = set(targets)
 
     # Push candidates: followers among the targets, minus muted. Looked up only
     # when someone is offline.
@@ -362,8 +394,11 @@ async def _deliver(manager, sender_id, sender, group_id, thread_id, recipients, 
         if ws is not None:
             try:
                 out = frame
+                if reply_fields and flags.is_enabled(message_replies.FLAG, uid):
+                    out = {**frame, **(message_replies.deleted_fields(reply["reply_to_id"])
+                                       if uid in reply_blocked else reply_fields)}
                 if mention_list and message_mentions_enabled(uid):
-                    out = {**frame, "mentions": mention_list}
+                    out = {**out, "mentions": mention_list}
                 await ws.send_json(out)
                 delivered_live = True
                 if uid not in mention_ids:
