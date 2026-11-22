@@ -663,14 +663,16 @@ export default function ChatThread({
   const features = (caps && caps.features) || {};
   // Task 20261011-desktop-chat-replies-reactions. Both fail closed: absent or
   // false server flags (and an empty allowlist) mean no chips, picker, quote
-  // affordances or Reply/React items; neither exists inside a thread.
+  // affordances or Reply/React items. Both also work inside a thread (task
+  // 20261122-app-fixes-threads-widget): thread routes, reply stays in the thread.
   const reactionEmoji = (caps && caps.reactionEmoji) || { quick: [], more: [] };
-  const reactionsOn = !inThread && features.message_reactions === true
+  const reactionsOn = features.message_reactions === true
     && reactionEmoji.quick.length > 0 && typeof onToggleReaction === 'function';
-  const repliesOn = !inThread && features.chat_replies === true;
+  const repliesOn = features.chat_replies === true;
   // Fails closed: needs the capability, the hook's own flag read, and a main
   // chat (no pin UI inside a thread).
-  const pinsOn = !inThread && features.message_pins === true && !!pins && pins.enabled === true;
+  const pinActionOn = features.message_pins === true && !!pins && pins.enabled === true;
+  const pinsOn = !inThread && pinActionOn;
   // Task 20261017-chat-mentions. Fails closed: needs the capability and a DM or
   // group chat (never agent chats or shared-object compose).
   const mentionsOn = features[MENTION_FEATURE] === true
@@ -822,7 +824,7 @@ export default function ChatThread({
   useEffect(() => { if (!loadingOlder) anchorRef.current = null; }, [loadingOlder]);
 
   // A reply in progress never outlives its conversation or the server flag.
-  useEffect(() => { setReplyTarget(null); setPicker(null); }, [contact?.id]);
+  useEffect(() => { setReplyTarget(null); setPicker(null); }, [contact?.id, thread?.id]);
   useEffect(() => { if (!repliesOn) setReplyTarget(null); }, [repliesOn]);
   useEffect(() => { if (!reactionsOn) setPicker(null); }, [reactionsOn]);
 
@@ -1240,7 +1242,7 @@ export default function ChatThread({
     if (!inThread && isGroup && features.threads === true && settled && onStartThread) {
       list.push({ key: 'thread', label: 'Start thread', icon: <BranchesOutlined />, onSelect: () => onStartThread(m) });
     }
-    if (pinsOn && settled && !m.systemKind && typeof pins.onToggle === 'function') {
+    if (pinActionOn && settled && !m.systemKind && typeof pins.onToggle === 'function') {
       list.push({
         key: 'pin', label: m.pinned ? 'Unpin message' : 'Pin message', icon: <PushpinOutlined />,
         onSelect: () => pins.onToggle(m),
@@ -1598,7 +1600,7 @@ export default function ChatThread({
               ) : m.timestamp && (
                 <div className="msg-bubble-meta">
                   {new Date(m.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                  {pinsOn && m.pinned && (
+                  {pinActionOn && m.pinned && (
                     <PushpinOutlined className="msg-pinned-glyph" role="img" aria-label="Pinned" />
                   )}
                 </div>

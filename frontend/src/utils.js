@@ -3,6 +3,7 @@
 // contract, both surfaces. If you widen/narrow this escaping, make the
 // matching edit there too (readability #H15, 20260904-frontend-arch-sweep).
 import { mentionFields } from './lib/mentions.js';
+import { replyFromWire } from './lib/replies.js';
 
 export function escHtml(str) {
   return String(str ?? '')
@@ -43,6 +44,10 @@ export function threadFrameToRow(frame) {
     attachmentKind: frame.attachment_kind || null,
     attachmentMeta: frame.attachment_meta || null,
     attachmentUrl: frame.attachment_url || null,
+    // Task 20261122-app-fixes-threads-widget: the author's id (profile/block
+    // target) and the reply label keys (present only while chat_replies is on).
+    ...(typeof frame.from_user_id === 'string' && frame.from_user_id ? { senderId: frame.from_user_id } : {}),
+    ...(replyFromWire(frame) ? { reply: replyFromWire(frame) } : {}),
     ...mentionFields(frame, typeof frame.body === 'string' ? frame.body : ''),
   };
 }

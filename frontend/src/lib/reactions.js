@@ -81,8 +81,8 @@ export function chipLabel(r) {
   return r.viewerReacted ? `${emojiName(r.emoji)}, ${noun}, you reacted` : `${emojiName(r.emoji)}, ${noun}`;
 }
 
-async function send(userId, messageId, method, emoji) {
-  let path = `${API}/message-reactions/${encodeURIComponent(userId)}/${encodeURIComponent(messageId)}`;
+async function send(userId, messageId, method, emoji, basePath) {
+  let path = basePath || `${API}/message-reactions/${encodeURIComponent(userId)}/${encodeURIComponent(messageId)}`;
   const init = { method, credentials: 'include' };
   if (method === 'DELETE') path += `?emoji=${encodeURIComponent(emoji)}`;
   else {
@@ -118,3 +118,12 @@ async function send(userId, messageId, method, emoji) {
 
 export const addReaction = (userId, messageId, emoji) => send(userId, messageId, 'POST', emoji);
 export const removeReaction = (userId, messageId, emoji) => send(userId, messageId, 'DELETE', emoji);
+
+// Task 20261122-app-fixes-threads-widget: thread messages live in their own
+// table, so they have their own reaction routes (api/routes/threads.py).
+const threadReactionPath = (userId, groupId, threadId, messageId) =>
+  `${API}/groups/${encodeURIComponent(userId)}/${encodeURIComponent(groupId)}/threads/${encodeURIComponent(threadId)}/messages/${encodeURIComponent(messageId)}/reactions`;
+export const addThreadReaction = (userId, groupId, threadId, messageId, emoji) =>
+  send(userId, messageId, 'POST', emoji, threadReactionPath(userId, groupId, threadId, messageId));
+export const removeThreadReaction = (userId, groupId, threadId, messageId, emoji) =>
+  send(userId, messageId, 'DELETE', emoji, threadReactionPath(userId, groupId, threadId, messageId));

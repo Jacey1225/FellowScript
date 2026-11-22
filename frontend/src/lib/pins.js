@@ -112,11 +112,11 @@ async function errorFor(res) {
   return new PinError('failed', PIN_FALLBACK);
 }
 
-async function send(userId, messageId, method) {
+async function send(userId, messageId, method, basePath) {
   let res;
   try {
     res = await fetch(
-      `${API}/message-pins/${encodeURIComponent(userId)}/${encodeURIComponent(messageId)}`,
+      basePath || `${API}/message-pins/${encodeURIComponent(userId)}/${encodeURIComponent(messageId)}`,
       { method, credentials: 'include' },
     );
   } catch {
@@ -131,6 +131,15 @@ async function send(userId, messageId, method) {
 
 export const pinMessageRequest = (userId, messageId) => send(userId, messageId, 'POST');
 export const unpinMessageRequest = (userId, messageId) => send(userId, messageId, 'DELETE');
+
+// Task 20261122-app-fixes-threads-widget: pins on thread messages are scoped to
+// the thread (api/routes/threads.py .../threads/{t}/messages/{m}/pin).
+const threadPinPath = (userId, groupId, threadId, messageId) =>
+  `${API}/groups/${encodeURIComponent(userId)}/${encodeURIComponent(groupId)}/threads/${encodeURIComponent(threadId)}/messages/${encodeURIComponent(messageId)}/pin`;
+export const pinThreadMessageRequest = (userId, groupId, threadId, messageId) =>
+  send(userId, messageId, 'POST', threadPinPath(userId, groupId, threadId, messageId));
+export const unpinThreadMessageRequest = (userId, groupId, threadId, messageId) =>
+  send(userId, messageId, 'DELETE', threadPinPath(userId, groupId, threadId, messageId));
 
 export async function fetchPins(userId, contact, { limit = PIN_PAGE_LIMIT, offset = 0 } = {}) {
   let res;

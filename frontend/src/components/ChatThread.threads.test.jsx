@@ -95,9 +95,9 @@ describe('menu contents on main chat', () => {
   });
 });
 
-describe('thread messages: COPY ONLY', () => {
+describe('thread messages: Copy only while the feature flags are off', () => {
   const thread = { id: 't1', title: 'Topic', root_preview: 'root text', root_message_id: 'r1', root_deleted: false };
-  test('own and others thread messages offer only Copy', () => {
+  test('own and others thread messages offer only Copy with reply/pin/reaction flags off', () => {
     mount({ thread, threadLoad: 'idle', messages: [msg('a', { mine: true }), msg('b')] });
     openMenu('a');
     expect(labels()).toEqual(['Copy']);
@@ -178,5 +178,20 @@ describe('thread view', () => {
     const { rerenderWith } = mount({ thread: base, threadLoad: 'idle', messages: [] });
     rerenderWith({ restoredDraft: { tick: 1, text: 'lost words' } });
     expect(screen.getByDisplayValue('lost words')).toBeInTheDocument();
+  });
+});
+
+describe('thread messages: group menu minus Start thread', () => {
+  const thread = { id: 't1', title: 'Topic', root_preview: 'root text', root_message_id: 'r1', root_deleted: false };
+  test('reply, react, pin and copy are offered; Start thread and Delete are not', () => {
+    const features = { threads: true, message_delete: true, chat_replies: true, message_pins: true, message_reactions: true };
+    mount({ thread, threadLoad: 'idle', messages: [msg('b')],
+      pins: { enabled: true, list: { pins: [], count: 0, hasMore: false, status: 'idle', moreLoading: false }, onLoad: vi.fn(), onLoadMore: vi.fn(), onToggle: vi.fn(), onUnpin: vi.fn(), ensureLoaded: vi.fn() },
+      onToggleReaction: vi.fn() }, features);
+    openMenu('b');
+    const l = labels();
+    expect(l).toEqual(expect.arrayContaining(['Reply', 'Pin message', 'Copy']));
+    expect(l).not.toContain('Start thread');
+    expect(l).not.toContain('Delete');
   });
 });

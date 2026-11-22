@@ -92,9 +92,12 @@ describe('reactions on', () => {
     mount({ contact: FRIEND, messages: [withChips()] });
     expect(screen.getByRole('button', { name: 'Fire, 1 reaction' })).toBeInTheDocument();
   });
-  test('no reaction UI inside a thread view', () => {
-    mount({ thread: { id: 't1', title: 'T', root_message_id: 'r1', root_deleted: false }, threadLoad: 'idle', messages: [withChips()] });
-    expect(document.querySelector('.msg-reactions')).toBeNull();
+  test('reaction chips and React work inside a thread view', () => {
+    const h = mount({ thread: { id: 't1', title: 'T', root_message_id: 'r1', root_deleted: false }, threadLoad: 'idle', messages: [withChips()] });
+    fireEvent.click(screen.getByRole('button', { name: 'Fire, 1 reaction' }));
+    expect(h.onToggleReaction).toHaveBeenCalledWith(expect.objectContaining({ id: 'm1' }), '🔥');
+    openMenu('m1');
+    expect(labels()).toContain('React');
   });
 });
 
@@ -151,10 +154,12 @@ describe('replies on', () => {
     expect(document.querySelector('.msg-quote img')).toBeNull();
     expect(document.querySelector('.msg-quote b')).toBeNull();
   });
-  test('no Reply item inside a thread view', () => {
-    mount({ thread: { id: 't1', title: 'T', root_message_id: 'r1', root_deleted: false }, threadLoad: 'idle', messages: [msg('m1')] });
+  test('Reply is offered inside a thread view but Start thread is not', () => {
+    mount({ thread: { id: 't1', title: 'T', root_message_id: 'r1', root_deleted: false }, threadLoad: 'idle', messages: [msg('m1')] },
+      { ...ON, threads: true });
     openMenu('m1');
-    expect(labels()).not.toContain('Reply');
+    expect(labels()).toContain('Reply');
+    expect(labels()).not.toContain('Start thread');
   });
   test('chat_replies off but reactions on: React present, Reply absent', () => {
     mount({ messages: [msg('m1')] }, { message_reactions: true, chat_replies: false });

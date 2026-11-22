@@ -9,13 +9,14 @@ import {
   newClientRef, parsePage, pageQuery, toMessage,
   mergeOlder, mergeLive, reconcileAck, findLostAckMatch,
 } from '../lib/chatPaging.js';
-import { parseReactions, toggled, setting, updatingCount, addReaction, removeReaction } from '../lib/reactions.js';
+import { parseReactions, toggled, setting, updatingCount, addReaction, removeReaction, addThreadReaction, removeThreadReaction } from '../lib/reactions.js';
 import { isProfileId } from '../lib/profileId.js';
 import { replyFromWire } from '../lib/replies.js';
 import { MENTION_FEATURE, mentionFields, toWireMentions, verifyMentions } from '../lib/mentions.js';
 import {
   PIN_FEATURE, PIN_PAGE_LIMIT, PIN_LIST_ERROR, PinError, pinFields,
   fetchPins, pinMessageRequest, unpinMessageRequest, withoutPin,
+  pinThreadMessageRequest, unpinThreadMessageRequest,
 } from '../lib/pins.js';
 import {
   CHAT_ANNOUNCEMENT_FEATURE, announcementFields, isOwnAnnouncementFrame, parseSync,
@@ -268,7 +269,8 @@ export function useMessaging({ user }) {
         // Task 20261001-message-threads: thread / delete frames go through a
         // callback ref (same style as sessionSignalCbRef); never a second
         // WebSocket. Not chat bubbles in their own right.
-        if (data.type === 'thread_message' || data.type === 'message_deleted' || data.type === 'message_restored' || data.type === 'thread_deleted') {
+        if (data.type === 'thread_message' || data.type === 'message_deleted' || data.type === 'message_restored' || data.type === 'thread_deleted'
+          || data.type === 'thread_reaction_updated' || data.type === 'thread_pin_updated') {
           threadFrameCbRef.current?.(data);
           return;
         }
@@ -502,6 +504,16 @@ export function useMessaging({ user }) {
 
   // ── Threads (task 20261001-message-threads) ────────────────────────────────
 
+  // Row patchers shared by the main-chat and thread reaction / pin paths and the
+  // live thread frames (defined before the frame handler that depends on them).
+  const setReactionsFor = useCallback((messageId, change, inThread = false) => {
+    const set = inThread ? setThreadMessages : setMessages;
+    set(prev => prev.map(m => (m.id === messageId ? { ...m, reactions: change(m.reactions || []) } : m)));
+  }, []);
+  const setThreadPinnedFlag = useCallback((messageId, pinned) => {
+    setThreadMessages(prev => prev.map(m => (m.id === messageId ? { ...m, pinned } : m)));
+  }, []);
+
   // Tell the server the open thread is read, then clear its badge in every list.
   // On failure the badge is left as it was (no fabricated zero).
   const userIdRef = useRef(null);
@@ -631,10 +643,14 @@ export function useMessaging({ user }) {
 
   // Thread messages go over the existing socket as a thread_message frame; the
   // server derives the group and recipients from thread_id.
-  const sendThreadMessage = useCallback((text, attachment = null, _reply = null, mentionsArg = null) => {
+  const sendThreadMessage = useCallback((text, attachment = null, replyArg = null, mentionsArg = null) => {
     const tv = threadViewRef.current;
     if (!user || !tv || !wsRef.current || wsRef.current.readyState !== 1) return false;
     const mentions = outgoingMentions(text, mentionsArg);
+    // A thread reply targets a message of the SAME thread; the server derives
+    // the quote and refuses anything else (fail closed without chat_replies).
+    const reply = (replyArg && typeof replyArg.id === 'string' && replyArg.id
+      && capsRef.current?.isEnabled?.('chat_replies') === true) ? replyArg : null;
     const clientRef = newClientRef();
     const payload = {
       type: 'thread_message', from_user: user.user_id,
@@ -647,11 +663,13 @@ export function useMessaging({ user }) {
       payload.attachment_meta = attachment.meta || {};
       if (attachment.objectKey) payload.attachment_key = attachment.objectKey;
     }
+    if (reply) payload.reply_to = reply.id;
     if (mentions) payload.mentions = toWireMentions(mentions);
     wsRef.current.send(JSON.stringify(payload));
     setThreadMessages(prev => [...prev, {
       key: `c:${clientRef}`, clientRef, pending: true,
       text, mine: true, timestamp: new Date().toISOString(), sender: '',
+      ...(reply ? { reply } : {}),
       attachmentKind: attachment ? attachment.kind : null,
       attachmentMeta: attachment ? (attachment.meta || null) : null,
       attachmentUrl: (attachment && attachment.kind === 'gif') ? null : (attachment?.localUrl || null),
@@ -720,6 +738,22 @@ export function useMessaging({ user }) {
       if (fromOthers) markThreadSeen(gid, tv.thread.id);
       return;
     }
+    if (data.type === 'thread_reaction_updated') {
+      // Another member's reaction in a thread; the viewer's own state is kept.
+      const tv = threadViewRef.current;
+      if (!tv || !sameGroup || data.thread_id !== tv.thread.id) return;
+      if (typeof data.message_id !== 'string' || typeof data.emoji !== 'string' || !data.emoji) return;
+      if (!Number.isInteger(data.count) || data.count < 0) return;
+      setReactionsFor(data.message_id, list => updatingCount(list, data.emoji, data.count), true);
+      return;
+    }
+    if (data.type === 'thread_pin_updated') {
+      const tv = threadViewRef.current;
+      if (!tv || !sameGroup || data.thread_id !== tv.thread.id) return;
+      if (typeof data.message_id !== 'string' || typeof data.pinned !== 'boolean') return;
+      setThreadPinnedFlag(data.message_id, data.pinned);
+      return;
+    }
     if (data.type === 'message_deleted') {
       if (!sameGroup || typeof data.id !== 'string') return;
       setMessages(prev => prev.filter(m => m.id !== data.id));
@@ -767,7 +801,7 @@ export function useMessaging({ user }) {
         setRestoredDraft(prev => ({ tick: (prev ? prev.tick : 0) + 1, text: pending.text }));
       }
     }
-  }, [resetThread, markThreadSeen]);
+  }, [resetThread, markThreadSeen, setReactionsFor, setThreadPinnedFlag]);
   useEffect(() => {
     threadFrameCbRef.current = handleThreadFrame;
     return () => { threadFrameCbRef.current = null; };
@@ -1020,9 +1054,6 @@ export function useMessaging({ user }) {
     && (capsRef.current?.reactionEmoji?.quick?.length || 0) > 0;
   const reactionInFlightRef = useRef(new Set());
 
-  const setReactionsFor = useCallback((messageId, change) => {
-    setMessages(prev => prev.map(m => (m.id === messageId ? { ...m, reactions: change(m.reactions || []) } : m)));
-  }, []);
 
   // Does this frame's room key name the open conversation? Group frames carry
   // the group id; a DM frame carries the sorted "a|b" room key.
@@ -1055,23 +1086,36 @@ export function useMessaging({ user }) {
   // rolled back and the reason shown. Resolves true on success.
   const toggleReaction = useCallback(async (msg, emoji) => {
     if (!user || !msg || !msg.id || msg.pending || msg.failed || typeof emoji !== 'string' || !emoji) return false;
-    if (!reactionsOn() || threadViewRef.current) return false;
+    if (!reactionsOn()) return false;
+    // Task 20261122-app-fixes-threads-widget: inside a thread the same toggle
+    // runs against the thread's own reaction routes and the thread's rows.
+    const tv = threadViewRef.current;
+    const gid = groupIdOfContact(currentContactRef.current);
+    if (tv && !gid) return false;
     const key = `${msg.id}|${emoji}`;
     if (reactionInFlightRef.current.has(key)) return false;
-    const current = messagesRef.current.find(m => m.id === msg.id);
+    const current = (tv ? threadMessagesRef.current : messagesRef.current).find(m => m.id === msg.id);
     const before = (current && current.reactions) || [];
     const prior = before.find(r => r.emoji === emoji) || null;
     const adding = !(prior && prior.viewerReacted);
     reactionInFlightRef.current.add(key);
-    setReactionsFor(msg.id, list => toggled(list, emoji));
+    const inThread = !!tv;
+    setReactionsFor(msg.id, list => toggled(list, emoji), inThread);
     try {
-      const result = adding
-        ? await addReaction(user.user_id, msg.id, emoji)
-        : await removeReaction(user.user_id, msg.id, emoji);
-      setReactionsFor(msg.id, list => setting(list, emoji, result));
+      let result;
+      if (tv) {
+        result = adding
+          ? await addThreadReaction(user.user_id, gid, tv.thread.id, msg.id, emoji)
+          : await removeThreadReaction(user.user_id, gid, tv.thread.id, msg.id, emoji);
+      } else {
+        result = adding
+          ? await addReaction(user.user_id, msg.id, emoji)
+          : await removeReaction(user.user_id, msg.id, emoji);
+      }
+      setReactionsFor(msg.id, list => setting(list, emoji, result), inThread);
       return true;
     } catch (err) {
-      setReactionsFor(msg.id, list => setting(list, emoji, prior));
+      setReactionsFor(msg.id, list => setting(list, emoji, prior), inThread);
       if (err && err.kind === 'terms') capsRef.current?.refresh?.();
       message.error({
         content: (err && err.message) || "Couldn't update your reaction. Please try again.",
@@ -1161,27 +1205,39 @@ export function useMessaging({ user }) {
   // server result; revert and show a warm line on failure. Resolves true on success.
   const togglePin = useCallback(async (msg) => {
     if (!user || !msg || !msg.id || msg.pending || msg.failed || msg.systemKind) return false;
-    if (!pinsOn() || threadViewRef.current) return false;
+    if (!pinsOn()) return false;
+    // Inside a thread a pin is scoped to that thread (its own route and rows).
+    const tv = threadViewRef.current;
+    const gid = groupIdOfContact(currentContactRef.current);
+    if (tv && !gid) return false;
     if (pinInFlightRef.current.has(msg.id)) return false;
-    const current = messagesRef.current.find(m => m.id === msg.id);
+    const current = (tv ? threadMessagesRef.current : messagesRef.current).find(m => m.id === msg.id);
     const wasPinned = !!(current && current.pinned);
     pinInFlightRef.current.add(msg.id);
-    setPinnedFlag(msg.id, !wasPinned);
+    const flag = (id, pinned) => (tv ? setThreadPinnedFlag(id, pinned) : setPinnedFlag(id, pinned));
+    flag(msg.id, !wasPinned);
     try {
-      const pinned = wasPinned
-        ? await unpinMessageRequest(user.user_id, msg.id)
-        : await pinMessageRequest(user.user_id, msg.id);
-      setPinnedFlag(msg.id, pinned);
-      loadPins();
+      let pinned;
+      if (tv) {
+        pinned = wasPinned
+          ? await unpinThreadMessageRequest(user.user_id, gid, tv.thread.id, msg.id)
+          : await pinThreadMessageRequest(user.user_id, gid, tv.thread.id, msg.id);
+      } else {
+        pinned = wasPinned
+          ? await unpinMessageRequest(user.user_id, msg.id)
+          : await pinMessageRequest(user.user_id, msg.id);
+        loadPins();
+      }
+      flag(msg.id, pinned);
       return true;
     } catch (err) {
-      setPinnedFlag(msg.id, wasPinned);
+      flag(msg.id, wasPinned);
       pinFailure(err);
       return false;
     } finally {
       pinInFlightRef.current.delete(msg.id);
     }
-  }, [user, setPinnedFlag, loadPins]);
+  }, [user, setPinnedFlag, setThreadPinnedFlag, loadPins]);
 
   // Unpin from the Pinned list: optimistic removal, row returns on failure.
   const unpinFromList = useCallback(async (messageId) => {
