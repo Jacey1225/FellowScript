@@ -94,26 +94,25 @@ final class FriendActivityNotePreviewTapTests: XCTestCase {
     // MARK: 1b — the existing headline-row tap behavior (open chat) is
     // unchanged: it still invokes onOpenFriend, and does NOT invoke onOpenNote.
 
-    func test_tappingHeadlineRow_stillInvokesOnOpenFriend_onOpenNoteUntouched() throws {
+    // Task 20261122-app-fixes-threads-widget: the headline row of a note
+    // activity with a visible preview now opens that note (not the DM); the
+    // avatar tile keeps opening the chat.
+    func test_tappingHeadlineRow_ofSharedNote_opensTheNote_notTheChat() throws {
         let preview = FSFriendNotePreview(note_id: "note-abc", title: "T", text: "body", timestamp: isoNow())
-        var openedFriend: FSFriendActivityEntry?
-        var openedNoteCount = 0
-        let feed = feedWithPreview(preview: preview)
-        let sut = FriendActivityHeroCard(
-            feed: feed,
-            onOpenFriend: { openedFriend = $0 },
-            onOpenNote: { _ in openedNoteCount += 1 }
-        )
-
+        var openedFriendCount = 0
+        var openedNote: FSFriendNotePreview?
+        let feed = FSFriendActivityFeed(
+            friends_active: [FSFriendActivityEntry(friend_id: "f1", username: "Sarah", last_active_at: isoNow(),
+                                                   activity_type: "note_created", note_preview: preview)],
+            check_in_candidates: [])
+        let sut = FriendActivityHeroCard(feed: feed, onOpenFriend: { _ in openedFriendCount += 1 },
+                                         onOpenNote: { openedNote = $0 })
         let headlineButton = try sut.inspect().find(ViewType.Button.self, where: { button in
-            (try? button.accessibilityLabel().string())?.contains("Opens chat.") == true
+            (try? button.accessibilityLabel().string())?.contains("Sarah wrote a note") == true
         })
         try headlineButton.tap()
-
-        XCTAssertEqual(openedFriend?.friend_id, "f1",
-                        "the headline row's existing chat-open behavior must be unchanged")
-        XCTAssertEqual(openedNoteCount, 0,
-                        "tapping the headline row must NOT also invoke onOpenNote")
+        XCTAssertEqual(openedNote?.note_id, "note-abc")
+        XCTAssertEqual(openedFriendCount, 0)
     }
 
     // MARK: 2 — distinct, non-colliding accessibility labels

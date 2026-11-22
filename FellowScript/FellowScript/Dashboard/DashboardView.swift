@@ -400,6 +400,11 @@ struct DashboardView: View {
                         onOpenNote: { preview in
                             openFriendNote(preview)
                         },
+                        onOpenHighlight: { h in
+                            // Same path a friend-highlight push uses: the Bible reader
+                            // opens at the highlighted verse.
+                            appState.pendingBibleNav = BibleNavTarget(book: h.book, chapter: h.chapter, verse: h.verse)
+                        },
                         isLoadingNotePreview: isLoadingFriendNote,
                         pickupNote: vm.pickupNote,
                         onOpenPickup: { pickupSheetNote = $0 }

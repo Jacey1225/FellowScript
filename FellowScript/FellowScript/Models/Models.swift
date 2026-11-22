@@ -515,8 +515,16 @@ struct FSFriendActivityEntry: Codable, Identifiable, Equatable {
     // default, same convention as activity_type above, so a build predating
     // this field keeps decoding this feed unchanged.
     var profile_photo_url: String?                  = nil
+    // Task 20261122-app-fixes-threads-widget: true when the friend's latest note
+    // activity is on a note the viewer may not open (a private note). The server
+    // then sends NO note_preview (no id, no body), so there is nothing to probe.
+    // nil on payloads that predate the field (treated as not private).
+    var note_is_private:   Bool?                    = nil
 
     var initial: String { String(username.prefix(1)).uppercased() }
+
+    /// True only when the server said the note is private.
+    var isPrivateNote: Bool { note_is_private == true }
 }
 
 struct FSCheckInCandidate: Codable, Equatable {

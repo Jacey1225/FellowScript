@@ -153,11 +153,44 @@ struct HomeWordmarkHeader: View {
 // String) can carry an unrecognized/future value without failing to decode
 // the whole feed; unmatched values fall through to `headline`'s existing
 // generic fallback below instead.
-private enum FriendActivityType {
+enum FriendActivityType {
     static let created     = "note_created"
     static let edited      = "note_edited"
     static let replied     = "note_replied"
     static let highlighted = "verse_highlighted"
+}
+
+/// Where a tap on a friend's activity (the headline row) goes. Pure so the
+/// routing is unit-testable without a view (task 20261122-app-fixes-threads-widget).
+///  - a highlight with its verse content opens that verse in the Bible reader;
+///  - a note activity with a visible note preview opens that note;
+///  - a private note (no preview, no id) and anything else open the DM.
+enum FriendActivityTap: Equatable {
+    case verse(FSFriendHighlightPreview)
+    case note(FSFriendNotePreview)
+    case chat
+
+    static func target(for entry: FSFriendActivityEntry) -> FriendActivityTap {
+        switch entry.activity_type {
+        case FriendActivityType.highlighted:
+            if let h = entry.highlight_preview { return .verse(h) }
+            return .chat
+        case FriendActivityType.created, FriendActivityType.edited, FriendActivityType.replied:
+            if entry.isPrivateNote { return .chat }
+            if let p = entry.note_preview { return .note(p) }
+            return .chat
+        default:
+            return .chat
+        }
+    }
+
+    var accessibilityHint: String {
+        switch self {
+        case .verse: return "Opens verse."
+        case .note:  return "Opens note."
+        case .chat:  return "Opens chat."
+        }
+    }
 }
 
 // Task 20260906-friend-activity-avatar-row (critique residual R4): a small,
@@ -204,6 +237,9 @@ struct FriendActivityHeroCard: View {
     // supplies onOpenFriend (all of DashboardEmptyStateTests.swift and
     // DashboardFriendRandomizationTests.swift) keeps compiling unchanged.
     var onOpenNote: (FSFriendNotePreview) -> Void = { _ in }
+    // Task 20261122-app-fixes-threads-widget: a highlight activity opens that
+    // verse in the Bible reader instead of the DM. Defaulted like onOpenNote.
+    var onOpenHighlight: (FSFriendHighlightPreview) -> Void = { _ in }
     // True while DashboardView has an in-flight fetch for the tapped
     // preview's full note -- shows a small inline spinner next to the
     // preview text and disables re-tapping mid-fetch, per the UI/UX
@@ -477,7 +513,7 @@ struct FriendActivityHeroCard: View {
                 .profileTapAvatar(userId: entry.friend_id, username: entry.username,
                                   photoURL: entry.profile_photo_url, diameter: 32)
                 .padding(.top, 4)
-            Button(action: { onOpenFriend(entry) }) {
+            Button(action: { openActivity(entry) }) {
                 HStack(alignment: .top, spacing: 14) {
                     VStack(alignment: .leading, spacing: 4) {
                         Text(headline(entry))
@@ -499,9 +535,19 @@ struct FriendActivityHeroCard: View {
                 }
             }
             .buttonStyle(.plain)
-            .accessibilityLabel("\(headline(entry)). Opens chat.")
+            .accessibilityLabel("\(headline(entry)). \(FriendActivityTap.target(for: entry).accessibilityHint)")
         }
         .padding(.top, 16)
+    }
+
+    /// Headline tap: the highlight's verse, the visible note, or (private note /
+    /// nothing to open) the DM.
+    private func openActivity(_ entry: FSFriendActivityEntry) {
+        switch FriendActivityTap.target(for: entry) {
+        case .verse(let h): onOpenHighlight(h)
+        case .note(let p):  onOpenNote(p)
+        case .chat:         onOpenFriend(entry)
+        }
     }
 
     // Distinct tap target from activityRow's headline Button above (task
@@ -536,6 +582,16 @@ struct FriendActivityHeroCard: View {
 
     private func headline(_ entry: FSFriendActivityEntry) -> String {
         let when = dayWord(entry.last_active_at)
+        // Task 20261122-app-fixes-threads-widget: a private note is named as
+        // private, with no body or title; tapping it opens the DM.
+        if entry.isPrivateNote {
+            switch entry.activity_type {
+            case FriendActivityType.edited:  return "\(entry.username) edited a private note \(when)"
+            case FriendActivityType.replied: return "\(entry.username) replied to a private note \(when)"
+            case FriendActivityType.created: return "\(entry.username) wrote a private note \(when)"
+            default: break
+            }
+        }
         switch entry.activity_type {
         case FriendActivityType.created:
             return "\(entry.username) wrote a note \(when)"
@@ -565,7 +621,17 @@ struct FriendActivityHeroCard: View {
     // subtle attribution affordance for whose highlight it is, reusing
     // HighlightRow's existing color-circle + username-capsule visual
     // language (NotesListView.swift) rather than inventing a new pattern.
+    // Task 20261122-app-fixes-threads-widget: the row is now a tap target that
+    // opens the highlighted verse in the Bible reader (onOpenHighlight).
     private func highlightPreviewRow(_ preview: FSFriendHighlightPreview, friendUsername: String) -> some View {
+        Button(action: { onOpenHighlight(preview) }) {
+            highlightPreviewContent(preview, friendUsername: friendUsername)
+        }
+        .buttonStyle(.plain)
+        .accessibilityHint("Opens verse.")
+    }
+
+    private func highlightPreviewContent(_ preview: FSFriendHighlightPreview, friendUsername: String) -> some View {
         HStack(alignment: .top, spacing: 8) {
             Circle()
                 .fill(Color(hex: preview.color))
@@ -599,6 +665,7 @@ struct FriendActivityHeroCard: View {
         .padding(.top, 16)
         .padding(.leading, 32)
         .frame(maxWidth: .infinity, alignment: .leading)
+        .contentShape(Rectangle())
         .accessibilityElement(children: .combine)
         .accessibilityLabel(
             "\(friendUsername) highlighted \(preview.book) \(preview.chapter):\(preview.verse)"
