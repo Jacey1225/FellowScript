@@ -136,11 +136,13 @@ async def run():
             fr = env.frames(uid, "thread_message")
             check(f"{who} gets the live frame", len(fr) == 1, env.ws[uid].sent)
         f = env.frames(b, "thread_message")[0]
-        check("frame keys: type, ids, sender, body, created_at, seq, attachment_*",
+        check("frame keys: type, ids, sender, from_user_id, body, created_at, seq, attachment_*",
               set(f) == {"type", "thread_id", "group_id", "id", "sender", "body", "created_at", "seq",
+                         "from_user_id",  # task 20261122-app-fixes-threads-widget: report/block target
                          "attachment_kind", "attachment_meta", "attachment_url"}, sorted(f))
         check("frame values", f["thread_id"] == tid and f["group_id"] == gid and f["id"] == rows[0][0]
-              and f["body"] == "hello thread" and f["sender"].startswith("thrws_") and isinstance(f["seq"], int) and f["seq"] == rows[0][3])
+              and f["body"] == "hello thread" and f["sender"].startswith("thrws_") and isinstance(f["seq"], int) and f["seq"] == rows[0][3]
+              and f["from_user_id"] == a)
         check("frame has a type key and NO from_user / NO text (build 78 ignores it)", "from_user" not in f and "text" not in f)
         check("web useMessaging shape check does not render the thread frame", not web_renders_as_chat_bubble(f))
         check("iOS-style discrimination: a frame with type != nil is never a delivery frame", f.get("type") == "thread_message")

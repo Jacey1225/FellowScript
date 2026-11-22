@@ -115,7 +115,7 @@ def test_reactions(client):
     denials["blocked author"] = client.post(base(a, gid, tid, bm, "reactions"), json={"emoji": HEART}, headers=cookie(a))
     for name, r in denials.items():
         check(f"{name}: uniform 404", r.status_code == 404 and r.json()["detail"] == NOT_FOUND, (r.status_code, r.text))
-    check("denials wrote nothing", sql("SELECT COUNT(*) FROM thread_message_reactions WHERE message_id = ANY(%s)", ([m, gone, bm],))[0][0] == 0)
+    check("denials wrote nothing", sql("SELECT COUNT(*) FROM thread_message_reactions WHERE message_id = ANY(%s::uuid[])", ([m, gone, bm],))[0][0] == 0)
     set_flag("message_reactions", "off", a)
     limiter.reset()
     check("reactions flag off: uniform 404", client.post(base(a, gid, tid, m, "reactions"), json={"emoji": HEART}, headers=cookie(a)).status_code == 404)
@@ -255,6 +255,8 @@ async def run_replies(client):
 
 def main():
     require_scratch_db()
+    from backend.registrations import load_all
+    load_all()  # main.py registers report resolvers in lifespan; TestClient(app) without `with` skips it
     client = TestClient(main_module.app)
     try:
         test_reactions(client)
