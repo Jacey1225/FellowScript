@@ -65,6 +65,7 @@ struct GroupInfoThreadsList: View {
                         .lineLimit(1)
                 }
                 Spacer(minLength: 8)
+                ThreadUnreadDot(count: thread.unreadCount)
                 Image(systemName: "chevron.right")
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundColor(Theme.gold.opacity(0.8))
@@ -75,6 +76,7 @@ struct GroupInfoThreadsList: View {
         }
         .buttonStyle(.plain)
         .accessibilityElement(children: .combine)
+        .accessibilityValue(thread.unreadCount > 0 ? "Unread" : "")
         .accessibilityHint("Opens this thread")
         .accessibilityAddTraits(.isButton)
     }

@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Spin } from 'antd';
 import { RightOutlined, PlayCircleFilled } from '@ant-design/icons';
 import { fetchAnnouncements } from '../lib/announcementsApi.js';
-import { listThreads, relativeTime } from '../lib/threadsApi.js';
+import { listThreads, relativeTime, threadUnreadCount, markRowRead, bumpRowUnread, THREAD_READ_EVENT, THREAD_UNREAD_EVENT } from '../lib/threadsApi.js';
 import { fetchGroupMedia, mediaColumns, mediaCellLabel, fullDateTime, formatDuration } from '../lib/groupMediaApi.js';
 
 // Task 20261023-group-info-row. The four list bodies shown in the bottom
@@ -76,7 +76,18 @@ function useList(cacheKey, load, idOf) {
     }
   }, [cacheKey, idOf]);
 
-  return { ...state, refresh, loadMore };
+  // Patch the shown items and the session cache in place (live badge updates).
+  const patchItems = useCallback((fn) => {
+    setState((p) => {
+      const items = fn(p.items);
+      if (items === p.items) return p;
+      const hit = cache.get(cacheKey);
+      if (hit) cache.set(cacheKey, { ...hit, items });
+      return { ...p, items };
+    });
+  }, [cacheKey]);
+
+  return { ...state, refresh, loadMore, patchItems };
 }
 
 function StateLine({ noun, onRetry }) {
@@ -161,6 +172,23 @@ export function ThreadsList({ userId, groupId, onOpenThread }) {
     return { items: page.threads, hasMore: page.hasMore, cursor: page.cursor };
   }, [userId, groupId]);
   const list = useList(`threads:${groupId}`, load, threadId);
+  const { patchItems } = list;
+
+  useEffect(() => {
+    const on = (fn) => (e) => {
+      const d = e.detail || {};
+      if (String(d.groupId || '').toLowerCase() !== String(groupId).toLowerCase()) return;
+      patchItems((rows) => fn(rows, d.threadId));
+    };
+    const onRead = on(markRowRead);
+    const onUnread = on(bumpRowUnread);
+    window.addEventListener(THREAD_READ_EVENT, onRead);
+    window.addEventListener(THREAD_UNREAD_EVENT, onUnread);
+    return () => {
+      window.removeEventListener(THREAD_READ_EVENT, onRead);
+      window.removeEventListener(THREAD_UNREAD_EVENT, onUnread);
+    };
+  }, [groupId, patchItems]);
 
   if (list.status === 'loading') return <Loading label="Loading threads" />;
   if (list.status === 'error') return <StateLine noun="threads" onRetry={list.refresh} />;
@@ -176,13 +204,15 @@ export function ThreadsList({ userId, groupId, onOpenThread }) {
             const when = relativeTime(t.last_activity_at);
             return (
               <li key={t.id}>
-                <button type="button" className="group-info-thread-row" onClick={() => onOpenThread(t)}>
+                <button type="button" className="group-info-thread-row" onClick={() => onOpenThread(t)}
+                  aria-label={threadUnreadCount(t) > 0 ? `${t.title || 'Thread'}, ${n} ${n === 1 ? 'reply' : 'replies'}, unread` : undefined}>
                   <span className="group-info-thread-main">
                     <span className="group-info-thread-title">{t.title || 'Thread'}</span>
                     <span className="group-info-thread-meta">
                       {`${n} ${n === 1 ? 'reply' : 'replies'}`}{when ? ` · ${when}` : ''}
                     </span>
                   </span>
+                  {threadUnreadCount(t) > 0 && <span className="thread-unread-dot" data-testid="thread-unread-dot" aria-hidden="true" />}
                   <RightOutlined className="group-info-thread-chevron" aria-hidden="true" />
                 </button>
               </li>

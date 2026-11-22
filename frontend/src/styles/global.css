@@ -2456,6 +2456,8 @@ body {
 .group-threads-snippet-deleted { font-style: italic; }
 .group-threads-meta { display: flex; flex-direction: column; align-items: flex-end; font-size: 0.65rem; color: rgba(242,242,242,0.6); white-space: nowrap; }
 .group-threads-chevron { font-size: 0.7rem; color: rgba(255,198,26,0.5); }
+/* Unread dot on a thread row (task 20261122-app-fixes-threads-widget): same small red dot as the app's chat rows. */
+.thread-unread-dot { flex: none; width: 12px; height: 12px; border-radius: 50%; background: #E5484D; box-shadow: 0 0 0 2px var(--bg-page, #0B0B0F); }
 
 @media (max-width: 767px) {
   .msg-action-menu { min-width: 200px; }

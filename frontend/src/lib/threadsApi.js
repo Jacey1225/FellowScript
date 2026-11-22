@@ -69,6 +69,38 @@ export function parseThreadsPage(data) {
   };
 }
 
+// Mark the thread read for the caller (POST .../threads/{id}/read). Resolves to
+// { thread_id, unread_count: 0 }; throws on any failure so a caller never shows
+// a read state the server did not confirm.
+export function markThreadRead(userId, groupId, threadId) {
+  return request(`${base(userId, groupId)}/threads/${encodeURIComponent(threadId)}/read`,
+    { method: 'POST' }, "Couldn't mark this thread read.");
+}
+
+// Unread state of a list row (server `unread_count`; never counts own messages).
+export function threadUnreadCount(t) {
+  const n = Number(t && t.unread_count);
+  return Number.isFinite(n) && n > 0 ? Math.floor(n) : 0;
+}
+
+export const THREAD_READ_EVENT = 'fs:thread-read';
+export const THREAD_UNREAD_EVENT = 'fs:thread-unread';
+
+// Pure row updates for the two events above; unknown thread = unchanged rows
+// (the next fetch supplies the true count).
+export function markRowRead(rows, threadId) {
+  if (!Array.isArray(rows)) return rows;
+  const i = rows.findIndex(t => t.id === threadId);
+  if (i === -1 || threadUnreadCount(rows[i]) === 0) return rows;
+  return rows.map((t, k) => (k === i ? { ...t, unread_count: 0 } : t));
+}
+export function bumpRowUnread(rows, threadId) {
+  if (!Array.isArray(rows)) return rows;
+  const i = rows.findIndex(t => t.id === threadId);
+  if (i === -1) return rows;
+  return rows.map((t, k) => (k === i ? { ...t, unread_count: threadUnreadCount(t) + 1 } : t));
+}
+
 // Start (or open the existing) thread on a main-chat message. Resolves to the
 // thread summary {id, title, root_preview, root_message_id, root_deleted, ...}.
 export function createThread(userId, groupId, messageId) {

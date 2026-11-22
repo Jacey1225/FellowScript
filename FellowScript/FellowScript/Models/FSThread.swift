@@ -20,6 +20,11 @@ struct FSThreadSummary: Identifiable, Codable, Equatable {
     var replyCount: Int
     var lastActivityAt: String
     var createdBy: String?
+    /// Task 20261122-app-fixes-threads-widget: live messages from others the
+    /// viewer has not seen (server `unread_count`; never counts own messages).
+    /// Absent on the create-thread summary and on older cached rows: 0 there
+    /// means "not reported", and the next successful list fetch replaces it.
+    var unreadCount: Int
 
     enum CodingKeys: String, CodingKey {
         case id, title
@@ -29,10 +34,12 @@ struct FSThreadSummary: Identifiable, Codable, Equatable {
         case replyCount     = "reply_count"
         case lastActivityAt = "last_activity_at"
         case createdBy      = "created_by"
+        case unreadCount    = "unread_count"
     }
 
     init(id: String, title: String = "Thread", rootPreview: String = "", rootMessageId: String? = nil,
-         rootDeleted: Bool = false, replyCount: Int = 0, lastActivityAt: String = "", createdBy: String? = nil) {
+         rootDeleted: Bool = false, replyCount: Int = 0, lastActivityAt: String = "", createdBy: String? = nil,
+         unreadCount: Int = 0) {
         self.id = id
         self.title = title
         self.rootPreview = rootPreview
@@ -41,6 +48,7 @@ struct FSThreadSummary: Identifiable, Codable, Equatable {
         self.replyCount = replyCount
         self.lastActivityAt = lastActivityAt
         self.createdBy = createdBy
+        self.unreadCount = unreadCount
     }
 
     init(from decoder: Decoder) throws {
@@ -54,6 +62,7 @@ struct FSThreadSummary: Identifiable, Codable, Equatable {
         replyCount = ((try? c.decodeIfPresent(Int.self, forKey: .replyCount)) ?? nil) ?? 0
         lastActivityAt = ((try? c.decodeIfPresent(String.self, forKey: .lastActivityAt)) ?? nil) ?? ""
         createdBy = (try? c.decodeIfPresent(String.self, forKey: .createdBy)) ?? nil
+        unreadCount = max(0, ((try? c.decodeIfPresent(Int.self, forKey: .unreadCount)) ?? nil) ?? 0)
     }
 }
 
@@ -260,7 +269,10 @@ func fsInsertRestored(_ current: [FSMessage], _ message: FSMessage) -> [FSMessag
 /// A change to one thread, broadcast so every list that shows it (group info
 /// section, group-list dropdown) and an open thread view stay consistent.
 struct FSThreadChange: Equatable {
-    enum Kind: Equatable { case renamed(String), deleted }
+    /// `.read`: the viewer opened the thread (its unread count is now 0).
+    /// `.unreadIncrement`: a live message from someone else arrived while the
+    /// thread was not open.
+    enum Kind: Equatable { case renamed(String), deleted, read, unreadIncrement }
     let groupId: String
     let threadId: String
     let kind: Kind
@@ -296,5 +308,32 @@ enum FSThreadPolicy {
         let t = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !t.isEmpty, t.count <= titleMaxLength, !t.contains("\u{0}") else { return nil }
         return t
+    }
+}
+
+
+/// Pure unread bookkeeping for a list of thread rows, kept out of the view
+/// models so it is unit-testable.
+enum FSThreadUnread {
+    /// Rows with the given thread's unread set to 0 (no-op when unknown).
+    static func markingRead(_ rows: [FSThreadSummary], threadId: String) -> [FSThreadSummary] {
+        var next = rows
+        guard let i = next.firstIndex(where: { $0.id.lowercased() == threadId.lowercased() }),
+              next[i].unreadCount != 0 else { return rows }
+        next[i].unreadCount = 0
+        return next
+    }
+
+    /// Rows with the given thread's unread bumped by one (no-op when unknown;
+    /// the next fetch supplies the true count for a thread not yet listed).
+    static func incrementing(_ rows: [FSThreadSummary], threadId: String) -> [FSThreadSummary] {
+        var next = rows
+        guard let i = next.firstIndex(where: { $0.id.lowercased() == threadId.lowercased() }) else { return rows }
+        next[i].unreadCount += 1
+        return next
+    }
+
+    static func accessibilitySuffix(_ thread: FSThreadSummary) -> String {
+        thread.unreadCount > 0 ? ", unread" : ""
     }
 }

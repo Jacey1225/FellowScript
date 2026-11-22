@@ -726,11 +726,37 @@ final class ChatThreadViewModel: ObservableObject {
     }
 
     private func handleThreadFrame(_ json: [String: Any]) {
-        guard let tid = json["thread_id"] as? String, activeThread?.id == tid,
-              let msg = FSMessage(threadFrame: json) else { return }
+        guard let tid = json["thread_id"] as? String else { return }
+        let fromOthers = (json["from_user_id"] as? String).map { $0.lowercased() != wsUserId.lowercased() } ?? false
+        guard activeThread?.id == tid else {
+            // Not the open thread: a message from someone else lights that
+            // thread's badge in every list (own sends never do).
+            if fromOthers, let gid = (json["group_id"] as? String) ?? currentContact?.id {
+                FSThreadChange(groupId: gid, threadId: tid, kind: .unreadIncrement).post()
+            }
+            return
+        }
+        guard let msg = FSMessage(threadFrame: json) else { return }
         if messages.contains(where: { $0.id == msg.id }) { return }
         messages.append(msg)
         if var t = activeThread { t.replyCount += 1; activeThread = t }
+        // Seen live while open: move the server marker past it.
+        if fromOthers { markOpenThreadRead() }
+    }
+
+    /// Task 20261122-app-fixes-threads-widget: tells the server the open thread
+    /// is read, then clears its badge in every list. Best effort: on failure the
+    /// badge is left as it was (no fabricated zero) and the next open retries.
+    private func markOpenThreadRead() {
+        guard let thread = activeThread, let ctx = threadReadContext else { return }
+        Task {
+            do {
+                try await ctx.service.markThreadRead(userId: ctx.userId, groupId: ctx.groupId, threadId: thread.id)
+                FSThreadChange(groupId: ctx.groupId, threadId: thread.id, kind: .read).post()
+            } catch {
+                print("[ChatThreadViewModel] mark thread read failed: \(error)")
+            }
+        }
     }
 
     /// Set when the open thread was deleted (by anyone, incl. this user) or
@@ -865,6 +891,8 @@ final class ChatThreadViewModel: ObservableObject {
     /// Text handed back to the composer after terms_reaccept_required.
     @Published var restoredDraft: String? = nil
     private var mainStash: MainChatStash? = nil
+    /// Service/user/group of the open thread, kept for mark-read calls.
+    private var threadReadContext: (service: DataServiceProtocol, userId: String, groupId: String)? = nil
     /// Whether main-chat sends carry a client_ref (see load()).
     private var ackEnabled = false
 
@@ -909,6 +937,8 @@ final class ChatThreadViewModel: ObservableObject {
             messages = page.messages + arrived
             hasMoreOlder = page.hasMore
             olderCursor = page.cursor
+            threadReadContext = (service, userId, contact.id)
+            markOpenThreadRead()
         } catch {
             guard generation == loadGeneration, activeThread?.id == thread.id else { return }
             print("[ChatThreadViewModel] thread load failed: \(error)")
@@ -945,6 +975,7 @@ final class ChatThreadViewModel: ObservableObject {
         guard activeThread != nil, let st = mainStash else { return }
         loadGeneration += 1
         activeThread = nil
+        threadReadContext = nil
         mainStash = nil
         messages = st.messages
         pagingEnabled = st.pagingEnabled

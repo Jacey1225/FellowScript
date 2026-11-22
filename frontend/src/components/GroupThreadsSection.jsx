@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { RightOutlined } from '@ant-design/icons';
-import { listThreads, relativeTime } from '../lib/threadsApi.js';
+import { listThreads, relativeTime, threadUnreadCount, markRowRead, bumpRowUnread, THREAD_READ_EVENT, THREAD_UNREAD_EVENT } from '../lib/threadsApi.js';
 import { useMessagingPanel } from '../context/ReaderPanelContexts.jsx';
 
 // Task 20261001-message-threads step 8. "Threads" section of the group info
@@ -20,7 +20,7 @@ export function threadRowLabel(t) {
   const n = Number(t.reply_count) || 0;
   const replies = `${n} ${n === 1 ? 'reply' : 'replies'}`;
   const when = relativeTime(t.last_activity_at);
-  return `${t.title || 'Thread'}, ${replies}${when ? `, ${when}` : ''}`;
+  return `${t.title || 'Thread'}, ${replies}${when ? `, ${when}` : ''}${threadUnreadCount(t) > 0 ? ', unread' : ''}`;
 }
 
 export default function GroupThreadsSection({ userId, groupId, onOpenThread: onOpenThreadProp }) {
@@ -72,6 +72,26 @@ export default function GroupThreadsSection({ userId, groupId, onOpenThread: onO
     };
     window.addEventListener('fs:thread-deleted', onDeleted);
     return () => window.removeEventListener('fs:thread-deleted', onDeleted);
+  }, [groupId]);
+
+  // Read / unread events from the messaging hook: update the shown rows and the
+  // cached copy so the badge matches what the server now says.
+  useEffect(() => {
+    const apply = (fn) => (e) => {
+      const d = e.detail || {};
+      if (String(d.groupId || '').toLowerCase() !== String(groupId).toLowerCase()) return;
+      const hit = threadsCache.get(groupId);
+      if (hit) threadsCache.set(groupId, { ...hit, rows: fn(hit.rows, d.threadId) });
+      setRows(prev => fn(prev, d.threadId));
+    };
+    const onRead = apply(markRowRead);
+    const onUnread = apply(bumpRowUnread);
+    window.addEventListener(THREAD_READ_EVENT, onRead);
+    window.addEventListener(THREAD_UNREAD_EVENT, onUnread);
+    return () => {
+      window.removeEventListener(THREAD_READ_EVENT, onRead);
+      window.removeEventListener(THREAD_UNREAD_EVENT, onUnread);
+    };
   }, [groupId]);
 
   const loadMore = async () => {
@@ -127,6 +147,7 @@ export default function GroupThreadsSection({ userId, groupId, onOpenThread: onO
                     {t.root_deleted ? 'Original message deleted' : (t.root_preview || '')}
                   </span>
                 </span>
+                {threadUnreadCount(t) > 0 && <span className="thread-unread-dot" data-testid="thread-unread-dot" aria-hidden="true" />}
                 <span className="group-threads-meta">
                   <span>{Number(t.reply_count) || 0} {(Number(t.reply_count) || 0) === 1 ? 'reply' : 'replies'}</span>
                   <span>{relativeTime(t.last_activity_at)}</span>

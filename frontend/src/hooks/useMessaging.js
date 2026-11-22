@@ -24,6 +24,7 @@ import {
 import {
   createThread, deleteGroupMessage, restoreGroupMessage, fetchThreadMessagesUrl,
   insertRestored, DEFAULT_UNDO_SECONDS,
+  markThreadRead, THREAD_READ_EVENT, THREAD_UNREAD_EVENT,
 } from '../lib/threadsApi.js';
 import {
   probeSession, backoffDelay, isSessionEnded, markSessionEnded,
@@ -501,6 +502,18 @@ export function useMessaging({ user }) {
 
   // ── Threads (task 20261001-message-threads) ────────────────────────────────
 
+  // Tell the server the open thread is read, then clear its badge in every list.
+  // On failure the badge is left as it was (no fabricated zero).
+  const userIdRef = useRef(null);
+  userIdRef.current = user ? user.user_id : null;
+  const markThreadSeen = useCallback((groupId, threadId) => {
+    const uid = userIdRef.current;
+    if (!uid || !groupId || !threadId) return;
+    markThreadRead(uid, groupId, threadId)
+      .then(() => window.dispatchEvent(new CustomEvent(THREAD_READ_EVENT, { detail: { groupId, threadId } })))
+      .catch((err) => console.error('Failed to mark thread read:', err));
+  }, []);
+
   const resetThread = useCallback(() => {
     threadTokenRef.current += 1;
     threadPageRef.current = { cursor: null, hasMore: false, loading: false };
@@ -534,12 +547,13 @@ export function useMessaging({ user }) {
       setThreadPage({ ...PAGING_IDLE, paged: true, hasMore: pg.hasMore });
       setThreadMessages(pg.messages);
       setThreadLoad('idle');
+      markThreadSeen(gid, thread.id);
     } catch (err) {
       if (token !== threadTokenRef.current) return;
       console.error('Failed to open thread:', err);
       setThreadLoad('error');
     }
-  }, [user, resetThread]);
+  }, [user, resetThread, markThreadSeen]);
 
   const openThread = useCallback((thread) => {
     if (!thread || typeof thread.id !== 'string') return;
@@ -691,9 +705,19 @@ export function useMessaging({ user }) {
     const sameGroup = gid && typeof data.group_id === 'string' && data.group_id.toLowerCase() === String(gid).toLowerCase();
     if (data.type === 'thread_message') {
       const tv = threadViewRef.current;
-      if (!tv || data.thread_id !== tv.thread.id) return;
+      const fromOthers = typeof data.from_user_id === 'string'
+        && data.from_user_id.toLowerCase() !== String(userIdRef.current || '').toLowerCase();
+      if (!tv || data.thread_id !== tv.thread.id) {
+        // Not the open thread: someone else's message lights that thread's badge.
+        if (sameGroup && fromOthers && typeof data.thread_id === 'string') {
+          window.dispatchEvent(new CustomEvent(THREAD_UNREAD_EVENT, { detail: { groupId: gid, threadId: data.thread_id } }));
+        }
+        return;
+      }
       const row = threadFrameToRow(data);
       if (row) setThreadMessages(prev => mergeLive(prev, row));
+      // Seen live while open: move the server marker past it.
+      if (fromOthers) markThreadSeen(gid, tv.thread.id);
       return;
     }
     if (data.type === 'message_deleted') {
@@ -743,7 +767,7 @@ export function useMessaging({ user }) {
         setRestoredDraft(prev => ({ tick: (prev ? prev.tick : 0) + 1, text: pending.text }));
       }
     }
-  }, [resetThread]);
+  }, [resetThread, markThreadSeen]);
   useEffect(() => {
     threadFrameCbRef.current = handleThreadFrame;
     return () => { threadFrameCbRef.current = null; };

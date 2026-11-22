@@ -171,6 +171,13 @@ extension NetworkService {
                                   method: "DELETE", fallback: "Couldn't delete that thread. Please try again.")
     }
 
+    // POST /groups/{u}/{g}/threads/{t}/read (no body) -> {thread_id, unread_count:0}.
+    // Throws on failure; the caller keeps the badge as it was (no fabricated zero).
+    func markThreadRead(userId: String, groupId: String, threadId: String) async throws {
+        _ = try await threadsSend("\(threadsBase(userId, groupId))/threads/\(encodeURIComponent(threadId))/read",
+                                  method: "POST", fallback: "Couldn't mark this thread read.")
+    }
+
     // DELETE /groups/{u}/{g}/messages/{m} -> {id, undo_seconds}
     func deleteGroupMessage(userId: String, groupId: String, messageId: String) async throws -> FSMessageDeleteResult {
         let data = try await threadsSend("\(threadsBase(userId, groupId))/messages/\(encodeURIComponent(messageId))",
@@ -207,6 +214,9 @@ extension DataServiceProtocol {
         throw threadsUnsupported
     }
     func deleteThread(userId: String, groupId: String, threadId: String) async throws {
+        throw threadsUnsupported
+    }
+    func markThreadRead(userId: String, groupId: String, threadId: String) async throws {
         throw threadsUnsupported
     }
     func deleteGroupMessage(userId: String, groupId: String, messageId: String) async throws -> FSMessageDeleteResult {

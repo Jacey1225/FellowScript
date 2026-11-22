@@ -194,6 +194,7 @@ protocol DataServiceProtocol {
     func fetchThreadMessages(userId: String, groupId: String, threadId: String, limit: Int, cursor: FSMessageCursor?) async throws -> FSMessagePage
     func renameThread(userId: String, groupId: String, threadId: String, title: String) async throws -> FSThreadSummary
     func deleteThread(userId: String, groupId: String, threadId: String) async throws
+    func markThreadRead(userId: String, groupId: String, threadId: String) async throws
     func deleteGroupMessage(userId: String, groupId: String, messageId: String) async throws -> FSMessageDeleteResult
     func restoreGroupMessage(userId: String, groupId: String, messageId: String) async throws
 

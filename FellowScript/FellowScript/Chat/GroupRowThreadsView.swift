@@ -177,18 +177,22 @@ struct GroupRowWithThreads: View {
             ForEach(Array(vm.threads.enumerated()), id: \.element.id) { index, thread in
                 if index > 0 { hairline }
                 Button { onOpenThread(thread) } label: {
-                    Text(thread.title.isEmpty ? "Thread" : thread.title)
-                        .font(.inter(Theme.fontSM, weight: .semibold))
-                        .foregroundColor(Theme.parchment)
-                        .lineLimit(2)
-                        .multilineTextAlignment(.leading)
+                    HStack(spacing: 8) {
+                        Text(thread.title.isEmpty ? "Thread" : thread.title)
+                            .font(.inter(Theme.fontSM, weight: .semibold))
+                            .foregroundColor(Theme.parchment)
+                            .lineLimit(2)
+                            .multilineTextAlignment(.leading)
+                        Spacer(minLength: 8)
+                        ThreadUnreadDot(count: thread.unreadCount)
+                    }
                         .padding(.horizontal, 14)
                         .padding(.vertical, 8)
                         .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel(thread.title.isEmpty ? "Thread" : thread.title)
+                .accessibilityLabel((thread.title.isEmpty ? "Thread" : thread.title) + FSThreadUnread.accessibilitySuffix(thread))
                 .accessibilityHint("Opens this thread")
                 .accessibilityAddTraits(.isButton)
                 .accessibilityIdentifier("group-row-thread")

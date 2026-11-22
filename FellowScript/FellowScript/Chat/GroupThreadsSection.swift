@@ -83,6 +83,10 @@ final class GroupThreadsViewModel: ObservableObject {
         case .renamed(let title):
             guard let i = next.firstIndex(where: { $0.id == change.threadId }) else { return }
             next[i].title = title
+        case .read:
+            next = FSThreadUnread.markingRead(next, threadId: change.threadId)
+        case .unreadIncrement:
+            next = FSThreadUnread.incrementing(next, threadId: change.threadId)
         }
         guard next != threads else { return }
         threads = next
@@ -342,6 +346,7 @@ struct GroupThreadsSection: View {
                         .lineLimit(1)
                 }
                 Spacer(minLength: 8)
+                ThreadUnreadDot(count: thread.unreadCount)
                 VStack(alignment: .trailing, spacing: 2) {
                     Text(replyLabel(thread))
                         .font(.inter(Theme.fontXS)).foregroundColor(Theme.textGoldMuted)
@@ -365,7 +370,7 @@ struct GroupThreadsSection: View {
             openThread?.run(thread)
         }
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("\(thread.title). \(snippet(thread)). \(replyLabel(thread))")
+        .accessibilityLabel("\(thread.title). \(snippet(thread)). \(replyLabel(thread))\(FSThreadUnread.accessibilitySuffix(thread))")
         .accessibilityHint("Opens this thread")
         .accessibilityAddTraits(.isButton)
         .accessibilityIdentifier("group-thread-row")
