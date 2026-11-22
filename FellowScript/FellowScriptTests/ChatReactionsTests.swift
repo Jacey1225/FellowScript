@@ -321,16 +321,22 @@ final class ChatReactionsViewModelTests: XCTestCase {
 
     // MARK: guards
 
-    func test_toggle_isNoOp_forUnsettledMessage_andWhileThreadOpen() async throws {
+    func test_toggle_whileThreadOpen_usesThreadRoute_neverTheMainChatRoute() async throws {
         let s = service(msgs: [m("m1", "2026-10-10T10:00:00Z")])
         let user = uid("guard")
         let vm = await loaded(s, user: user)
-        // unknown to the settled check? pending ids are private; use a thread-open guard instead
         ThreadsSeam.threadPages["t1"] = FSMessagePage(messages: [m("r1", "2026-10-10T10:01:00Z")], hasMore: false, cursor: nil)
         await vm.openThread(FSThreadSummary(id: "t1"), service: s, contact: group, userId: user)
         XCTAssertTrue(vm.isThreadOpen)
-        try await vm.toggleReaction("👍", on: m("r1", "2026-10-10T10:01:00Z"), service: s, userId: user)
-        XCTAssertTrue(ReactionSeam.log.isEmpty, "thread messages are deferred: no network call")
+        // The stub service has no thread reaction route (protocol default throws),
+        // so the optimistic change is rolled back and the error surfaces; the
+        // main-chat reaction route must not be touched.
+        do {
+            try await vm.toggleReaction("👍", on: m("r1", "2026-10-10T10:01:00Z"), service: s, userId: user)
+            XCTFail("expected the thread route to throw")
+        } catch {}
+        XCTAssertTrue(ReactionSeam.log.isEmpty, "thread messages never hit /message-reactions")
+        XCTAssertNil(reactions(vm, "r1")?.first(where: { $0.emoji == "👍" }), "rolled back")
         vm.closeThread()
         vm.disconnect()
     }
@@ -457,7 +463,7 @@ final class ChatReactionsSourcePinTests: XCTestCase {
 
     func test_chatView_gatesReactionUI_onCapabilityThreadAndSettled() throws {
         let s = try src("Chat/ChatThreadView.swift")
-        XCTAssertTrue(s.contains("guard caps.messageReactionsEnabled, !vm.isThreadOpen, vm.isSettled(message) else { return nil }"))
+        XCTAssertTrue(s.contains("guard caps.messageReactionsEnabled, vm.isSettled(message) else { return nil }"))
         XCTAssertTrue(s.contains("case \"reaction_updated\":"))
         XCTAssertTrue(s.contains("default:\n                break // unrecognized type -- explicit no-op"), "unknown frames stay a no-op")
         XCTAssertTrue(s.contains("catch {"), "failure path present")

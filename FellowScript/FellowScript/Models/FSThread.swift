@@ -98,7 +98,9 @@ extension FSMessage {
                   attachmentKind: json["attachment_kind"] as? String,
                   attachmentURL: json["attachment_url"] as? String,
                   attachmentMeta: Self.decodeMeta(json["attachment_meta"]),
-                  mentions: FSMention.parse(json["mentions"]))
+                  reply: FSReplyRef(frame: json),
+                  mentions: FSMention.parse(json["mentions"]),
+                  senderId: (json["from_user_id"] as? String).flatMap { $0.isEmpty ? nil : $0 })
     }
 
     /// Live `{type:"message_restored"}` frame: everything needed to re-insert
@@ -184,17 +186,22 @@ struct FSMessageActionContext: Equatable {
     /// by username, or the DM contact); nil hides Report/Block.
     var senderUserId: String?
     /// Task 20261010-announcement-location-chat-replies: chat_replies capability
-    /// on (main chat only; thread replies are deferred).
+    /// on (also inside a thread since 20261122-app-fixes-threads-widget; a
+    /// thread reply stays in its thread).
     var repliesEnabled: Bool = false
     /// The quoted original of this message is in the loaded list.
     var canJumpToOriginal: Bool = false
-    /// Task 20261012-message-pins: message_pins capability on (main chat only).
+    /// Task 20261012-message-pins: message_pins capability on (pins inside a thread
+    /// are scoped to that thread).
     var pinsEnabled: Bool = false
 }
 
 enum FSMessageActionPolicy {
     /// Menu items for `message`, in display order.
-    ///  - thread message: Copy only (there is no delete route for them);
+    ///  - thread message (task 20261122-app-fixes-threads-widget): the same menu as
+    ///    a group message minus Start thread (a thread cannot start a thread) and
+    ///    Delete (no delete route for thread messages); reactions are offered by
+    ///    the view, not this list;
     ///  - main-chat message in a group, own: Start thread (threads on),
     ///    Copy, Delete (message_delete on);
     ///  - main-chat message in a group, others': Copy, Start thread (threads
@@ -205,10 +212,10 @@ enum FSMessageActionPolicy {
         var list: [FSMessageActionKind] = []
         let canThread = !ctx.inThread && ctx.isGroup && ctx.threadsEnabled && ctx.isSettled
         let canCopy = message.copyableText != nil
-        if ctx.repliesEnabled && !ctx.inThread && ctx.isSettled { list.append(.reply) }
-        if ctx.canJumpToOriginal && !ctx.inThread { list.append(.goToOriginal) }
+        if ctx.repliesEnabled && ctx.isSettled { list.append(.reply) }
+        if ctx.canJumpToOriginal { list.append(.goToOriginal) }
         // Anyone in the chat can pin or unpin; never a system line.
-        if ctx.pinsEnabled && !ctx.inThread && ctx.isSettled && message.systemKind == nil {
+        if ctx.pinsEnabled && ctx.isSettled && message.systemKind == nil {
             list.append(message.pinned == true ? .unpin : .pin)
         }
         if message.mine {
@@ -220,7 +227,7 @@ enum FSMessageActionPolicy {
         } else {
             if canCopy { list.append(.copy) }
             if canThread { list.append(.startThread) }
-            if !ctx.inThread && ctx.isGroup && ctx.isSettled && ctx.senderUserId != nil {
+            if ctx.isGroup && ctx.isSettled && ctx.senderUserId != nil {
                 list.append(.report)
                 list.append(.block)
             }

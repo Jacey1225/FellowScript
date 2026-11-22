@@ -76,9 +76,30 @@ final class MessageThreadsActionPolicyTests: XCTestCase {
                                isSettled: settled, senderUserId: sender)
     }
 
-    func test_threadMessages_areCopyOnly_forOwnAndOthers_evenWithEveryFlagOn() {
-        XCTAssertEqual(FSMessageActionPolicy.actions(for: msg(mine: true), in: ctx(thread: true)), [.copy])
-        XCTAssertEqual(FSMessageActionPolicy.actions(for: msg(mine: false), in: ctx(thread: true)), [.copy])
+    private func threadCtx(replies: Bool = true, pins: Bool = true) -> FSMessageActionContext {
+        FSMessageActionContext(isGroup: true, inThread: true, threadsEnabled: true, messageDeleteEnabled: true,
+                               isSettled: true, senderUserId: "u-alice", repliesEnabled: replies, pinsEnabled: pins)
+    }
+
+    // Task 20261122-app-fixes-threads-widget: a thread message gets the group menu
+    // minus Start thread (and Delete, which has no thread route).
+    func test_threadMessage_othersGetReplyPinCopyReportBlock_neverStartThreadOrDelete() {
+        XCTAssertEqual(FSMessageActionPolicy.actions(for: msg(mine: false), in: threadCtx()),
+                       [.reply, .pin, .copy, .report, .block])
+    }
+
+    func test_threadMessage_own_replyPinCopy_noStartThreadNoDelete() {
+        XCTAssertEqual(FSMessageActionPolicy.actions(for: msg(mine: true), in: threadCtx()), [.reply, .pin, .copy])
+    }
+
+    func test_threadMessage_flagsOff_fallBackToCopyReportBlock() {
+        XCTAssertEqual(FSMessageActionPolicy.actions(for: msg(mine: false), in: threadCtx(replies: false, pins: false)),
+                       [.copy, .report, .block])
+    }
+
+    func test_threadMessage_reportBlockHidden_whenSenderUnknown() {
+        var c = threadCtx(); c.senderUserId = nil
+        XCTAssertEqual(FSMessageActionPolicy.actions(for: msg(mine: false), in: c), [.reply, .pin, .copy])
     }
 
     func test_mainChat_ownMessage_startThreadCopyDelete_inOrder() {

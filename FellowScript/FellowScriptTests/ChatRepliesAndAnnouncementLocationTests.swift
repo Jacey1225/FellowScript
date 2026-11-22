@@ -136,9 +136,11 @@ final class ChatReplyActionPolicyTests: XCTestCase {
     func test_unsettledMessage_cannotBeRepliedTo() {
         XCTAssertFalse(FSMessageActionPolicy.actions(for: msg(), in: ctx(settled: false)).contains(.reply))
     }
-    func test_inThread_neverReplyOrJump() {
-        let a = FSMessageActionPolicy.actions(for: msg(), in: ctx(thread: true, jump: true))
-        XCTAssertFalse(a.contains(.reply)); XCTAssertFalse(a.contains(.goToOriginal))
+    func test_inThread_replyAndJumpFollowTheFlags() {
+        let on = FSMessageActionPolicy.actions(for: msg(), in: ctx(thread: true, jump: true))
+        XCTAssertTrue(on.contains(.reply)); XCTAssertTrue(on.contains(.goToOriginal))
+        let off = FSMessageActionPolicy.actions(for: msg(), in: ctx(thread: true, replies: false))
+        XCTAssertFalse(off.contains(.reply))
     }
     func test_goToOriginal_onlyWhenLoaded() {
         XCTAssertTrue(FSMessageActionPolicy.actions(for: msg(), in: ctx(jump: true)).contains(.goToOriginal))

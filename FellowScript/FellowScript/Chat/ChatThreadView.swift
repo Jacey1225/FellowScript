@@ -400,6 +400,9 @@ final class ChatThreadViewModel: ObservableObject {
             // optimistic bubble its server id.
             body = ["type": "thread_message", "thread_id": thread.id, "text": text,
                     "client_ref": messageId, "from_user": userId]
+            // A thread reply targets a message of the SAME thread; the server
+            // derives the quote and refuses anything else (reply_invalid).
+            if let reply { body["reply_to"] = reply.id }
         } else {
             if pagingEnabled || ackEnabled { body["client_ref"] = messageId }
             // Only the target id is sent; the server derives the quote.
@@ -471,7 +474,7 @@ final class ChatThreadViewModel: ObservableObject {
         messages.append(FSMessage(
             id: messageId, text: text, mine: true, sender: "", timestamp: iso,
             attachmentKind: attachmentKind, attachmentURL: nil, attachmentMeta: attachmentMeta,
-            reply: activeThread == nil ? reply : nil,
+            reply: reply,
             mentions: sentMentions.isEmpty ? nil : sentMentions
         ))
         if let localPreview {
@@ -647,6 +650,10 @@ final class ChatThreadViewModel: ObservableObject {
                 handleSendError(reason: json["reason"] as? String, detail: json["detail"] as? String)
             case "thread_message":
                 handleThreadFrame(json)
+            case "thread_reaction_updated":
+                handleThreadReactionUpdated(json)
+            case "thread_pin_updated":
+                handleThreadPinUpdated(json)
             case "message_deleted":
                 handleMessageDeleted(json)
             case "message_restored":
@@ -1028,30 +1035,82 @@ final class ChatThreadViewModel: ObservableObject {
     /// Optimistically toggles the viewer's `emoji` on a main-chat message, then
     /// reconciles with the server's count. On failure only that emoji's entry is
     /// rolled back (other concurrent changes are kept) and the error is rethrown.
+    ///
+    /// Task 20261122-app-fixes-threads-widget: inside a thread the same toggle
+    /// runs against the thread's own reaction routes and the thread's rows.
     func toggleReaction(_ emoji: String, on message: FSMessage, service: DataServiceProtocol, userId: String) async throws {
-        guard !isThreadOpen, isSettled(message) else { return }
+        guard isSettled(message) else { return }
+        let thread = activeThread
+        if thread != nil && currentContact == nil { return }
         let before = messages.first(where: { $0.id == message.id })?.reactions
-            ?? mainStash?.messages.first(where: { $0.id == message.id })?.reactions ?? []
+            ?? (thread == nil ? mainStash?.messages.first(where: { $0.id == message.id })?.reactions : nil) ?? []
         let prior = before.first(where: { $0.emoji == emoji })
         let adding = !(prior?.viewerReacted ?? false)
-        setReactions(message.id) { ReactionSummary.toggled($0, emoji: emoji) }
+        let inThread = thread != nil
+        setReactions(message.id, inThread: inThread) { ReactionSummary.toggled($0, emoji: emoji) }
         do {
-            let result = adding
-                ? try await service.addMessageReaction(userId: userId, messageId: message.id, emoji: emoji)
-                : try await service.removeMessageReaction(userId: userId, messageId: message.id, emoji: emoji)
-            setReactions(message.id) { ReactionSummary.setting($0, emoji: emoji, to: result) }
+            let result: ReactionSummary
+            if let thread, let gid = currentContact?.id {
+                result = adding
+                    ? try await service.addThreadMessageReaction(userId: userId, groupId: gid, threadId: thread.id, messageId: message.id, emoji: emoji)
+                    : try await service.removeThreadMessageReaction(userId: userId, groupId: gid, threadId: thread.id, messageId: message.id, emoji: emoji)
+            } else {
+                result = adding
+                    ? try await service.addMessageReaction(userId: userId, messageId: message.id, emoji: emoji)
+                    : try await service.removeMessageReaction(userId: userId, messageId: message.id, emoji: emoji)
+            }
+            setReactions(message.id, inThread: inThread) { ReactionSummary.setting($0, emoji: emoji, to: result) }
         } catch {
-            setReactions(message.id) { ReactionSummary.setting($0, emoji: emoji, to: prior) }
+            setReactions(message.id, inThread: inThread) { ReactionSummary.setting($0, emoji: emoji, to: prior) }
             throw error
         }
     }
 
-    private func setReactions(_ messageId: String, _ change: ([ReactionSummary]) -> [ReactionSummary]) {
-        mutateMain { list in
+    /// `inThread`: the open thread's rows (`messages`) rather than the main
+    /// chat's (displayed list, or the stash while a thread is open).
+    private func setReactions(_ messageId: String, inThread: Bool = false, _ change: ([ReactionSummary]) -> [ReactionSummary]) {
+        let apply: (inout [FSMessage]) -> Void = { list in
             guard let idx = list.firstIndex(where: { $0.id == messageId }) else { return }
             list[idx].reactions = change(list[idx].reactions ?? [])
         }
+        if inThread { apply(&messages) } else { mutateMain(apply) }
         reactionRevision += 1
+    }
+
+    /// `{type:"thread_reaction_updated", thread_id, group_id, message_id, emoji, count, actor_id}`:
+    /// another member's reaction in a thread. The viewer's own state is kept.
+    private func handleThreadReactionUpdated(_ json: [String: Any]) {
+        guard let tid = json["thread_id"] as? String, activeThread?.id.lowercased() == tid.lowercased(),
+              let id = json["message_id"] as? String, let emoji = json["emoji"] as? String,
+              let count = json["count"] as? Int else { return }
+        setReactions(id, inThread: true) { ReactionSummary.updatingCount($0, emoji: emoji, count: count) }
+    }
+
+    /// `{type:"thread_pin_updated", thread_id, message_id, pinned, actor_id}`.
+    private func handleThreadPinUpdated(_ json: [String: Any]) {
+        guard let tid = json["thread_id"] as? String, activeThread?.id.lowercased() == tid.lowercased(),
+              let id = json["message_id"] as? String, let pinned = json["pinned"] as? Bool,
+              let idx = messages.firstIndex(where: { $0.id == id }) else { return }
+        messages[idx].pinned = pinned
+    }
+
+    /// Optimistic pin/unpin of a thread message (pins are scoped to the thread);
+    /// rolled back and rethrown on failure.
+    private func toggleThreadPin(_ message: FSMessage, thread: FSThreadSummary, service: DataServiceProtocol, userId: String) async throws {
+        guard let gid = currentContact?.id,
+              let idx = messages.firstIndex(where: { $0.id == message.id }) else { return }
+        let wasPinned = messages[idx].pinned ?? false
+        messages[idx].pinned = !wasPinned
+        do {
+            if wasPinned {
+                try await service.unpinThreadMessage(userId: userId, groupId: gid, threadId: thread.id, messageId: message.id)
+            } else {
+                try await service.pinThreadMessage(userId: userId, groupId: gid, threadId: thread.id, messageId: message.id)
+            }
+        } catch {
+            if let i = messages.firstIndex(where: { $0.id == message.id }) { messages[i].pinned = wasPinned }
+            throw error
+        }
     }
 
     // ── Pins (task 20261012-message-pins) ─────────────────────────────────────
@@ -1099,7 +1158,11 @@ final class ChatThreadViewModel: ObservableObject {
     /// Optimistically pins/unpins a main-chat message and reconciles with the
     /// server; on failure the flag and badge are rolled back and the error is rethrown.
     func togglePin(_ message: FSMessage, service: DataServiceProtocol, userId: String) async throws {
-        guard !isThreadOpen, isSettled(message), message.systemKind == nil else { return }
+        guard isSettled(message), message.systemKind == nil else { return }
+        if let thread = activeThread {
+            try await toggleThreadPin(message, thread: thread, service: service, userId: userId)
+            return
+        }
         let wasPinned = (messages.first(where: { $0.id == message.id })
             ?? mainStash?.messages.first(where: { $0.id == message.id }))?.pinned ?? message.pinned ?? false
         setPinned(message.id, !wasPinned)
@@ -1185,6 +1248,8 @@ final class ChatThreadViewModel: ObservableObject {
     /// the memberId -> username map load() resolved); nil when unknown.
     func senderUserId(for message: FSMessage) -> String? {
         guard !message.mine, let contact = currentContact else { return nil }
+        // A thread row carries the sender's id (`from_user_id`).
+        if isThreadOpen, let id = message.senderId, !id.isEmpty { return id }
         if contact.type == .friend { return contact.id }
         return groupUsernameById.first(where: { $0.value == message.sender })?.key
     }
@@ -2093,11 +2158,11 @@ struct ChatThreadView: View {
 
     // ── Reactions (task 20261010-chat-reactions) ──────────────────────────────
 
-    /// nil hides the reaction UI: flag/allowlist off, a thread is open (thread
-    /// messages are deferred), or the message is not yet saved on the server.
+    /// nil hides the reaction UI: flag/allowlist off, or the message is not yet
+    /// saved on the server. Works in a thread too (thread reaction routes).
     private func reactionConfig(for message: FSMessage) -> MessageReactionConfig? {
         let caps = appState.capabilities
-        guard caps.messageReactionsEnabled, !vm.isThreadOpen, vm.isSettled(message) else { return nil }
+        guard caps.messageReactionsEnabled, vm.isSettled(message) else { return nil }
         let selected = Set((message.reactions ?? []).filter(\.viewerReacted).map(\.emoji))
         return MessageReactionConfig(
             quick: caps.reactionEmoji.quick,
@@ -2240,7 +2305,7 @@ struct ChatThreadView: View {
             senderUserId: vm.senderUserId(for: message),
             repliesEnabled: repliesEnabled,
             canJumpToOriginal: replyTargetLoaded(message),
-            pinsEnabled: pinsAvailable
+            pinsEnabled: vm.isThreadOpen ? appState.capabilities.messagePinsEnabled : pinsAvailable
         )
         return FSMessageActionPolicy.actions(for: message, in: ctx).map { kind in
             MessageRowAction(kind: kind) { performAction(kind, on: message) }
@@ -2249,14 +2314,14 @@ struct ChatThreadView: View {
 
     // ── Replies (task 20261010-announcement-location-chat-replies) ────────────
 
-    /// Chat replies show only with the server flag on and only in the main chat
-    /// (thread replies are deferred).
+    /// Chat replies show only with the server flag on. Inside a thread a reply
+    /// targets a message of that thread (task 20261122-app-fixes-threads-widget).
     private var repliesEnabled: Bool {
-        appState.capabilities.isEnabled("chat_replies") && !vm.isThreadOpen
+        appState.capabilities.isEnabled("chat_replies")
     }
 
     /// The Reply action for a message, or nil when it can't be replied to
-    /// (flag off, unsent, failed, or in a thread).
+    /// (flag off, unsent, or failed).
     private func replyHandler(for message: FSMessage) -> (() -> Void)? {
         guard repliesEnabled, vm.isSettled(message) else { return nil }
         return { startReply(to: message) }
@@ -2948,7 +3013,7 @@ struct ChatThreadView: View {
         .onChange(of: vm.replyInvalidSignal) { _, _ in
             showToast("That message can't be replied to. Tap yours to retry without the reply.", seconds: 4)
         }
-        .onChange(of: vm.activeThread?.id) { _, newId in if newId != nil { replyTarget = nil } }
+        .onChange(of: vm.activeThread?.id) { _, _ in replyTarget = nil }   // a reply never crosses between main chat and a thread
         .modifier(MentionComposerSupport(text: $text, draft: $mentionDraft, lastText: $mentionLastText,
                                          loadKey: mentionLoadKey, load: loadMentionMembers))
         .chatAnnouncementSheet(isPresented: $showAnnouncementForm, service: appState.service,

@@ -154,9 +154,11 @@ final class ChatPinsPolicyTests: XCTestCase {
         XCTAssertTrue(FSMessageActionPolicy.actions(for: msg(mine: true), in: ctx(pins: true)).contains(.pin))
     }
 
-    func test_pinHidden_whenFlagOff_inThread_unsettled_orSystemLine() {
+    func test_pinHidden_whenFlagOff_unsettled_orSystemLine() {
         XCTAssertFalse(FSMessageActionPolicy.actions(for: msg(), in: ctx(pins: false)).contains(.pin))
-        XCTAssertFalse(FSMessageActionPolicy.actions(for: msg(), in: ctx(pins: true, inThread: true)).contains(.pin))
+        // In a thread the view supplies pinsEnabled; the policy no longer blocks it.
+        XCTAssertTrue(FSMessageActionPolicy.actions(for: msg(), in: ctx(pins: true, inThread: true)).contains(.pin))
+        XCTAssertFalse(FSMessageActionPolicy.actions(for: msg(), in: ctx(pins: false, inThread: true)).contains(.pin))
         XCTAssertFalse(FSMessageActionPolicy.actions(for: msg(), in: ctx(pins: true, settled: false)).contains(.pin))
         XCTAssertFalse(FSMessageActionPolicy.actions(for: msg(kind: "pin"), in: ctx(pins: true)).contains(.pin))
     }
