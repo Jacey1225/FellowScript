@@ -1068,7 +1068,7 @@ final class ChatThreadViewModel: ObservableObject {
 
     /// `inThread`: the open thread's rows (`messages`) rather than the main
     /// chat's (displayed list, or the stash while a thread is open).
-    private func setReactions(_ messageId: String, inThread: Bool = false, _ change: ([ReactionSummary]) -> [ReactionSummary]) {
+    private func setReactions(_ messageId: String, inThread: Bool = false, _ change: @escaping ([ReactionSummary]) -> [ReactionSummary]) {
         let apply: (inout [FSMessage]) -> Void = { list in
             guard let idx = list.firstIndex(where: { $0.id == messageId }) else { return }
             list[idx].reactions = change(list[idx].reactions ?? [])
