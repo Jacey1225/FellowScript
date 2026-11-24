@@ -155,7 +155,18 @@ final class ChatThreadViewModel: ObservableObject {
 
     init() {
         socket.onFrame = { [weak self] json in self?.handleFrame(json) }
-        socket.onConnectionChange = { [weak self] connected in self?.isConnected = connected }
+        socket.onConnectionChange = { [weak self] connected in
+            guard let self else { return }
+            self.isConnected = connected
+            if !connected {
+                self.wasDropped = true
+            } else if self.wasDropped {
+                // Task 20261124-chat-lags-new-messages: frames sent while the
+                // socket was down are never replayed, so catch up from history.
+                self.wasDropped = false
+                Task { @MainActor [weak self] in await self?.refreshFromStoredContext() }
+            }
+        }
         socket.onSessionEndedChange = { [weak self] ended in self?.sessionEnded = ended }
     }
 
@@ -178,6 +189,8 @@ final class ChatThreadViewModel: ObservableObject {
     func load(service: DataServiceProtocol, contact: FSContact, userId: String, capabilities: FSCapabilities = .allOff) async {
         let sessionKey = Self.roomKey(contact: contact, userId: userId)
         currentContact = contact
+        refreshService = service
+        refreshUserId = userId
         loadGeneration += 1
         let generation = loadGeneration
         // Gate: false/missing capability = legacy full-history fetch.
@@ -628,6 +641,102 @@ final class ChatThreadViewModel: ObservableObject {
     func handleAppBackgrounded() { socket.handleAppBackgrounded() }
     func handleAppForegrounded() { socket.handleAppForegrounded() }
 
+    // ── Catch-up refresh (task 20261124-chat-lags-new-messages) ──────────────
+    // The socket is closed on background by design (so the server sends APNs)
+    // and frames sent meanwhile are never replayed. On foreground, socket
+    // reconnect, and a push tap for the already-open conversation, refetch the
+    // newest page of whatever is on screen (main chat or open thread) and
+    // merge it by id. A failed fetch changes nothing (preserve-cache-on-failed
+    // -refresh, throw-not-fabricate); rows already shown, older pages and
+    // pending/failed optimistic sends are never dropped or duplicated.
+    static let refreshMinInterval: TimeInterval = 2
+    private var refreshService: DataServiceProtocol? = nil
+    private var refreshUserId = ""
+    private var wasDropped = false
+    private var lastRefreshAt: Date? = nil
+    private var isRefreshing = false
+
+    /// Pure merge of a freshly fetched newest page into the shown rows.
+    /// `localIds` are optimistic/failed rows that must survive. `paged` false
+    /// (legacy full-history fetch) is a full replace that keeps `localIds`
+    /// rows. `windowReplaced` is true when the fetched page did not overlap
+    /// the shown rows (a gap), so shown settled rows were replaced by the page.
+    static func mergeRefreshed(existing: [FSMessage], fetched: [FSMessage], localIds: Set<String>,
+                               paged: Bool) -> (messages: [FSMessage], windowReplaced: Bool) {
+        let local = existing.filter { localIds.contains($0.id) }
+        if !paged {
+            return (fetched.filter { !localIds.contains($0.id) } + local, false)
+        }
+        let settled = existing.filter { !localIds.contains($0.id) }
+        let fetchedIds = Set(fetched.map(\.id))
+        if settled.isEmpty {
+            return (fetched.filter { !localIds.contains($0.id) } + local, true)
+        }
+        if !settled.contains(where: { fetchedIds.contains($0.id) }) {
+            // No overlap: more than a page arrived while away. Showing the
+            // newest page without a hole beats a gapped list; older rows
+            // reload through the (reset) older-page cursor.
+            return (fetched.filter { !localIds.contains($0.id) } + local, !fetched.isEmpty)
+        }
+        let have = Set(settled.map(\.id))
+        let fresh = fetched.filter { !have.contains($0.id) && !localIds.contains($0.id) }
+        return (settled + fresh + local, false)
+    }
+
+    /// Refresh using the contact/service remembered by the last load().
+    func refreshFromStoredContext(force: Bool = false) async {
+        guard let service = refreshService, let contact = currentContact, !refreshUserId.isEmpty else { return }
+        await refreshOpenConversation(service: service, contact: contact, userId: refreshUserId, force: force)
+    }
+
+    func refreshOpenConversation(service: DataServiceProtocol, contact: FSContact, userId: String,
+                                 force: Bool = false) async {
+        if isRefreshing && !force { return }
+        if !force, let last = lastRefreshAt, Date().timeIntervalSince(last) < Self.refreshMinInterval { return }
+        isRefreshing = true
+        defer { isRefreshing = false }
+        lastRefreshAt = Date()
+        let generation = loadGeneration
+        if let thread = activeThread {
+            guard contact.type == .group,
+                  let page = try? await service.fetchThreadMessages(userId: userId, groupId: contact.id, threadId: thread.id,
+                                                                    limit: Self.initialPageLimit, cursor: nil)
+            else { return }
+            guard generation == loadGeneration, activeThread?.id == thread.id else { return }
+            applyRefresh(fetched: page.messages, paged: true, page: page)
+            return
+        }
+        let pageLimit: Int? = pagingEnabled ? Self.initialPageLimit : nil
+        guard let history = try? await service.fetchMessageHistory(userId: userId, contactId: contact.id,
+                                                                    isGroup: contact.type == .group, limit: pageLimit)
+        else { return }
+        guard generation == loadGeneration, activeThread == nil else { return }
+        let resolve: (FSMessage) -> FSMessage = contact.type == .group
+            ? { self.resolvedMessage($0, senderName: self.groupUsernameById[$0.sender]) }
+            : { self.resolvedMessage($0, senderName: $0.sender == contact.id ? contact.name : nil) }
+        switch history {
+        case .legacy(let fetched):
+            applyRefresh(fetched: fetched.map(resolve), paged: false, page: nil)
+        case .paged(let page):
+            applyRefresh(fetched: page.messages.map(resolve), paged: true, page: page)
+        }
+        let sessionKey = Self.roomKey(contact: contact, userId: userId)
+        await DiskCache.shared.save(pagingEnabled ? Array(messages.suffix(Self.cacheWindow)) : messages,
+                                    forKey: "messages:\(sessionKey)")
+    }
+
+    private func applyRefresh(fetched: [FSMessage], paged: Bool, page: FSMessagePage?) {
+        let local = failedMessageIds.union(paged ? Set(pendingSendIds) : [])
+        let merged = Self.mergeRefreshed(existing: messages, fetched: fetched, localIds: local, paged: paged)
+        if merged.messages.map(\.id) != messages.map(\.id) { messages = merged.messages }
+        if merged.windowReplaced, let page {
+            pagingEnabled = true
+            hasMoreOlder = page.hasMore
+            olderCursor = page.cursor
+            olderLoadFailed = false
+        }
+    }
+
     // ── Live frames ───────────────────────────────────────────────────────────
     // One socket, one dispatch. Every frame the user can receive arrives here
     // in order: ordinary main-chat deliveries (no `type`), ack / error, and the
@@ -908,7 +1017,16 @@ final class ChatThreadViewModel: ObservableObject {
     /// Opens `summary` as the current mode and loads its first page.
     func openThread(_ summary: FSThreadSummary, service: DataServiceProtocol, contact: FSContact, userId: String) async {
         guard contact.type == .group else { return }
-        if activeThread?.id == summary.id { return }
+        if activeThread?.id == summary.id {
+            // Task 20261124-chat-lags-new-messages: a push tap (or re-open) of
+            // the thread already on screen must refetch, not no-op.
+            if threadLoadFailed {
+                await loadThreadFirstPage(service: service, contact: contact, userId: userId)
+            } else {
+                await refreshOpenConversation(service: service, contact: contact, userId: userId, force: true)
+            }
+            return
+        }
         if mainStash == nil {
             mainStash = MainChatStash(messages: messages, pagingEnabled: pagingEnabled, hasMoreOlder: hasMoreOlder,
                                       olderCursor: olderCursor, olderLoadFailed: olderLoadFailed,
@@ -2010,7 +2128,15 @@ struct ChatThreadView: View {
                 vm.handleAppBackgrounded()
             } else if phase == .active {
                 vm.handleAppForegrounded()
+                // Task 20261124-chat-lags-new-messages: catch up on frames
+                // missed while the socket was closed in the background.
+                Task { await vm.refreshFromStoredContext() }
             }
+        }
+        // A message/thread push tapped (AppState.openSession) while this
+        // conversation is already open: refresh it instead of no-op.
+        .onChange(of: appState.conversationRefreshSignal) { _, _ in
+            Task { await vm.refreshFromStoredContext(force: true) }
         }
         .sheet(isPresented: embedded ? .constant(false) : $showGroupInfo, onDismiss: { focusJoinRequests = false }) {
             groupInfoView(inline: false)
@@ -2147,9 +2273,18 @@ struct ChatThreadView: View {
               let pending = appState.pendingThreadOpen, pending.groupId == contact.id else { return }
         appState.pendingThreadOpen = nil
         var waited = 0
-        while !appState.capabilities.isEnabled("threads") && waited < 10 {
+        while !appState.capabilities.isEnabled("threads") && waited < 40 {
+            // Task 20261124-chat-lags-new-messages: a cold launch from a push
+            // may have lost its first capabilities fetch; retry once at 5s.
+            if waited == 10 { appState.refreshCapabilities(force: true) }
             try? await Task.sleep(nanoseconds: 500_000_000)
             waited += 1
+            if Task.isCancelled { break }
+        }
+        if Task.isCancelled {
+            // View went away mid-wait: hand the tap back rather than lose it.
+            appState.pendingThreadOpen = pending
+            return
         }
         guard appState.capabilities.isEnabled("threads") else { return }
         let uid = appState.currentUser?.user_id ?? ""

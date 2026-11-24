@@ -54,6 +54,10 @@ final class AppState: ObservableObject {
     @Published var pendingAnnouncementOpen: PendingAnnouncementOpen? = nil
     /// Task 20261001-message-threads: set by a thread push tap; the group's
     /// chat view consumes it once mounted (opens the group chat, then the thread).
+    /// Bumped on every message/thread push tap (openSession) so an already
+    /// open conversation refreshes instead of ignoring the tap (task
+    /// 20261124-chat-lags-new-messages).
+    @Published var conversationRefreshSignal = 0
     @Published var pendingThreadOpen: PendingThreadOpen? = nil
     /// Task 20261016-push-notifications-and-ui: friend-request push tap -> Account tab,
     /// Friend Requests section (AccountView consumes and clears it).
@@ -519,6 +523,7 @@ final class AppState: ObservableObject {
         } else {
             pendingChatContact = FSContact(id: groupId, name: "", type: .group)
         }
+        conversationRefreshSignal += 1
     }
 
     /// Called when the user taps an announcement push: opens the group chat,
