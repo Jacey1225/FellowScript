@@ -1,0 +1,566 @@
+{
+ "version": 1,
+ "cases": [
+  {
+   "name": "plain no url",
+   "input": "hello world",
+   "segments": [
+    [
+     "text",
+     "hello world"
+    ]
+   ]
+  },
+  {
+   "name": "simple",
+   "input": "https://example.com/path?q=1#x",
+   "segments": [
+    [
+     "link",
+     "https://example.com/path?q=1#x"
+    ]
+   ]
+  },
+  {
+   "name": "link start and end",
+   "input": "see https://a.com and https://b.com",
+   "segments": [
+    [
+     "text",
+     "see "
+    ],
+    [
+     "link",
+     "https://a.com"
+    ],
+    [
+     "text",
+     " and "
+    ],
+    [
+     "link",
+     "https://b.com"
+    ]
+   ]
+  },
+  {
+   "name": "http scheme",
+   "input": "http://example.com",
+   "segments": [
+    [
+     "link",
+     "http://example.com"
+    ]
+   ]
+  },
+  {
+   "name": "uppercase scheme",
+   "input": "HTTPS://Example.com/A",
+   "segments": [
+    [
+     "link",
+     "HTTPS://Example.com/A"
+    ]
+   ]
+  },
+  {
+   "name": "trailing period",
+   "input": "go to https://example.com.",
+   "segments": [
+    [
+     "text",
+     "go to "
+    ],
+    [
+     "link",
+     "https://example.com"
+    ],
+    [
+     "text",
+     "."
+    ]
+   ]
+  },
+  {
+   "name": "trailing mixed punct",
+   "input": "wow https://example.com/a?!.,;:",
+   "segments": [
+    [
+     "text",
+     "wow "
+    ],
+    [
+     "link",
+     "https://example.com/a"
+    ],
+    [
+     "text",
+     "?!.,;:"
+    ]
+   ]
+  },
+  {
+   "name": "trailing question keeps query",
+   "input": "https://example.com/a?b=1?",
+   "segments": [
+    [
+     "link",
+     "https://example.com/a?b=1"
+    ],
+    [
+     "text",
+     "?"
+    ]
+   ]
+  },
+  {
+   "name": "wrapping parens",
+   "input": "(see https://x.com/a)",
+   "segments": [
+    [
+     "text",
+     "(see "
+    ],
+    [
+     "link",
+     "https://x.com/a"
+    ],
+    [
+     "text",
+     ")"
+    ]
+   ]
+  },
+  {
+   "name": "parens then period",
+   "input": "(see https://x.com/a).",
+   "segments": [
+    [
+     "text",
+     "(see "
+    ],
+    [
+     "link",
+     "https://x.com/a"
+    ],
+    [
+     "text",
+     ")."
+    ]
+   ]
+  },
+  {
+   "name": "wikipedia balanced",
+   "input": "https://en.wikipedia.org/wiki/Foo_(bar)",
+   "segments": [
+    [
+     "link",
+     "https://en.wikipedia.org/wiki/Foo_(bar)"
+    ]
+   ]
+  },
+  {
+   "name": "wikipedia balanced in parens",
+   "input": "(https://en.wikipedia.org/wiki/Foo_(bar))",
+   "segments": [
+    [
+     "text",
+     "("
+    ],
+    [
+     "link",
+     "https://en.wikipedia.org/wiki/Foo_(bar)"
+    ],
+    [
+     "text",
+     ")"
+    ]
+   ]
+  },
+  {
+   "name": "brackets",
+   "input": "[https://x.com/a]",
+   "segments": [
+    [
+     "text",
+     "["
+    ],
+    [
+     "link",
+     "https://x.com/a"
+    ],
+    [
+     "text",
+     "]"
+    ]
+   ]
+  },
+  {
+   "name": "braces",
+   "input": "{https://x.com/a}",
+   "segments": [
+    [
+     "text",
+     "{"
+    ],
+    [
+     "link",
+     "https://x.com/a"
+    ],
+    [
+     "text",
+     "}"
+    ]
+   ]
+  },
+  {
+   "name": "double quotes end url",
+   "input": "say \"https://x.com/a\" ok",
+   "segments": [
+    [
+     "text",
+     "say \""
+    ],
+    [
+     "link",
+     "https://x.com/a"
+    ],
+    [
+     "text",
+     "\" ok"
+    ]
+   ]
+  },
+  {
+   "name": "single quote trailing",
+   "input": "'https://x.com/a'",
+   "segments": [
+    [
+     "text",
+     "'"
+    ],
+    [
+     "link",
+     "https://x.com/a"
+    ],
+    [
+     "text",
+     "'"
+    ]
+   ]
+  },
+  {
+   "name": "angle brackets",
+   "input": "<https://x.com/a>",
+   "segments": [
+    [
+     "text",
+     "<"
+    ],
+    [
+     "link",
+     "https://x.com/a"
+    ],
+    [
+     "text",
+     ">"
+    ]
+   ]
+  },
+  {
+   "name": "newline terminates",
+   "input": "https://a.com\nhttps://b.com",
+   "segments": [
+    [
+     "link",
+     "https://a.com"
+    ],
+    [
+     "text",
+     "\n"
+    ],
+    [
+     "link",
+     "https://b.com"
+    ]
+   ]
+  },
+  {
+   "name": "newline then text",
+   "input": "https://a.com\nnext line",
+   "segments": [
+    [
+     "link",
+     "https://a.com"
+    ],
+    [
+     "text",
+     "\nnext line"
+    ]
+   ]
+  },
+  {
+   "name": "userinfo",
+   "input": "https://user:pw@example.com/x",
+   "segments": [
+    [
+     "link",
+     "https://user:pw@example.com/x"
+    ]
+   ]
+  },
+  {
+   "name": "port",
+   "input": "http://localhost:8080/x",
+   "segments": [
+    [
+     "link",
+     "http://localhost:8080/x"
+    ]
+   ]
+  },
+  {
+   "name": "raw ip",
+   "input": "http://192.168.0.1/admin",
+   "segments": [
+    [
+     "link",
+     "http://192.168.0.1/admin"
+    ]
+   ]
+  },
+  {
+   "name": "unicode host",
+   "input": "https://bücher.example/straße",
+   "segments": [
+    [
+     "link",
+     "https://bücher.example/straße"
+    ]
+   ]
+  },
+  {
+   "name": "next to mention text",
+   "input": "@bob https://x.com hi",
+   "segments": [
+    [
+     "text",
+     "@bob "
+    ],
+    [
+     "link",
+     "https://x.com"
+    ],
+    [
+     "text",
+     " hi"
+    ]
+   ]
+  },
+  {
+   "name": "at sign in path",
+   "input": "https://x.com/@bob/post",
+   "segments": [
+    [
+     "link",
+     "https://x.com/@bob/post"
+    ]
+   ]
+  },
+  {
+   "name": "javascript",
+   "input": "javascript:alert(1)",
+   "segments": [
+    [
+     "text",
+     "javascript:alert(1)"
+    ]
+   ]
+  },
+  {
+   "name": "data",
+   "input": "data:text/html,<b>x</b>",
+   "segments": [
+    [
+     "text",
+     "data:text/html,<b>x</b>"
+    ]
+   ]
+  },
+  {
+   "name": "file",
+   "input": "file:///etc/passwd",
+   "segments": [
+    [
+     "text",
+     "file:///etc/passwd"
+    ]
+   ]
+  },
+  {
+   "name": "ftp",
+   "input": "ftp://x.com/a",
+   "segments": [
+    [
+     "text",
+     "ftp://x.com/a"
+    ]
+   ]
+  },
+  {
+   "name": "scheme typo",
+   "input": "HTTPS//x.com",
+   "segments": [
+    [
+     "text",
+     "HTTPS//x.com"
+    ]
+   ]
+  },
+  {
+   "name": "scheme relative",
+   "input": "//evil.com",
+   "segments": [
+    [
+     "text",
+     "//evil.com"
+    ]
+   ]
+  },
+  {
+   "name": "bare domain",
+   "input": "example.com and www.example.com",
+   "segments": [
+    [
+     "text",
+     "example.com and www.example.com"
+    ]
+   ]
+  },
+  {
+   "name": "scheme only",
+   "input": "https:// nothing",
+   "segments": [
+    [
+     "text",
+     "https:// nothing"
+    ]
+   ]
+  },
+  {
+   "name": "scheme only end",
+   "input": "see https://",
+   "segments": [
+    [
+     "text",
+     "see https://"
+    ]
+   ]
+  },
+  {
+   "name": "xss in url",
+   "input": "https://x.com/\"><img src=x onerror=alert(1)>",
+   "segments": [
+    [
+     "link",
+     "https://x.com/"
+    ],
+    [
+     "text",
+     "\"><img src=x onerror=alert(1)>"
+    ]
+   ]
+  },
+  {
+   "name": "emoji around",
+   "input": "🙏https://x.com/a🙏",
+   "segments": [
+    [
+     "text",
+     "🙏"
+    ],
+    [
+     "link",
+     "https://x.com/a🙏"
+    ]
+   ]
+  },
+  {
+   "name": "url inside url query",
+   "input": "https://a.com/?u=http://b.com/x",
+   "segments": [
+    [
+     "link",
+     "https://a.com/?u=http://b.com/x"
+    ]
+   ]
+  },
+  {
+   "name": "empty",
+   "input": "",
+   "segments": [
+    [
+     "text",
+     ""
+    ]
+   ]
+  },
+  {
+   "name": "fragment and encoded",
+   "input": "https://a.com/p%20q#frag-1",
+   "segments": [
+    [
+     "link",
+     "https://a.com/p%20q#frag-1"
+    ]
+   ]
+  },
+  {
+   "name": "comma separated",
+   "input": "https://a.com,https://b.com",
+   "segments": [
+    [
+     "link",
+     "https://a.com,https://b.com"
+    ]
+   ]
+  }
+ ],
+ "suspicious": [
+  {
+   "url": "https://example.com/path",
+   "suspicious": false,
+   "host": "example.com"
+  },
+  {
+   "url": "https://user@example.com/",
+   "suspicious": true,
+   "host": "example.com"
+  },
+  {
+   "url": "http://192.168.0.1/",
+   "suspicious": true,
+   "host": "192.168.0.1"
+  },
+  {
+   "url": "https://example.com:8443/",
+   "suspicious": true,
+   "host": "example.com:8443"
+  },
+  {
+   "url": "https://example.com:443/",
+   "suspicious": false,
+   "host": "example.com"
+  },
+  {
+   "url": "https://bücher.example/",
+   "suspicious": true,
+   "host": "xn--bcher-kva.example"
+  },
+  {
+   "url": "https://[::1]/x",
+   "suspicious": true,
+   "host": "[::1]"
+  }
+ ]
+}

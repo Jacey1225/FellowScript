@@ -14,6 +14,8 @@
 
 import React, { useMemo } from 'react';
 import ReactMarkdown from 'react-markdown';
+import LinkifiedText from './LinkifiedText.jsx';
+import { isSafeHttpUrl } from '../lib/linkify.js';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -349,12 +351,13 @@ const MD_COMPONENTS = {
   hr: () => (
     <hr style={{ border: 'none', borderTop: '1px solid rgba(255,255,255,0.12)', margin: '0.75em 0' }} />
   ),
-  a: ({ href, children }) => (
-    <a href={href} target="_blank" rel="noopener noreferrer"
+  // Only http(s) hrefs are clickable; anything else renders as plain text.
+  a: ({ href, children }) => (!isSafeHttpUrl(href) ? <>{children}</> : (
+    <a href={href} target="_blank" rel="noopener noreferrer nofollow"
       style={{ color: 'var(--gold)', textDecoration: 'underline', textDecorationColor: 'rgba(255,198,26,0.4)' }}>
       {children}
     </a>
-  ),
+  )),
 };
 
 function headingStyle(size) {
@@ -377,7 +380,7 @@ export function AgentMessage({ text, isMine, onNavigate }) {
   if (isMine) {
     return (
       <span style={{ whiteSpace: 'pre-wrap', lineHeight: 1.7 }}>
-        {text}
+        <LinkifiedText text={text} />
       </span>
     );
   }

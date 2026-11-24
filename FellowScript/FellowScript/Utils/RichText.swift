@@ -671,6 +671,14 @@ struct MarkdownBodyView: View {
     private func spanText(_ span: MDSpan, size: CGFloat, color: Color) -> Text {
         switch span {
         case .plain(let s):
+            // Task 20261124-clickable-message-links: http/https URLs become
+            // underlined links (opened by .messageLinkOpener at the AgentChatView call sites).
+            // Spans without a URL keep the original Text(String) path unchanged.
+            if Linkify.segments(s).contains(where: { $0.isLink }) {
+                return Text(MentionText.linkified(s))
+                    .font(.inter(size))
+                    .foregroundColor(color)
+            }
             return Text(s)
                 .font(.inter(size))
                 .foregroundColor(color)

@@ -24,8 +24,12 @@ struct MentionText: View {
 
     var body: some View {
         let runs = MentionRender.runs(text: text, mentions: mentions)
-        if runs.contains(where: { $0.isMention }) {
+        let hasMention = runs.contains(where: { $0.isMention })
+        let hasLink = !hasMention && Linkify.segments(text).contains(where: { $0.isLink })
+        if hasMention || hasLink {
             // Task 20261030-profile-everywhere: tappable runs open that user's profile.
+            // Task 20261124-clickable-message-links: http/https URLs in plain runs
+            // open in the system browser (see MessageLinkPolicy).
             Text(Self.attributed(runs, linking: MentionRender.validRanges(mentions, in: text)))
                 .mentionProfileOpener()
         } else {
@@ -37,14 +41,31 @@ struct MentionText: View {
         var out = AttributedString()
         var mentionIndex = 0
         for run in runs {
-            var piece = AttributedString(run.text)
             if run.isMention {
+                var piece = AttributedString(run.text)
                 piece.font = .inter(Theme.fontBody, weight: .bold)
                 // Mention runs map 1:1, in order, onto the valid ranges.
                 if mentionIndex < ranges.count {
                     piece.link = MentionProfileLink.url(for: ranges[mentionIndex], shownName: run.text)
                 }
                 mentionIndex += 1
+                out.append(piece)
+            } else {
+                out.append(linkified(run.text))
+            }
+        }
+        return out
+    }
+
+    /// Plain text with http/https URLs as underlined link runs. The visible text
+    /// is exactly what was typed; the link target is the ASCII-normalised URL.
+    static func linkified(_ text: String) -> AttributedString {
+        var out = AttributedString()
+        for seg in Linkify.segments(text) {
+            var piece = AttributedString(seg.text)
+            if seg.isLink, let info = Linkify.info(seg.text), let url = URL(string: info.href) {
+                piece.link = url
+                piece.underlineStyle = .single
             }
             out.append(piece)
         }

@@ -828,6 +828,7 @@ struct AgentMessageBubble: View {
             Group {
                 if message.mine {
                     MarkdownBodyView(text: message.text, isMine: true, baseFontSize: Theme.fontBody)
+                        .messageLinkOpener()
                         .padding(.horizontal, Theme.spacingMD)
                         .padding(.vertical, Theme.spacingSM)
                         .background(Theme.gold.opacity(0.18))
@@ -842,6 +843,7 @@ struct AgentMessageBubble: View {
                     // responses sit directly on the chat's ambient bgPage +
                     // radial-gradient background.
                     MarkdownBodyView(text: message.text, isMine: false, baseFontSize: Theme.fontBody)
+                        .messageLinkOpener()
                         .padding(.horizontal, Theme.spacingMD)
                         .padding(.vertical, Theme.spacingSM)
                 }

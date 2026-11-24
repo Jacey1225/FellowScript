@@ -52,6 +52,16 @@ fn is_allowed_navigation(url: &Url) -> bool {
   DESKTOP_ALLOWED_ROUTES.contains(&route)
 }
 
+// Task 20261124-clickable-message-links: URLs from `on_new_window` (chat message
+// links open via target="_blank") may be handed to the system browser only when
+// they are http(s) with a host. Chat users can paste http:// links, so plain http
+// is allowed here (the opener runs outside the webview, so no app privileges or
+// IPC are exposed); every other scheme (file:, javascript:, data:, custom
+// deep-link schemes) is refused.
+fn is_openable_external_url(url: &Url) -> bool {
+  matches!(url.scheme(), "http" | "https") && url.host_str().is_some_and(|h| !h.is_empty())
+}
+
 // --- Reload mechanism: finalized design (task 20260908-desktop-reload-button,
 // security gate step 1) -- implement against this, don't re-derive it ---
 //
@@ -325,14 +335,14 @@ pub fn run() {
           // the OS shell opener unchecked (untrusted schemes — e.g. file://
           // or an OS-registered deep-link handler — could otherwise be
           // triggered by a crafted note/message link). Mirror the capability
-          // scope's intent explicitly in code: only https URLs are handed
-          // off to the system browser.
-          if url.scheme() == "https" {
+          // scope's intent explicitly in code: only http(s) URLs with a host
+          // are handed off to the system browser (`is_openable_external_url`).
+          if is_openable_external_url(&url) {
             if let Err(err) = opener_handle.opener().open_url(url.to_string(), None::<&str>) {
               log::error!("failed to open external link {url} in system browser: {err}");
             }
           } else {
-            log::warn!("denied opening non-https external link: {url}");
+            log::warn!("denied opening non-http(s) external link: {url}");
           }
           NewWindowResponse::Deny
         })
@@ -439,5 +449,46 @@ mod desktop_scope_lockdown_tests {
     // is no separate, more permissive path a reload could take instead.
     let hypothetically_current = url("https://fellowscript.com/#/admin/detections/1");
     assert!(!is_allowed_navigation(&hypothetically_current));
+  }
+}
+
+// Task 20261124-clickable-message-links: the new-window handoff only opens
+// http(s) URLs, and external hosts are still denied for same-window navigation.
+#[cfg(test)]
+mod external_link_tests {
+  use super::*;
+
+  fn url(s: &str) -> Url {
+    Url::parse(s).expect("valid test URL")
+  }
+
+  #[test]
+  fn opens_http_and_https_links_with_a_host() {
+    for c in ["https://example.com/a?b=1#c", "http://example.com/", "HTTPS://Example.com:8443/x"] {
+      assert!(is_openable_external_url(&url(c)), "expected {c} to open");
+    }
+  }
+
+  #[test]
+  fn refuses_every_other_scheme() {
+    for c in [
+      "file:///etc/passwd",
+      "javascript:alert(1)",
+      "data:text/html,x",
+      "ftp://example.com/",
+      "blob:https://example.com/id",
+      "fellowscript://open",
+      "tauri://localhost/",
+      "mailto:a@b.c",
+    ] {
+      assert!(!is_openable_external_url(&url(c)), "expected {c} to be refused");
+    }
+  }
+
+  #[test]
+  fn external_hosts_stay_denied_for_same_window_navigation() {
+    for c in ["https://example.com/#/reader", "http://fellowscript.com/#/reader", "https://fellowscript.com.evil.com/#/reader"] {
+      assert!(!is_allowed_navigation(&url(c)), "expected {c} to be denied");
+    }
   }
 }

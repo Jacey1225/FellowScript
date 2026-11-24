@@ -4167,3 +4167,9 @@ button.shared-note-card:focus-visible { outline: 2px solid var(--gold); outline-
 .ann-poll-form-row { display: flex; align-items: center; gap: 0.5rem; }
 .ann-poll-form-row .group-info-input { flex: 1; min-width: 0; }
 @media (prefers-reduced-motion: reduce) { .ann-poll-fill { transition: none; } }
+
+/* Task 20261124-clickable-message-links: clickable URLs in chat text. Underlined
+   so the link is not signalled by color alone; wraps long URLs. */
+.msg-link { color: var(--gold); text-decoration: underline; text-underline-offset: 2px; overflow-wrap: anywhere; word-break: break-all; cursor: pointer; }
+.msg-link:hover { text-decoration-thickness: 2px; }
+.msg-link:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; border-radius: 2px; }
