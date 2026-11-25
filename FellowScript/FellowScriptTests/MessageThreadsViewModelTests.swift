@@ -246,14 +246,17 @@ final class MessageThreadsViewModelTests: XCTestCase {
         vm.disconnect()
     }
 
-    func test_openThread_noopOnDM_andReopenSameThreadDoesNotRefetch() async {
+    func test_openThread_noopOnDM_andReopenSameThreadRefetchesOnce() async {
         let s = service(); let user = uid("noop")
         let vm = await loaded(s, user: user)
         await vm.openThread(FSThreadSummary(id: "t1"), service: s, contact: FSContact(id: "f", name: "F", type: .friend), userId: user)
         XCTAssertFalse(vm.isThreadOpen, "threads are groups only")
         await vm.openThread(FSThreadSummary(id: "t1"), service: s, contact: group, userId: user)
-        await vm.openThread(FSThreadSummary(id: "t1"), service: s, contact: group, userId: user)
         XCTAssertEqual(ThreadsSeam.log.filter { $0 == "msgs:t1" }.count, 1)
+        // Task 20261124-chat-lags-new-messages: re-opening the thread already on
+        // screen (a push tap) now refetches it instead of being a no-op.
+        await vm.openThread(FSThreadSummary(id: "t1"), service: s, contact: group, userId: user)
+        XCTAssertEqual(ThreadsSeam.log.filter { $0 == "msgs:t1" }.count, 2)
         vm.disconnect()
     }
 

@@ -58,7 +58,7 @@ check("same-id openThread no longer a bare early return",
 sess = body_after(APPSTATE, "func openSession(groupId: String)", 900)
 check("openSession bumps conversationRefreshSignal", "conversationRefreshSignal += 1" in sess)
 check("AppState declares conversationRefreshSignal", "@Published var conversationRefreshSignal" in APPSTATE)
-sig = body_after(VIEW, ".onChange(of: appState.conversationRefreshSignal)", 300)
+sig = body_after(VIEW, "ConversationRefreshWatcher(signal: appState.conversationRefreshSignal)", 300)
 check("view force-refreshes on conversationRefreshSignal", "refreshFromStoredContext(force: true)" in sig)
 
 # 5. failure preserves list

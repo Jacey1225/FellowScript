@@ -672,6 +672,8 @@ final class ChatThreadViewModel: ObservableObject {
         if settled.isEmpty {
             return (fetched.filter { !localIds.contains($0.id) } + local, true)
         }
+        // An empty newest page never evidences removal: keep what is shown.
+        if fetched.isEmpty { return (existing, false) }
         if !settled.contains(where: { fetchedIds.contains($0.id) }) {
             // No overlap: more than a page arrived while away. Showing the
             // newest page without a hole beats a gapped list; older rows
@@ -2135,9 +2137,9 @@ struct ChatThreadView: View {
         }
         // A message/thread push tapped (AppState.openSession) while this
         // conversation is already open: refresh it instead of no-op.
-        .onChange(of: appState.conversationRefreshSignal) { _, _ in
+        .background(ConversationRefreshWatcher(signal: appState.conversationRefreshSignal) {
             Task { await vm.refreshFromStoredContext(force: true) }
-        }
+        })
         .sheet(isPresented: embedded ? .constant(false) : $showGroupInfo, onDismiss: { focusJoinRequests = false }) {
             groupInfoView(inline: false)
         }
@@ -4279,5 +4281,19 @@ enum ChatFrameRouting {
         guard gid.isEmpty else { return false }
         let from = (json["from_user"] as? String) ?? ""
         return !from.isEmpty && from.lowercased() == contact.id.lowercased()
+    }
+}
+
+/// Watches AppState.conversationRefreshSignal (bumped on every message/thread
+/// push tap). Lives in its own view so the already-long ChatThreadView body
+/// modifier chain does not grow: one more `.onChange` there pushed the
+/// type-checker past its time limit (task 20261124-chat-lags-new-messages).
+private struct ConversationRefreshWatcher: View {
+    let signal: Int
+    let action: () -> Void
+    var body: some View {
+        Color.clear
+            .frame(width: 0, height: 0)
+            .onChange(of: signal) { _, _ in action() }
     }
 }
