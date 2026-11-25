@@ -179,7 +179,14 @@ TASK_ADDED_DDL = (
 
 
 def _without_task_ddl(stream):
-    return [s for s in stream if not any(f in str(s) for f in TASK_ADDED_DDL)]
+    out = [s for s in stream if not any(f in str(s) for f in TASK_ADDED_DDL)]
+    # Task 20261125-default-timezone-los-angeles: the users.timezone default
+    # moved UTC -> America/Los_Angeles (CREATE TABLE + ADD COLUMN text) and one
+    # additive "ALTER COLUMN timezone SET DEFAULT" statement was added. Drop
+    # that one statement and normalise the default literal so the rest of the
+    # stream still has to match HEAD exactly.
+    out = [s for s in out if "ALTER COLUMN timezone SET DEFAULT" not in str(s)]
+    return [eval(repr(s).replace("DEFAULT 'America/Los_Angeles'", "DEFAULT 'UTC'")) for s in out]
 
 
 def load_head_db():

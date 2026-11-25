@@ -66,19 +66,19 @@ AgentManager._derive_note_template = lambda self, prompt: _nt.validate_template(
 PASSED, FAILED = [], []
 
 
-def today_utc() -> date:
+def today_utc() -> date:  # name kept for call sites; now LA "today"
     """This suite's stand-in for "today" wherever it needs to match what
     `AgentManager._local_date()` will compute for a test user. Every user
     this file creates via `make_user()` never sets `users.timezone`, so it
-    sits at the schema's `NOT NULL DEFAULT 'UTC'`, and `_local_date()`
-    resolves to `datetime.now(ZoneInfo(tzname or "UTC")).date()` -- i.e.
-    plain UTC "today" -- for all of them. Bare `date.today()` reads the
+    sits at the schema's `NOT NULL DEFAULT 'America/Los_Angeles'`, and `_local_date()`
+    resolves to `datetime.now(ZoneInfo(tzname or DEFAULT_TIMEZONE)).date()` -- i.e.
+    America/Los_Angeles "today" -- for all of them. Bare `date.today()` reads the
     *test process's* OS-local timezone instead, which disagrees with UTC
     "today" for a stretch of hours every single day in any timezone west
     of UTC, causing exactly this kind of mismatch. Always use this helper,
     never bare `date.today()`, anywhere this file compares against
     app-computed "today" values."""
-    return datetime.now(ZoneInfo("UTC")).date()
+    return datetime.now(ZoneInfo("America/Los_Angeles")).date()
 
 
 def check(label: str, cond: bool, detail: str = ""):

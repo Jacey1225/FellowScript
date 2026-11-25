@@ -3,6 +3,7 @@ from datetime import datetime, timedelta, timezone as tzmod
 from zoneinfo import ZoneInfo
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from db import DBManager
+from constants import DEFAULT_TIMEZONE
 from backend.interactions.push_preferences import async_disabled_user_ids, async_is_push_enabled
 from backend.subscription.subscriptions import SubscriptionsManager
 from backend.monitoring.watchdog import WATCHDOG_POLL_INTERVAL_SECONDS
@@ -227,7 +228,7 @@ async def _midday_no_activity_reminder() -> None:
             if not token or str(user_id).lower() in reminders_off:
                 continue
             try:
-                local = datetime.now(tzmod.utc).astimezone(ZoneInfo(tzname or "UTC"))
+                local = datetime.now(tzmod.utc).astimezone(ZoneInfo(tzname or DEFAULT_TIMEZONE))
             except Exception:
                 logger.warning("Skipping user %s — invalid timezone %r", user_id, tzname)
                 continue
@@ -235,7 +236,7 @@ async def _midday_no_activity_reminder() -> None:
                 continue
             had_activity_today = (
                 last_activity is not None
-                and last_activity.astimezone(ZoneInfo(tzname or "UTC")).date() == local.date()
+                and last_activity.astimezone(ZoneInfo(tzname or DEFAULT_TIMEZONE)).date() == local.date()
             )
             if had_activity_today:
                 continue
@@ -451,8 +452,8 @@ async def _fire_due_heartbeats() -> None:
             "FROM agent_heartbeats ah "
             "JOIN users u ON u._id = ah.user_id "
             "WHERE ah.last_fired IS NULL "
-            "OR (ah.last_fired AT TIME ZONE COALESCE(u.timezone, 'UTC'))::date "
-            "< (NOW() AT TIME ZONE COALESCE(u.timezone, 'UTC'))::date"
+            f"OR (ah.last_fired AT TIME ZONE COALESCE(u.timezone, '{DEFAULT_TIMEZONE}'))::date "
+            f"< (NOW() AT TIME ZONE COALESCE(u.timezone, '{DEFAULT_TIMEZONE}'))::date"
         )
         return db.cur.fetchall()
 
@@ -490,7 +491,7 @@ async def _fire_due_heartbeats() -> None:
             heartbeat_id, agent_id, user_id = str(heartbeat_id), str(agent_id), str(user_id)
             try:
                 try:
-                    local = now_utc.astimezone(ZoneInfo(tzname or "UTC"))
+                    local = now_utc.astimezone(ZoneInfo(tzname or DEFAULT_TIMEZONE))
                 except Exception:
                     logger.warning(
                         "Skipping heartbeat %s — invalid timezone %r for user %s",
@@ -1040,7 +1041,7 @@ def _advance_time_by_one_local_week(
     own pattern) so the failure is surfaced, never silently defaulted.
     """
     try:
-        zone = ZoneInfo(tzname or "UTC")
+        zone = ZoneInfo(tzname or DEFAULT_TIMEZONE)
         duration = time_end - time_start
         local_start = time_start.astimezone(zone)
         # zoneinfo-aware arithmetic on the local wall-clock components:
@@ -1290,7 +1291,7 @@ async def _advance_recurring_sessions() -> None:
                 # A NULL tzname here means the join to `users` on
                 # `creator_id` itself came back empty (no matching/live
                 # creator row) -- unlike `users.timezone`'s own NOT NULL
-                # DEFAULT 'UTC' constraint (which guarantees a *resolved*
+                # DEFAULT timezone constraint (which guarantees a *resolved*
                 # user always has a value), this is a genuinely missing
                 # creator timezone, so it's an explicit fail-closed skip
                 # rather than silently defaulting to UTC.

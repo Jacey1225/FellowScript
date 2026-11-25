@@ -245,8 +245,8 @@ def scan_due_candidate_ids(user_id: str) -> set:
             "JOIN users u ON u._id = ah.user_id "
             "WHERE ah.user_id = %s "
             "AND (ah.last_fired IS NULL "
-            "OR (ah.last_fired AT TIME ZONE COALESCE(u.timezone, 'UTC'))::date "
-            "< (NOW() AT TIME ZONE COALESCE(u.timezone, 'UTC'))::date)",
+            "OR (ah.last_fired AT TIME ZONE COALESCE(u.timezone, 'America/Los_Angeles'))::date "
+            "< (NOW() AT TIME ZONE COALESCE(u.timezone, 'America/Los_Angeles'))::date)",
             (user_id,),
         )
         return {row[0] for row in db.cur.fetchall()}

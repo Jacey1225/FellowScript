@@ -144,6 +144,9 @@ def make_user(prefix: str) -> str:
         db.insertion("users", {
             "_id": uid, "username": f"{prefix}_{uid[:8]}",
             "email": f"{prefix}_{uid[:8]}@example.com", "hash_pass": "x",
+            # Explicit UTC: this suite's due-time math assumes UTC; the
+            # schema default is now America/Los_Angeles (task 20261125).
+            "timezone": "UTC",
         })
     finally:
         db.close()

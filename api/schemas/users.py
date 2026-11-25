@@ -3,6 +3,7 @@ import uuid
 from datetime import datetime
 from typing import Optional
 from zoneinfo import available_timezones
+from constants import DEFAULT_TIMEZONE
 
 
 def _validate_timezone(value: str) -> str:
@@ -33,7 +34,7 @@ class User(BaseModel):
         default_factory=dict,
         description="key: 'book-chapter' eg. 'Genesis-1'")
     timezone: str = Field(
-        default="UTC",
+        default=DEFAULT_TIMEZONE,
         description="IANA timezone name (e.g. 'America/Los_Angeles'); drives the "
                      "user's local-3am nightly backup schedule")
     terms_accepted_at: str | None = Field(

@@ -17,7 +17,16 @@ fake send_push) and asserts:
 Run (scratch DB only):  cd api && ../.venv/bin/python tests/test_ask_ai_scheduler_push.py
 """
 import _thr_common as T  # noqa: E402  (also fixes sys.path)
-from _thr_common import check, sql, make_user, set_flag  # noqa: E402
+from _thr_common import check, sql, set_flag  # noqa: E402
+from _thr_common import make_user as _make_user  # noqa: E402
+
+
+def make_user(prefix):
+    # Explicit UTC: this suite fires at a fixed UTC instant (NOW); the schema
+    # default is now America/Los_Angeles (task 20261125-default-timezone-los-angeles).
+    uid = _make_user(prefix)
+    sql("UPDATE users SET timezone='UTC' WHERE _id=%s", (uid,))
+    return uid
 import _fake_timeline  # noqa: E402,F401  (stubs timeline + note-template LLM calls)
 from _paid_user import grant_paid  # noqa: E402
 

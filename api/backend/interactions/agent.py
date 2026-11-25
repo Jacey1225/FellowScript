@@ -15,6 +15,7 @@ import os
 from pathlib import Path
 from dotenv import load_dotenv
 from db import DBManager
+from constants import DEFAULT_TIMEZONE
 from backend.errors import SaveFailedError, TimelineGenerationError, TemplateDerivationError
 from backend.interactions import note_template as nt
 from backend.interactions.groups import GroupsManager
@@ -618,8 +619,9 @@ class AgentManager(DBManager):
         result = self.lookup("users", {"_id": self.user_id})
         tzname = list(result.values())[0].get("timezone") if result else None
         try:
-            return datetime.now(ZoneInfo(tzname or "UTC")).date()
+            return datetime.now(ZoneInfo(tzname or DEFAULT_TIMEZONE)).date()
         except Exception:
+            # Invalid tz name: deliberately stays UTC (fail-open planning helper).
             return datetime.now(ZoneInfo("UTC")).date()
 
     def _firing_offsets(self, timestamps: list, window_start: date) -> list[int]:
@@ -899,8 +901,8 @@ class AgentManager(DBManager):
             "WHERE agent_heartbeats._id = %s "
             "AND users._id = %s "
             "AND (agent_heartbeats.last_fired IS NULL "
-            "OR (agent_heartbeats.last_fired AT TIME ZONE COALESCE(users.timezone, 'UTC'))::date "
-            "< (NOW() AT TIME ZONE COALESCE(users.timezone, 'UTC'))::date) "
+            f"OR (agent_heartbeats.last_fired AT TIME ZONE COALESCE(users.timezone, '{DEFAULT_TIMEZONE}'))::date "
+            f"< (NOW() AT TIME ZONE COALESCE(users.timezone, '{DEFAULT_TIMEZONE}'))::date) "
             "RETURNING agent_heartbeats._id",
             (heartbeat_id, self.user_id),
         )
@@ -986,7 +988,7 @@ class AgentManager(DBManager):
         # fixed UTC date: heartbeats are meant to fire against each user's
         # own clock (per the timezone_handling revision), so "today" for the
         # purpose of this claim must mean the same "today" the poller used
-        # to decide the heartbeat was due. Falls back to 'UTC' via COALESCE
+        # to decide the heartbeat was due. Falls back to DEFAULT_TIMEZONE via COALESCE
         # if a user row somehow has no timezone set, matching every other
         # per-user-timezone job's default. Postgres row locking still
         # guarantees exactly one concurrent caller wins the claim; any other

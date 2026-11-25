@@ -105,7 +105,7 @@ def main():
             # ── 1. Round-trip through a FRESH GET, not the PUT response ──────
             print("\n=== 1. Non-UTC timezone round-trips through a fresh GET ===")
             r = client.get(f"/user/{uid}", headers=cookie_header(token))
-            check("baseline: new account defaults to UTC", r.json().get("timezone") == "UTC", r.text)
+            check("baseline: new account defaults to America/Los_Angeles", r.json().get("timezone") == "America/Los_Angeles", r.text)
 
             r = client.put(f"/user/{uid}", json={"timezone": "America/Los_Angeles"}, headers=cookie_header(token))
             check("PUT non-UTC timezone -> 200", r.status_code == 200, f"{r.status_code} {r.text}")

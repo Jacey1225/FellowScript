@@ -1,6 +1,7 @@
 import os
 import json
 from schemas.users import User
+from constants import DEFAULT_TIMEZONE
 from schemas.message import Message
 from schemas.devotion import DevotionPlan
 import logging
@@ -107,7 +108,7 @@ def load_users_data() -> dict:
             rec = {
                 "username": username, "email": email, "hash_pass": hash_pass or "",
                 "friends": [], "friend_requests": [], "groups": [],
-                "highlights": {}, "bookmarks": {}, "timezone": timezone or "UTC",
+                "highlights": {}, "bookmarks": {}, "timezone": timezone or DEFAULT_TIMEZONE,
                 "mfa_enabled": bool(mfa_enabled),
                 "terms_accepted_at": str(terms_accepted_at) if terms_accepted_at else None,
                 "terms_version": terms_version,

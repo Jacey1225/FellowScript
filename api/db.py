@@ -1,4 +1,5 @@
 import psycopg2 as sql
+from constants import DEFAULT_TIMEZONE
 import os
 import re
 import logging
@@ -147,7 +148,7 @@ def create_tables(cur):
         "apple_sub TEXT,"
         "google_sub TEXT,"
         # User-set IANA timezone name; drives the local-3am nightly backup job.
-        "timezone TEXT NOT NULL DEFAULT 'UTC',"
+        f"timezone TEXT NOT NULL DEFAULT '{DEFAULT_TIMEZONE}',"
         # Email-code two-factor auth toggle (web only, for now).
         "mfa_enabled BOOLEAN NOT NULL DEFAULT FALSE,"
         # Guideline 1.2 EULA gate: when the account accepted Terms, and which
@@ -184,7 +185,9 @@ def create_tables(cur):
     # Migrations for databases created before the social-sign-in columns existed.
     cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS apple_sub TEXT")
     cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS google_sub TEXT")
-    cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS timezone TEXT NOT NULL DEFAULT 'UTC'")
+    cur.execute(f"ALTER TABLE users ADD COLUMN IF NOT EXISTS timezone TEXT NOT NULL DEFAULT '{DEFAULT_TIMEZONE}'")
+    # New rows only: SET DEFAULT is metadata-only and never rewrites existing users.timezone values.
+    cur.execute(f"ALTER TABLE users ALTER COLUMN timezone SET DEFAULT '{DEFAULT_TIMEZONE}'")
     cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS mfa_enabled BOOLEAN NOT NULL DEFAULT FALSE")
     cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS terms_accepted_at TIMESTAMPTZ")
     cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS terms_version TEXT")

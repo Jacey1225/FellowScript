@@ -27,11 +27,12 @@ from datetime import date
 from zoneinfo import available_timezones
 
 from db import DBManager
+from constants import DEFAULT_TIMEZONE
 from schemas.activity_calendar import MonthActivity
 
 logger = logging.getLogger(__name__)
 
-_FALLBACK_TZ = "UTC"
+_FALLBACK_TZ = DEFAULT_TIMEZONE
 MIN_YEAR, MAX_YEAR = 2000, 2100
 
 # %(s)s / %(e)s are the first day of the month and of the next month; local

@@ -2,6 +2,7 @@ import logging
 from datetime import datetime, timedelta, timezone as tzmod
 from zoneinfo import ZoneInfo
 from db import DBManager, BACKUP_DB_NAME
+from constants import DEFAULT_TIMEZONE
 from backend.errors import SaveFailedError
 
 logger = logging.getLogger(__name__)
@@ -44,7 +45,7 @@ class BackupManager:
         due = []
         for uid, tzname in self.source.cur.fetchall():
             try:
-                local = now_utc.astimezone(ZoneInfo(tzname or "UTC"))
+                local = now_utc.astimezone(ZoneInfo(tzname or DEFAULT_TIMEZONE))
             except Exception:
                 logger.warning("Skipping user %s — invalid timezone %r", uid, tzname)
                 continue

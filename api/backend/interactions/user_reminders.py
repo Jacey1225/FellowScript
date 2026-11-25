@@ -27,6 +27,7 @@ from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 from db import DBManager
+from constants import DEFAULT_TIMEZONE
 
 logger = logging.getLogger(__name__)
 
@@ -82,7 +83,7 @@ def deep_question_for(local_date) -> str:
 
 def _local_now(tzname: str | None, now_utc: datetime) -> datetime | None:
     try:
-        return now_utc.astimezone(ZoneInfo(tzname or "UTC"))
+        return now_utc.astimezone(ZoneInfo(tzname or DEFAULT_TIMEZONE))
     except Exception:  # noqa: BLE001 - invalid timezone: skip this user
         return None
 

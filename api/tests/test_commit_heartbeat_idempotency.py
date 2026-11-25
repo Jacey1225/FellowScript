@@ -110,7 +110,8 @@ def make_user() -> str:
     db = DBManager()
     try:
         db.insertion("users", {"_id": uid, "username": f"hbidem_{uid[:8]}",
-                               "email": f"hbidem_{uid[:8]}@example.com", "hash_pass": "x"})
+                               "email": f"hbidem_{uid[:8]}@example.com", "hash_pass": "x",
+                               "timezone": "UTC"})  # explicit: default is now LA (20261125)
     finally:
         db.close()
     return uid
