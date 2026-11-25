@@ -63,7 +63,7 @@ extension View {
 }
 
 /// A tappable avatar that opens that user's profile (design A1). Absorbed from
-/// ProfileEntryViews; now routed through the shared modifier.
+/// the former ProfileEntryViews; now routed through the shared modifier.
 struct ProfileLinkedAvatar: View {
     let userId: String
     let username: String

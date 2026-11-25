@@ -19,7 +19,7 @@
 // Files: AccountViewModel.swift (+ FSJoinablePlan), AccountView.swift (this
 // file -- struct declaration, state, body, and the small pill-control
 // helpers shared across every section), AccountView+Profile.swift (profile
-// header, stats, plan usage, edit-profile, friend requests),
+// header, stats, edit-profile, friend requests),
 // AccountView+Subscription.swift, AccountView+Agents.swift,
 // AccountView+Events.swift, AccountView+TwoFactor.swift,
 // AccountView+Misc.swift (privacy/legal/sign-out/danger-zone),
@@ -165,12 +165,6 @@ struct AccountView: View {
                         // ── Invite a friend ────────────────────────────────────
                         inviteCard
 
-                        // ── Plan usage ─────────────────────────────────────────
-                        usageSection
-
-                        // ── My profile (task 20261030-user-profiles) ───────────
-                        MyProfileRow()
-
                         // ── Edit profile ───────────────────────────────────────
                         editProfileSection
 
@@ -179,7 +173,7 @@ struct AccountView: View {
                             .id("friendRequestsSection")
 
                         // ── Agents ──────────────────────────────────────────────
-                        if appState.capabilities.askAiEnabled { aiAssistantSection } else { agentsSection }
+                        if !appState.capabilities.askAiEnabled { agentsSection }
 
                         // ── Events ──────────────────────────────────────────────
                         eventsSection

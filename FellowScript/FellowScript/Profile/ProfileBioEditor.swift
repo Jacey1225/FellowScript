@@ -6,6 +6,10 @@ import SwiftUI
 
 struct ProfileBioEditor: View {
     @ObservedObject var vm: ProfileViewModel
+    /// ProfileView takes focus and offers Cancel; the Account card embeds the
+    /// editor inline, where neither fits (task 20261125-account-page-cleanup).
+    var autoFocus = true
+    var showsCancel = true
     @FocusState private var focused: Bool
 
     private var counterText: String {
@@ -55,11 +59,13 @@ struct ProfileBioEditor: View {
             }
 
             HStack(spacing: 12) {
-                Button("Cancel") { vm.cancelEditingBio() }
-                    .font(.inter(Theme.fontBody, weight: .semibold))
-                    .foregroundColor(Theme.parchment)
-                    .frame(minWidth: 44, minHeight: 44)
-                    .disabled(vm.isSavingBio)
+                if showsCancel {
+                    Button("Cancel") { vm.cancelEditingBio() }
+                        .font(.inter(Theme.fontBody, weight: .semibold))
+                        .foregroundColor(Theme.parchment)
+                        .frame(minWidth: 44, minHeight: 44)
+                        .disabled(vm.isSavingBio)
+                }
                 Spacer()
                 Button {
                     Task { await vm.saveBio() }
@@ -78,6 +84,6 @@ struct ProfileBioEditor: View {
                 .accessibilityLabel("Save bio")
             }
         }
-        .onAppear { focused = true }
+        .onAppear { if autoFocus { focused = true } }
     }
 }

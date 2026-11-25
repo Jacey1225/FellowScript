@@ -166,13 +166,6 @@ struct FSUsageResource: Codable {
     var used:      Int  = 0
     var limit:     Int  = 0
     var remaining: Int? = nil   // null when unlimited
-
-    // Progress 0…1 for a meter (0 when unlimited or no limit).
-    var fraction: Double {
-        guard !unlimited, limit > 0 else { return 0 }
-        return min(1, Double(used) / Double(limit))
-    }
-    var maxedOut: Bool { !unlimited && used >= limit }
 }
 
 /// Per-note text length limit for the caller's plan (server-authoritative;

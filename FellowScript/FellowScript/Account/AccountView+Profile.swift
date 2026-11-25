@@ -1,5 +1,5 @@
-// AccountView+Profile.swift — profile header, stats overview, plan-usage
-// display, edit-profile form, and friend requests. Split out of
+// AccountView+Profile.swift — profile header, stats overview,
+// edit-profile form, and friend requests. Split out of
 // AccountView.swift (readability #6, 20260904-frontend-arch-sweep) -- same
 // type, same behavior, just this section's own file. See AccountView.swift's
 // header comment for the full split rationale and the list of sibling
@@ -226,74 +226,6 @@ extension AccountView {
         .glassCard(cornerRadius: 20)
     }
 
-    @ViewBuilder
-    var usageSection: some View {
-        if let usage = vm.usage {
-            // The subscription record is authoritative; force "unlimited" when the
-            // user has a paid plan even if this usage payload predates the sync.
-            let unlimited = vm.hasUnlimitedPlan
-            VStack(alignment: .leading, spacing: Theme.spacingSM) {
-                sectionLabel("Plan Usage")
-                usageRow("Notes", usage.notes, hint: usage.windowPhrase, forceUnlimited: unlimited)
-                Divider().background(Theme.borderGray)
-                if usage.scheduledDevotionsLocked && !unlimited {
-                    freeLimitRow(FreePlanLimitRow(label: "Scheduled devotions", value: "Subscribers only", caption: nil, locked: true))
-                } else {
-                    usageRow("Scheduled devotions", usage.agentEvents, hint: nil, forceUnlimited: unlimited)
-                }
-                if let hosting = usage.sessions {
-                    Divider().background(Theme.borderGray)
-                    usageRow("Hosting sessions", hosting, hint: "at a time", forceUnlimited: unlimited)
-                }
-                if !unlimited {
-                    ForEach(usage.freePlanRows.filter { $0.locked && $0.label != "Scheduled devotions" }, id: \.label) { row in
-                        Divider().background(Theme.borderGray)
-                        freeLimitRow(FreePlanLimitRow(label: row.label == "Publish to Explorer" ? "Explorer publishing" : row.label,
-                                                      value: row.value, caption: nil, locked: true))
-                    }
-                    Divider().background(Theme.borderGray)
-                    Text("You're on the Free plan. Subscribe for unlimited notes and hosted sessions, plus scheduled devotions, session summaries and Explorer publishing.")
-                        .font(.system(size: Theme.fontSM))
-                        .foregroundColor(Theme.textGoldMuted)
-                }
-            }
-            .padding(.horizontal, 18).padding(.vertical, 16)
-            .glassCard(cornerRadius: 20)
-        }
-    }
-
-    func usageRow(_ label: String, _ r: FSUsageResource, hint: String?, forceUnlimited: Bool) -> some View {
-        let unlimited = forceUnlimited || r.unlimited
-        return VStack(alignment: .leading, spacing: Theme.spacingXS + 2) {
-            HStack(spacing: Theme.spacingSM) {
-                Text(label)
-                    .font(.system(size: Theme.fontBody))
-                    .foregroundColor(Theme.parchment)
-                if let hint, !unlimited {
-                    Text(hint)
-                        .font(.system(size: Theme.fontXS))
-                        .foregroundColor(Theme.textMuted)
-                }
-                Spacer()
-                Text(unlimited ? "Unlimited" : "\(r.used) / \(r.limit)" + (r.maxedOut ? " · Limit reached" : ""))
-                    .font(.system(size: Theme.fontSM))
-                    .foregroundColor(unlimited ? Theme.gold : (r.maxedOut ? Theme.error : Theme.textGoldMuted))
-            }
-            if !unlimited {
-                GeometryReader { geo in
-                    ZStack(alignment: .leading) {
-                        Capsule().fill(Theme.parchment.opacity(0.12))
-                        Capsule()
-                            .fill(r.maxedOut ? Theme.error : Theme.gold)
-                            .frame(width: max(3, geo.size.width * r.fraction))
-                    }
-                }
-                .frame(height: 5)
-            }
-        }
-        .padding(.vertical, Theme.spacingXS)
-    }
-
     var editProfileSection: some View {
         VStack(alignment: .leading, spacing: Theme.spacingSM) {
             sectionLabel("Edit Profile")
@@ -350,6 +282,13 @@ extension AccountView {
                 gradientPill("Save Changes")
             }
             .accessibilityLabel("Save profile changes")
+
+            // Bio (moved here from the View-my-profile screen; has its own Save,
+            // since the bio is a separate endpoint from `updateUser`).
+            if let uid = appState.currentUser?.user_id {
+                Divider().background(Theme.borderGray)
+                AccountBioField(userId: uid, service: appState.service)
+            }
         }
         .padding(.horizontal, 18).padding(.vertical, 16)
         .glassCard(cornerRadius: 20)
