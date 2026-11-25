@@ -237,13 +237,15 @@ def t_tz_fallback_and_rebucket():
     uid = make_user("Not/AZone")
     note(uid, utc(2026, 8, 1, 3))
     r = month(uid, 2026, 8)
+    # invalid name falls back to DEFAULT_TIMEZONE (America/Los_Angeles): Jul 31 20:00 PDT
+    assert r["timezone"] == "America/Los_Angeles" and r["days"] == {}
+    assert month(uid, 2026, 7)["days"] == {"2026-07-31": ["note"]}
+    q("UPDATE users SET timezone='UTC' WHERE _id=%s", (uid,))
+    r = month(uid, 2026, 8)  # re-buckets to UTC: Aug 1 03:00
     assert r["timezone"] == "UTC" and r["days"] == {"2026-08-01": ["note"]}
-    q("UPDATE users SET timezone='America/Los_Angeles' WHERE _id=%s", (uid,))
-    r = month(uid, 2026, 8)  # re-buckets: Jul 31 20:00 PDT
-    assert r["days"] == {} and month(uid, 2026, 7)["days"] == {"2026-07-31": ["note"]}
     # SQL-injection-ish zone value is rejected by the whitelist, falls back
     q("UPDATE users SET timezone=%s WHERE _id=%s", ("UTC'; DROP TABLE notes;--", uid))
-    assert month(uid, 2026, 8)["timezone"] == "UTC"
+    assert month(uid, 2026, 8)["timezone"] == "America/Los_Angeles"
     assert q("SELECT to_regclass('notes')")[0][0] == "notes"
     print("ok timezone fallback, re-bucketing, injection value harmless")
 
