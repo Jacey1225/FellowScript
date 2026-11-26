@@ -384,7 +384,14 @@ def main():
         # the OLD rolling 2-minute-window guard, this WOULD have re-claimed
         # the row (3 minutes > the 2-minute window) and created a second
         # note — this is the exact scenario the intake spec reports.
-        set_last_fired(hb_id2, "NOW() - INTERVAL '3 minutes'")
+        # GREATEST(...) clamps to today's UTC midnight so a run in the first 3
+        # minutes after 00:00 UTC does not back-date into *yesterday* (which
+        # legitimately re-fires and failed this test every night at 00:00-00:03 UTC).
+        set_last_fired(
+            hb_id2,
+            "GREATEST(NOW() - INTERVAL '3 minutes', "
+            "date_trunc('day', NOW() AT TIME ZONE 'UTC') AT TIME ZONE 'UTC')",
+        )
         result4 = fire(manager2, agent_id, hb_id2, "Reflect on today.")
         check(
             "reopen 3 minutes later (same day) is skipped — proves the fix; "

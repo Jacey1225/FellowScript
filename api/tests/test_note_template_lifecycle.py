@@ -41,6 +41,9 @@ import re
 import sys
 import uuid
 from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
+
+from constants import DEFAULT_TIMEZONE
 
 from db import DBManager
 from backend.errors import TemplateDerivationError, TimelineGenerationError
@@ -105,8 +108,14 @@ class M(AgentManager):
         return type(self).note.next(messages[0]["content"])
 
 
+def local_today():
+    # users.timezone defaults to DEFAULT_TIMEZONE (America/Los_Angeles), so
+    # "today" is the user's local date, not the UTC date (they differ for ~8h/day).
+    return datetime.now(ZoneInfo(DEFAULT_TIMEZONE)).date()
+
+
 def today_day() -> int:
-    return datetime.now(timezone.utc).day  # users.timezone defaults to UTC
+    return local_today().day
 
 
 def fires_today_ts() -> list:
@@ -120,7 +129,7 @@ def window_offsets() -> list:
     Day-of-month is the schedule key, so in a 30-day month "today" also lands
     on offset 30 (e.g. Nov 5 and Dec 5): a stub that only answers offset 0
     makes the test fail for whole months (Apr, Jun, Sep, Nov)."""
-    start = datetime.now(timezone.utc).date()
+    start = local_today()
     return [k for k in range(31) if (start + timedelta(days=k)).day == start.day]
 
 
@@ -379,7 +388,7 @@ def main():
         db = DBManager()
         try:
             raw = AgentManager(uid)._encode_timeline(
-                datetime.now(timezone.utc).date(),
+                local_today(),
                 {0: nt.build_day_entry({"instruction": "Day two", "theme": "Joy", "passage": "1 Thessalonians 5:16-22"},
                                        nt.validate_template(FIVE), nt.CHECK_IN_FOLLOW_UP)}, "covered")
             db.cur.execute("UPDATE agent_heartbeats SET timeline_instruction=%s WHERE _id=%s", (raw, hb_c))
@@ -435,7 +444,7 @@ def main():
               res4 == {"error": "invalid response"} and len(notes(uid)) == n_before)
 
         print("\n=== E/F. Lazy derivation for pre-feature rows ===")
-        legacy_tl = AgentManager(uid)._encode_timeline(datetime.now(timezone.utc).date(), {0: "Read Romans 8 today"}, "s")
+        legacy_tl = AgentManager(uid)._encode_timeline(local_today(), {0: "Read Romans 8 today"}, "s")
         hb_e = raw_hb(aid, uid, prompt="Old schedule prompt", timeline=legacy_tl)  # no template, legacy string day
         M.tmpl = Script("nope")
         M.note = Script(note_json("Romans 8:1-4"))
@@ -510,7 +519,7 @@ def main():
         m = M(uid)
         try:
             check("timeline encode/decode round-trips contract dicts and legacy strings",
-                  m._decode_timeline(m._encode_timeline(datetime.now(timezone.utc).date(), {0: d0, 1: "legacy"}, "s"))["days"] == {0: d0, 1: "legacy"})
+                  m._decode_timeline(m._encode_timeline(local_today(), {0: d0, 1: "legacy"}, "s"))["days"] == {0: d0, 1: "legacy"})
         finally:
             m.close()
     finally:
